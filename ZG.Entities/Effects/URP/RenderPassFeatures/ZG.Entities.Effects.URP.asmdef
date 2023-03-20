@@ -1,0 +1,20 @@
+{
+    "name": "ZG.Entities.Effects.URP",
+    "rootNamespace": "",
+    "references": [
+        "GUID:df380645f10b7bc4b97d4f5eb6303d95",
+        "GUID:15fc0a57446b3144c949da3e2b9737a9",
+        "GUID:734d92eba21c94caba915361bd5ac177",
+        "GUID:beff58cf91ef5dc4f8939ec84aca2109",
+        "GUID:d1080dc0d8432164aa6d65c2e12ef977"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

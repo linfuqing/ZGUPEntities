@@ -1,0 +1,32 @@
+{
+    "name": "ZG.Entities.Transform",
+    "rootNamespace": "",
+    "references": [
+        "Unity.Entities",
+        "Unity.Entities.Hybrid",
+        "Unity.Collections",
+        "Unity.Burst",
+        "Unity.Jobs",
+        "Unity.Mathematics",
+        "Unity.Transforms",
+        "ZG",
+        "ZG.Collections",
+        "ZG.Mathematics",
+        "ZG.Entities"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.entities",
+            "expression": "0.18.0-preview",
+            "define": "SCHEDULE_JOB_BURST_COMPILE_SUPPORT"
+        }
+    ],
+    "noEngineReferences": false
+}
