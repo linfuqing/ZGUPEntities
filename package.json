@@ -5,13 +5,14 @@
   "unity": "2022.2",
   "unityRelease": "0f1",
   "dependencies": {
-	  "com.unity.entities": "1.0.0-pre.15", 
-	  "cn.com.zerogame.unitypackages.collections": "2.2.1", 
-	  "cn.com.zerogame.unitypackages": "2.2.1"
+    "com.unity.editorcoroutines": "1.0.0",
+    "com.unity.entities": "1.0.0-pre.15",
+    "cn.com.zerogame.unitypackages.collections": "2.2.1",
+    "cn.com.zerogame.unitypackages": "2.2.1"
   },
   "description": "Zero Game Unity Package Entites",
   "keywords": [
-    "zg", 
-	"dots"
+    "zg",
+    "dots"
   ]
 }
