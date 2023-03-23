@@ -27,9 +27,9 @@ namespace ZG
         public int3 segments;
         public float3 size;
 
-        public bool GetPosition(in float3 position, out int3 result)
+        public static bool GetPosition(in float3 position, in int3 segments, out int3 result)
         {
-            result = (int3)math.floor((position / size + math.float3(0.5f, 0.0f, 0.5f)) * segments);
+            result = (int3)math.floor((position /* size*/ + math.float3(0.5f, 0.0f, 0.5f)) * segments);
 
             return result.x >= 0 && result.x < segments.x && result.y >= 0 && result.y < segments.y && result.z >= 0 && result.z < segments.z;
         }
@@ -48,8 +48,8 @@ namespace ZG
             int i, numPositions = positions.Length;
             for (i = 0; i < numPositions; ++i)
             {
-                position = positions[i];
-                if (!GetPosition(positions[i], out result))
+                position = positions[i] / size;
+                if (!GetPosition(position, segments, out result))
                     continue;
 
                 FindNeighbor(
@@ -58,13 +58,13 @@ namespace ZG
                     segments,
                     ref addList);
 
-                if (math.frac(position.y / size.y) < 0.5f)
-                {
-                    if(result.y > 0)
-                        FindNeighbor(result, result - math.int3(0, 1, 0), result, ref addList);
-                }
-                else if(result.y < segments.y - 1)
-                    FindNeighbor(result, result + math.int3(0, 1, 0), result, ref addList);
+                position *= segments;
+
+                FindNeighbor(
+                    result, 
+                    math.max((int3)math.floor(position), 0),
+                    math.min((int3)math.ceil(position), segments - 1), 
+                    ref addList);
             }
 
             removeList.Clear();
@@ -81,7 +81,7 @@ namespace ZG
                     minLength = int.MaxValue;
                     for (i = 0; i < numPositions; ++i)
                     {
-                        if (!GetPosition(positions[i], out result))
+                        if (!GetPosition(positions[i] / size, segments, out result))
                             continue;
 
                         distance = math.abs(result - key);
