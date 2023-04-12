@@ -27,9 +27,11 @@ namespace ZG
         public int3 segments;
         public float3 size;
 
-        public static bool GetPosition(in float3 position, in int3 segments, out int3 result)
+        public bool GetPosition(ref float3 position, out int3 result)
         {
-            result = (int3)math.floor((position /* size*/ + math.float3(0.5f, 0.0f, 0.5f)) * segments);
+            position = (position / size + math.float3(0.5f, 0.0f, 0.5f)) * segments;
+
+            result = (int3)math.floor(position);
 
             return result.x >= 0 && result.x < segments.x && result.y >= 0 && result.y < segments.y && result.z >= 0 && result.z < segments.z;
         }
@@ -43,28 +45,32 @@ namespace ZG
         {
             addList.Clear();
 
+            int numPositions = positions.Length; 
             float3 position;
             int3 result;
-            int i, numPositions = positions.Length;
-            for (i = 0; i < numPositions; ++i)
+            if (section.isVail)
             {
-                position = positions[i] / size;
-                if (!GetPosition(position, segments, out result))
-                    continue;
+                int3 min = int3.zero, max = segments - 1;
+                for (int i = 0; i < numPositions; ++i)
+                {
+                    position = positions[i];
+                    if (!GetPosition(ref position, out result))
+                        continue;
 
-                FindNeighbor(
-                    section,
-                    result,
-                    segments,
-                    ref addList);
+                    FindNeighbor(
+                        section,
+                        result,
+                        segments,
+                        ref addList);
 
-                position *= segments;
+                    position -= 0.5f;
 
-                FindNeighbor(
-                    result, 
-                    math.max((int3)math.floor(position), 0),
-                    math.min((int3)math.ceil(position), segments - 1), 
-                    ref addList);
+                    FindNeighbor(
+                        result,
+                        math.clamp((int3)math.floor(position), min, max),
+                        math.clamp((int3)math.ceil(position), min, max),
+                        ref addList);
+                }
             }
 
             removeList.Clear();
@@ -79,9 +85,10 @@ namespace ZG
                     key = originsEnumerator.Current;
 
                     minLength = int.MaxValue;
-                    for (i = 0; i < numPositions; ++i)
+                    for (int i = 0; i < numPositions; ++i)
                     {
-                        if (!GetPosition(positions[i] / size, segments, out result))
+                        position = positions[i];
+                        if (!GetPosition(ref position, out result))
                             continue;
 
                         distance = math.abs(result - key);
@@ -117,9 +124,6 @@ namespace ZG
             in int3 segments,
             ref UnsafeParallelHashMap<int3, int> positions)
         {
-            if (!section.isVail)
-                return;
-
             FindNeighbor(
                 position,
                 math.max(position - math.int3(section.horizontal, section.bottom, section.horizontal), 0),

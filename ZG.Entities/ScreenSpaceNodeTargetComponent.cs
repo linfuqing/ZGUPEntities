@@ -73,9 +73,12 @@ namespace ZG
     public abstract class ScreenSpaceNodeTargetComponentBase : EntityProxyComponent
     {
         private float3? __offset;
+
         public bool isVail => this.HasComponent<ScreenSpaceNodeTarget>();
-        
-        public bool Set(float3 offset)
+
+        public bool isSet => __offset != null;
+
+        public bool Set(in float3 offset)
         {
             if (gameObjectEntity.isCreated)
             {
