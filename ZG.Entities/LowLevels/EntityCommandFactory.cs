@@ -56,7 +56,7 @@ namespace ZG
             [ReadOnly, DeallocateOnJobCompletion]
             public NativeArray<T> keys;
 
-            [ReadOnly, DeallocateOnJobCompletion]
+            [ReadOnly]
             public NativeArray<Entity> entityArray;
 
             public UnsafeParallelMultiHashMap<T, int> indices;
@@ -399,6 +399,29 @@ namespace ZG
             return new EntityCommandRef(refIndex, __entities);*/
         }
 
+        public void AddComponents(in Entity prefab, in ComponentTypeSet componentTypes)
+        {
+            if (componentTypes.Length < 1)
+                return;
+
+            if (__instanceComponentTypes.TryGetValue(prefab, out var originComponentTypes))
+            {
+                var results = new FixedList128Bytes<ComponentType>();
+
+                int numComponentTypes = originComponentTypes.Length, i;
+                for (i = 0; i < numComponentTypes; ++i)
+                    results.Add(originComponentTypes.GetComponentType(i));
+
+                numComponentTypes = componentTypes.Length;
+                for (i = 0; i < numComponentTypes; ++i)
+                    results.Add(componentTypes.GetComponentType(i));
+
+                __instanceComponentTypes[prefab] = new ComponentTypeSet(results);
+            }
+            else
+                __instanceComponentTypes[prefab] = componentTypes;
+        }
+
         public JobHandle ClearEntity(in NativeArray<Entity> entityArray, in JobHandle inputDeps)
         {
             Clear clear;
@@ -427,6 +450,7 @@ namespace ZG
             var entitiesWriter = entities.writer;
 
             var prefabs = this.prefabs;
+            var prefabsReader = prefabs.reader;
             var prefabsWriter = prefabs.writer;
 
             if (!__entitiesToDestroy.isEmpty)
@@ -447,136 +471,139 @@ namespace ZG
                 __entitiesToDestroy.Clear();
             }
 
+            EntityManager entityManager = systemState.EntityManager;
+
             int count = __createEntityCommander.Count();
             if (count > 0)
             {
-                var entityArray = new NativeArray<Entity>(count, Allocator.TempJob);
-
-                prefabs.lookupJobManager.CompleteReadWriteDependency();
-                entities.lookupJobManager.CompleteReadWriteDependency();
-
-                var keys = __createEntityCommander.GetKeyArray(Allocator.TempJob);
-
-                //systemState.CompleteDependency();
-
-                int numKeys = keys.ConvertToUniqueArray(), offset = 0, length;
-                EntityArchetype key;
-                EntityManager entityManager = systemState.EntityManager;
-                for (int i = 0; i < numKeys; ++i)
+                using (var entityArray = new NativeArray<Entity>(count, Allocator.TempJob))
                 {
-                    key = keys[i];
+                    prefabs.lookupJobManager.CompleteReadWriteDependency();
+                    entities.lookupJobManager.CompleteReadWriteDependency();
 
-                    length = __createEntityCommander.CountValuesForKey(key);
+                    var keys = __createEntityCommander.GetKeyArray(Allocator.TempJob);
 
-                    entityManager.CreateEntity(key, entityArray.GetSubArray(offset, length));
+                    //systemState.CompleteDependency();
 
-                    offset += length;
+                    int numKeys = keys.ConvertToUniqueArray(), offset = 0, length;
+                    EntityArchetype key;
+                    for (int i = 0; i < numKeys; ++i)
+                    {
+                        key = keys[i];
+
+                        length = __createEntityCommander.CountValuesForKey(key);
+
+                        entityManager.CreateEntity(key, entityArray.GetSubArray(offset, length));
+
+                        offset += length;
+                    }
+
+                    Collect<EntityArchetype> collect;
+                    collect.version = version;
+                    collect.numKeys = numKeys;
+                    collect.keys = keys;
+                    collect.entityArray = entityArray;
+                    collect.indices = __createEntityCommander;
+                    collect.prefabs = prefabsWriter;
+                    collect.entities = entitiesWriter;
+                    //systemState.Dependency = collect.Schedule(systemState.Dependency);
+                    collect.Run();
                 }
-
-                Collect<EntityArchetype> collect;
-                collect.version = version;
-                collect.numKeys = numKeys;
-                collect.keys = keys;
-                collect.entityArray = entityArray;
-                collect.indices = __createEntityCommander;
-                collect.prefabs = prefabsWriter;
-                collect.entities = entitiesWriter;
-                //systemState.Dependency = collect.Schedule(systemState.Dependency);
-                collect.Run();
-
-                Entity prefab, entity;
-                KeyValue<Entity, ComponentTypeSet> pair;
-                var enumerator = __instanceComponentTypes.GetEnumerator();
-                while (enumerator.MoveNext())
-                {
-                    pair = enumerator.Current;
-
-                    prefab = pair.Key;
-                    if (!entitiesReader.TryGetValue(prefab, out entity))
-                        continue;
-
-                    entityManager.AddComponent(entity, pair.Value);
-                }
-
-                prefabAssigner.Playback(ref systemState, entitiesReader, prefabs);
-
-                prefabJobHandle = systemState.Dependency;// = prefabs.Dispose(systemState.Dependency);
-
-                JobHandle.ScheduleBatchedJobs();
             }
+            else
+                entities.lookupJobManager.CompleteReadOnlyDependency();
+
+            Entity prefab, instance;
+            KeyValue<Entity, ComponentTypeSet> pair;
+            var enumerator = __instanceComponentTypes.GetEnumerator();
+            while (enumerator.MoveNext())
+            {
+                pair = enumerator.Current;
+
+                prefab = pair.Key;
+                if (!entitiesReader.TryGetValue(prefab, out instance))
+                    continue;
+
+                entityManager.AddComponent(instance, pair.Value);
+            }
+
+            prefabAssigner.Playback(ref systemState, entitiesReader, prefabs);
+
+            prefabJobHandle = systemState.Dependency;// = prefabs.Dispose(systemState.Dependency);
 
             count = __instantiateCommander.Count();
             if (count > 0)
             {
-                var entityArray = new NativeArray<Entity>(count, Allocator.TempJob);
-
-                prefabs.lookupJobManager.CompleteReadWriteDependency();
-                entities.lookupJobManager.CompleteReadWriteDependency();
-
-                var keys = __instantiateCommander.GetKeyArray(Allocator.TempJob);
-                int numKeys = keys.ConvertToUniqueArray();
-
-                //systemState.CompleteDependency();
-                __CompletePrefabJob();
-
-                int offset = 0, length, i, j;
-                Entity key, value;
-                ComponentTypeSet componentTypes;
-                EntityManager entityManager = systemState.EntityManager;
-                for (i = 0; i < numKeys; ++i)
+                using (var entityArray = new NativeArray<Entity>(count, Allocator.TempJob))
                 {
-                    key = keys[i];
+                    prefabs.lookupJobManager.CompleteReadWriteDependency();
+                    entities.lookupJobManager.CompleteReadWriteDependency();
 
-                    if (entitiesReader.TryGetValue(key, out value))
+                    var keys = __instantiateCommander.GetKeyArray(Allocator.TempJob);
+                    int numKeys = keys.ConvertToUniqueArray();
+
+                    //systemState.CompleteDependency();
+                    __CompletePrefabJob();
+
+                    int offset = 0, length, i, j;
+                    Entity key, value;
+                    ComponentTypeSet componentTypes;
+                    NativeArray<Entity> subEntities;
+                    for (i = 0; i < numKeys; ++i)
                     {
-                        length = __instantiateCommander.CountValuesForKey(key);
+                        key = keys[i];
 
-                        entityManager.Instantiate(value, entityArray.GetSubArray(offset, length));
-
-                        if (__systemStateComponentTypes.TryGetValue(key, out componentTypes))
+                        if (entitiesReader.TryGetValue(key, out value))
                         {
-                            for (j = 0; j < length; ++j)
-                                entityManager.AddComponent(entityArray[offset + j], componentTypes);
+                            length = __instantiateCommander.CountValuesForKey(key);
+
+                            subEntities = entityArray.GetSubArray(offset, length);
+                            entityManager.Instantiate(value, subEntities);
+
+                            if (__systemStateComponentTypes.TryGetValue(key, out componentTypes))
+                                entityManager.AddComponent(subEntities, componentTypes);
+
+                            offset += length;
                         }
-
-                        offset += length;
+                        else
+                            keys[i--] = keys[--numKeys];
                     }
-                    else
-                        keys[i--] = keys[--numKeys];
+
+                    subEntities = entityArray.GetSubArray(0, offset);
+
+                    //var instances = new NativeHashMap<Entity, Entity>(count, Allocator.TempJob);
+
+                    Collect<Entity> collect;
+                    collect.version = version;
+                    collect.numKeys = numKeys;
+                    collect.keys = keys;
+                    collect.entityArray = subEntities;
+                    //collect.entities = __entities.AsArray();
+                    collect.indices = __instantiateCommander;
+                    collect.prefabs = prefabsWriter;
+                    collect.entities = entitiesWriter;
+                    //systemState.Dependency = collect.Schedule(systemState.Dependency);
+                    collect.Run();
+
+                    foreach (Entity entity in subEntities)
+                    {
+                        if (!prefabsReader.TryGetValue(entity, out prefab) ||
+                            !__instanceComponentTypes.TryGetValue(prefab, out componentTypes))
+                            continue;
+
+                        //__instanceComponentTypes.Remove(prefab);
+
+                        entityManager.AddComponent(entity, componentTypes);
+                    }
                 }
-
-                //var instances = new NativeHashMap<Entity, Entity>(count, Allocator.TempJob);
-
-                Collect<Entity> collect;
-                collect.version = version;
-                collect.numKeys = numKeys;
-                collect.keys = keys;
-                collect.entityArray = entityArray;
-                //collect.entities = __entities.AsArray();
-                collect.indices = __instantiateCommander;
-                collect.prefabs = prefabsWriter;
-                collect.entities = entitiesWriter;
-                //systemState.Dependency = collect.Schedule(systemState.Dependency);
-                collect.Run();
-
-                Entity prefab, entity;
-                KeyValue<Entity, ComponentTypeSet> pair;
-                var enumerator = __instanceComponentTypes.GetEnumerator();
-                while(enumerator.MoveNext())
-                {
-                    pair = enumerator.Current;
-
-                    prefab = pair.Key;
-                    if (!entitiesReader.TryGetValue(prefab, out entity))
-                        continue;
-
-                    entityManager.AddComponent(entity, pair.Value);
-                }
-
-                instanceAssigner.Playback(ref systemState, entitiesReader, prefabs);
-
-                instanceJobHandle = systemState.Dependency;// = instances.Dispose(systemState.Dependency);
+                //entityArray.Dispose();
             }
+            else
+                entities.lookupJobManager.CompleteReadOnlyDependency();
+
+            instanceAssigner.Playback(ref systemState, entitiesReader, prefabs);
+
+            instanceJobHandle = systemState.Dependency;// = instances.Dispose(systemState.Dependency);
 
             __instanceComponentTypes.Clear();
 

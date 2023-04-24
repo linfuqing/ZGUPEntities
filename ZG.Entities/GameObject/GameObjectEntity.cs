@@ -8,6 +8,7 @@ using Unity.Entities;
 using UnityEngine;
 //using UnityEngine.SceneManagement;
 using SceneManager = UnityEngine.SceneManagement.SceneManager;
+using Unity.Collections.LowLevel.Unsafe;
 
 namespace ZG
 {
@@ -31,7 +32,7 @@ namespace ZG
         }
     }
 
-    public struct GameObjectEntityHandle : IComponentData
+    public struct GameObjectEntityHandle : IBufferElementData
     {
         public GCHandle value; 
     }
@@ -462,7 +463,10 @@ namespace ZG
             UnityEngine.Assertions.Assert.AreNotEqual(Status.Creating, status);
             if (__entity != Entity.Null)
             {
-                this.DestroyEntity(__entity);
+                if (Status.Creating == status)
+                    this.GetFactory().DestroyEntity(__entity);
+                else
+                    this.DestroyEntity(__entity);
 
                 __entity = Entity.Null;
             }
@@ -494,14 +498,20 @@ namespace ZG
                     entityManager.SetName(entity, name);
                 }
 #endif
-                this.RemoveComponent<Disabled>();
+                var entityStatus = this.GetComponentData<EntityStatus>();
+                ++entityStatus.activeCount;
+                this.SetComponentData(entityStatus);
             }
         }
 
         protected void OnDisable()
         {
             if (isCreated)
-                this.AddComponent<Disabled>();
+            {
+                var entityStatus = this.GetComponentData<EntityStatus>();
+                --entityStatus.activeCount;
+                this.SetComponentData(entityStatus);
+            }
 
             /*if (__entity != Entity.Null)
             {
@@ -601,15 +611,17 @@ namespace ZG
                 }
             }
 
-            __entity = CreateEntityDefinition(__info, out var assigner, __CreateComponentTypes(__componentTypes));
+            var componentTypes = __CreateComponentTypes(__componentTypes);
+
+            __entity = CreateEntityDefinition(__info, out var assigner, componentTypes);
 
             GameObjectEntityHandle handle;
             handle.value = GCHandle.Alloc(this);
-            assigner.SetComponentData(__entity, handle);
+            assigner.SetBuffer(false, __entity, handle);
 
-            EntityOrigin entityOrigin;
-            entityOrigin.entity = __entity;
-            assigner.SetComponentData(__entity, entityOrigin);
+            EntityOrigin origin;
+            origin.entity = __entity;
+            assigner.SetComponentData(__entity, origin);
 
             if (_parent != null)
             {

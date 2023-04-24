@@ -654,7 +654,7 @@ namespace ZG
 
     public struct RollbackBuffer<T> : IRollbackContainer where T : unmanaged, IBufferElementData
     {
-        private NativeCounterLite __counter;
+        private NativeCounter __counter;
         private NativeArray<int> __startIndex;
         private NativeList<T> __values;
         private NativeList<RollbackChunk> __chunks;
@@ -673,7 +673,7 @@ namespace ZG
             BurstUtility.InitializeJob<RollbackResize<RollbackChunk>>();
             BurstUtility.InitializeJob<RollbackSaveBufferResizeValues<T>>();
 
-            __counter = new NativeCounterLite(allocator);
+            __counter = new NativeCounter(allocator);
             __startIndex = new NativeArray<int>(1, allocator, NativeArrayOptions.ClearMemory);
             __values = new NativeList<T>(capacity, allocator);
             __chunks = new NativeList<RollbackChunk>(capacity, allocator);

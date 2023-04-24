@@ -1622,6 +1622,12 @@ namespace ZG
             container.SetBuffer<T>(isOverride, entity, values, length);
         }
 
+        public unsafe void SetBuffer<T>(bool isOverride, in Entity entity, T value)
+            where T : struct, IBufferElementData
+        {
+            SetBuffer<T>(isOverride, entity, UnsafeUtility.AddressOf(ref value), 1);
+        }
+
         public void SetBuffer<T>(bool isOverride, in Entity entity, in NativeArray<T> values)
             where T : struct, IBufferElementData
         {
