@@ -3,12 +3,33 @@ using Unity.Burst.Intrinsics;
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Mathematics;
+using System.Collections;
+using System.Collections.Generic;
+using Unity.Jobs;
+using ZG;
+
+[assembly: RegisterGenericJobType(typeof(RollbackEntryTest<SyncFrameEventSystem.RollbackEntryTester>))]
 
 namespace ZG
 {
     [BurstCompile, UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(BeginFrameEntityCommandSystem))]
     public partial struct SyncFrameCallbackSystem : ISystem
     {
+        private struct Comparer : IComparer<uint>
+        {
+            public int Compare(uint x, uint y)
+            {
+                return x.CompareTo(y);
+            }
+        }
+
+        private struct ListWrapper : IReadOnlyListWrapper<uint, NativeArray<SyncFrame>>
+        {
+            public int GetCount(NativeArray<SyncFrame> list) => list.Length;
+
+            public uint Get(NativeArray<SyncFrame> list, int index) => list[index].sourceIndex;
+        }
+
         private struct Call
         {
             public struct FrameArrayWrapper : IReadOnlyListWrapper<int, DynamicBuffer<SyncFrameArray>>
@@ -28,7 +49,7 @@ namespace ZG
             public BufferAccessor<SyncFrame> frames;
             public BufferAccessor<SyncFrameArray> frameArrays;
 
-            public EntityCommandQueue<Entity>.ParallelWriter entityManager;
+            //public EntityCommandQueue<Entity>.ParallelWriter entityManager;
 
             public static void AppendFrame(ref DynamicBuffer<SyncFrameArray> frameArrays, int startIndex, int endIndex)
             {
@@ -43,7 +64,7 @@ namespace ZG
                 }
             }
 
-            public void Execute(int index)
+            public bool Execute(int index)
             {
                 var frames = this.frames[index];
                 var frameArrays = this.frameArrays[index];
@@ -95,6 +116,8 @@ namespace ZG
                 var frameCallbacks = this.frameCallbacks[index];
                 SyncFrameCallback frameCallback;
                 SyncFrameEvent frameEvent;
+                Comparer comparer;
+                ListWrapper listWrapper;
                 uint frameIndex;
                 int k, numFrameCallbacks = frameCallbacks.Length;
                 for (i = 0; i < numFrameCallbacks; ++i)
@@ -106,19 +129,27 @@ namespace ZG
                         frameArray = frameArrays[j];
                         if (frameArray.type == frameCallback.type)
                         {
-                            frame = default;
-                            //TODO: Bin
+                            //frame = default;
+                            k = frames.AsNativeArray().GetSubArray(frameArray.startIndex, frameArray.count).BinarySearch(
+                                frameCallback.frameIndex, 
+                                comparer, 
+                                listWrapper) + 1;
+                            /*/TODO: Bin
                             for (k = 0; k < frameArray.count; ++k)
                             {
                                 frame = frames[frameArray.startIndex + k];
                                 if (frame.sourceIndex > frameCallback.frameIndex)
                                     break;
-                            }
+                            }*/
 
                             if (k < frameArray.count)
                             {
+                                k += frameArray.startIndex;
+
+                                frame = frames[k];
+
                                 frameIndex = frameCallback.frameIndex + frame.destinationIndex - frame.sourceIndex;
-                                if(frameIndex <= (k > 0 ? frames[k - 1].destinationIndex : frameArray.oldDestinationIndex))
+                                if(frameIndex <= (k > frameArray.startIndex ? frames[k - 1].destinationIndex : frameArray.oldDestinationIndex))
                                 {
                                     UnityEngine.Debug.Log($"Discard Callback: {frameCallback.frameIndex} : {this.frameIndex}");
 
@@ -250,20 +281,22 @@ namespace ZG
                     frameEvents.Add(frameEvent);
                 }
 
+                frameCallbacks.Clear();
+
                 if (!frameEvents.IsEmpty)
                 {
                     frameEvents.AsNativeArray().Sort();
 
-                    entityManager.Enqueue(entityArray[index]);
+                    //entityManager.Enqueue(entityArray[index]);
+
+                    return true;
                 }
 
-                frameCallbacks.Clear();
+                return false;
             }
         }
 
-#if !UNITY_EDITOR
         [BurstCompile]
-#endif
         private struct CallEx : IJobChunk, IEntityCommandProducerJob
         {
             public uint frameIndex;
@@ -276,7 +309,7 @@ namespace ZG
             public BufferTypeHandle<SyncFrame> frameType;
             public BufferTypeHandle<SyncFrameArray> frameArrayType;
 
-            public EntityCommandQueue<Entity>.ParallelWriter entityManager;
+            //public EntityCommandQueue<Entity>.ParallelWriter entityManager;
 
             public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
             {
@@ -288,11 +321,16 @@ namespace ZG
                 call.frameEvents = chunk.GetBufferAccessor(ref frameEventType);
                 call.frames = chunk.GetBufferAccessor(ref frameType);
                 call.frameArrays = chunk.GetBufferAccessor(ref frameArrayType);
-                call.entityManager = entityManager;
+                //call.entityManager = entityManager;
 
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
-                while(iterator.NextEntityIndex(out int i))
-                    call.Execute(i);
+                while (iterator.NextEntityIndex(out int i))
+                {
+                    if(call.Execute(i))
+                        chunk.SetComponentEnabled(ref frameEventType, i, true);
+
+                    chunk.SetComponentEnabled(ref frameCallbackType, i, false);
+                }
             }
         }
 
@@ -313,7 +351,7 @@ namespace ZG
         public const uint maxFrameCount = 4;
         private EntityQuery __rollbackFrameGroup;
         private EntityQuery __group;
-        private EntityCommandPool<Entity> __entityManager;
+        //private EntityCommandPool<Entity> __entityManager;
 
         public void OnCreate(ref SystemState state)
         {
@@ -325,14 +363,14 @@ namespace ZG
                     All = new ComponentType[]
                     {
                         ComponentType.ReadWrite<SyncFrameCallback>(),
-                        ComponentType.ReadWrite<SyncFrameEvent>(),
+                        //ComponentType.ReadWrite<SyncFrameEvent>(),
                         ComponentType.ReadWrite<SyncFrame>(),
                         ComponentType.ReadWrite<SyncFrameArray>()
                     },
                     Options = EntityQueryOptions.IncludeDisabledEntities
                 });
 
-            __entityManager = state.World.GetOrCreateSystemManaged<SyncFrameEventSystem>().pool;
+            //__entityManager = state.World.GetOrCreateSystemManaged<SyncFrameEventSystem>().pool;
         }
 
         public void OnDestroy(ref SystemState state)
@@ -343,7 +381,7 @@ namespace ZG
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            var entityManager = __entityManager.Create();
+            //var entityManager = __entityManager.Create();
 
             var callbackType = state.GetBufferTypeHandle<SyncFrameCallback>();
 
@@ -355,10 +393,10 @@ namespace ZG
             call.frameEventType = state.GetBufferTypeHandle<SyncFrameEvent>();
             call.frameType = state.GetBufferTypeHandle<SyncFrame>();
             call.frameArrayType = state.GetBufferTypeHandle<SyncFrameArray>();
-            call.entityManager = entityManager.parallelWriter;
+            //call.entityManager = entityManager.parallelWriter;
             var jobHandle = call.ScheduleParallel(__group, state.Dependency);
 
-            entityManager.AddJobHandleForProducer<CallEx>(jobHandle);
+            //entityManager.AddJobHandleForProducer<CallEx>(jobHandle);
 
             state.Dependency = jobHandle;
         }
@@ -375,63 +413,24 @@ namespace ZG
             }
         }
 
-        private EntityQuery __rollbackFrameGroup;
-
-        private EntityQuery __group;
-
-        private RollbackCommanderManaged __commander;
-
-        private EntityCommandPool<Entity>.Context __context;
-
-        public EntityCommandPool<Entity> pool => __context.pool;
-
-        public SyncFrameEventSystem()
-        { 
-            __context = new EntityCommandPool<Entity>.Context(Allocator.Persistent);
-        }
-
-        protected override void OnCreate()
+        private struct Callback
         {
-            base.OnCreate();
+            [ReadOnly]
+            public NativeArray<Entity> entityArray;
+            [ReadOnly]
+            public BufferAccessor<SyncFrameEvent> frameEvents;
 
-            BurstUtility.InitializeJobParalledForDefer<RollbackEntryTest<RollbackEntryTester>>();
+            public RollbackCommanderManaged commander;
 
-            __rollbackFrameGroup = RollbackFrame.GetEntityQuery(ref this.GetState());
-
-            __group = GetEntityQuery(
-                new EntityQueryDesc()
-                {
-                    All = new ComponentType[] { ComponentType.ReadOnly<SyncFrameEvent>() },
-
-                    Options = EntityQueryOptions.IncludeDisabledEntities
-                });
-
-            __commander = World.GetOrCreateSystemUnmanaged<RollbackCommandSystem>().commander;
-        }
-
-        protected override void OnDestroy()
-        {
-            __context.Dispose();
-
-            base.OnDestroy();
-        }
-
-        protected override void OnUpdate()
-        {
-            int i, numFrameEvents;
-            SyncFrameCallbackData callbackData;
-            SyncFrameEvent frameEvent;
-            RollbackEntry entry;
-            DynamicBuffer<SyncFrameEvent> frameEvents;
-            var events = GetBufferLookup<SyncFrameEvent>(true);
-            while (__context.TryDequeue(out var entity))
+            public void Execute(int index)
             {
-                if (!events.HasBuffer(entity))
-                    continue;
-
-                frameEvents = events[entity];
-                numFrameEvents = frameEvents.Length;//, destination = source;
-                for (i = 0; i < numFrameEvents; ++i)
+                Entity entity = entityArray[index];
+                var frameEvents = this.frameEvents[index];
+                SyncFrameEvent frameEvent;
+                RollbackEntry entry;
+                SyncFrameCallbackData callbackData;
+                int numFrameEvents = frameEvents.Length;//, destination = source;
+                for (int i = 0; i < numFrameEvents; ++i)
                 {
                     frameEvent = frameEvents[i];
                     /*if (frameEvent.destinationFrameIndex > frameIndex)
@@ -447,7 +446,7 @@ namespace ZG
                         entry.key = frameEvent.type;
                         entry.entity = entity;
                         callbackData.frameIndex = frameEvent.destinationFrameIndex;
-                        callbackData.commander = __commander.Invoke(frameEvent.destinationFrameIndex, entry);
+                        callbackData.commander = commander.Invoke(frameEvent.destinationFrameIndex, entry);
 
                         //UnityEngine.Debug.Log($"Invoke {frameEvent.sourceFrameIndex} : {frameEvent.destinationFrameIndex}");
 
@@ -456,19 +455,98 @@ namespace ZG
 
                     //frameEvents[i--] = frameEvents[--destination];
                 }
-
-                /*if(destination != source)
-                    frameEvents.ResizeUninitialized(destination);*/
             }
+        }
 
-            if (!__group.IsEmpty)
+        private struct CallbackEx : IJobChunk
+        {
+            [ReadOnly]
+            public EntityTypeHandle entityType;
+            [ReadOnly]
+            public BufferTypeHandle<SyncFrameEvent> eventType;
+
+            public RollbackCommanderManaged commander;
+
+            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
             {
-                uint frameIndex = __rollbackFrameGroup.GetSingleton<RollbackFrame>().index + 1;
-                var jobHandle = __commander.Update(frameIndex, Dependency);
+                Callback callback;
+                callback.entityArray = chunk.GetNativeArray(entityType);
+                callback.frameEvents = chunk.GetBufferAccessor(ref eventType);
+                callback.commander = commander;
 
-                RollbackEntryTester tester;
-                Dependency = __commander.Test(tester, frameIndex, 1, jobHandle);
+                var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+                while (iterator.NextEntityIndex(out int i))
+                    callback.Execute(i);
             }
+        }
+
+        private EntityQuery __rollbackFrameGroup;
+
+        private EntityQuery __group;
+
+        private RollbackCommanderManaged __commander;
+
+        private EntityTypeHandle __entityType;
+        private BufferTypeHandle<SyncFrameEvent> __eventType;
+
+        /*private EntityCommandPool<Entity>.Context __context;
+
+        public EntityCommandPool<Entity> pool => __context.pool;
+
+        public SyncFrameEventSystem()
+        { 
+            __context = new EntityCommandPool<Entity>.Context(Allocator.Persistent);
+        }*/
+
+        protected override void OnCreate()
+        {
+            base.OnCreate();
+
+            //BurstUtility.InitializeJobParalledForDefer<RollbackEntryTest<RollbackEntryTester>>();
+
+            __rollbackFrameGroup = RollbackFrame.GetEntityQuery(ref this.GetState());
+
+            __group = GetEntityQuery(
+                new EntityQueryDesc()
+                {
+                    All = new ComponentType[] { ComponentType.ReadOnly<SyncFrameEvent>() },
+
+                    Options = EntityQueryOptions.IncludeDisabledEntities
+                });
+
+            __commander = World.GetOrCreateSystemUnmanaged<RollbackCommandSystem>().commander;
+
+            __entityType = GetEntityTypeHandle();
+            __eventType = GetBufferTypeHandle<SyncFrameEvent>(true);
+        }
+
+        /*protected override void OnDestroy()
+        {
+            __context.Dispose();
+
+            base.OnDestroy();
+        }*/
+
+        protected override void OnUpdate()
+        {
+            if (__group.IsEmpty)
+                return;
+
+            ref var state = ref this.GetState();
+
+            CallbackEx callback;
+            callback.entityType = __entityType.UpdateAsRef(ref state);
+            callback.eventType = __eventType.UpdateAsRef(ref state);
+            callback.commander = __commander;
+            callback.RunByRefWithoutJobs(__group);
+
+            __group.SetEnabledBitsOnAllChunks<SyncFrameEvent>(false);
+
+            uint frameIndex = __rollbackFrameGroup.GetSingleton<RollbackFrame>().index + 1;
+            var jobHandle = __commander.Update(frameIndex, Dependency);
+
+            RollbackEntryTester tester;
+            Dependency = __commander.Test(tester, frameIndex, 1, jobHandle);
         }
     }
 }

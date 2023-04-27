@@ -219,7 +219,7 @@ namespace ZG
         {
             using (var builder = new EntityQueryBuilder(Allocator.Temp))
                 __group = builder
-                    .WithAll<EntityStatus>()
+                    .WithAll<EntityObjects, EntityStatus>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
 

@@ -9,14 +9,14 @@ namespace ZG
         public EntityCommander commander;
     }
 
-    public struct SyncFrameCallback : IBufferElementData
+    public struct SyncFrameCallback : IBufferElementData, IEnableableComponent
     {
         public int type;
         public uint frameIndex;
         public CallbackHandle<SyncFrameCallbackData> handle;
     }
 
-    public struct SyncFrameEvent : IBufferElementData, IComparable<SyncFrameEvent>
+    public struct SyncFrameEvent : IBufferElementData, IEnableableComponent, IComparable<SyncFrameEvent>
     {
         public int type;
         public uint callbackFrameIndex;
@@ -61,6 +61,8 @@ namespace ZG
             frameCallback.frameIndex = frameIndex;
             frameCallback.handle = callback.Register();
             this.AppendBuffer(frameCallback);
+
+            this.SetComponentEnabled<SyncFrameCallback>(true);
         }
     }
 }

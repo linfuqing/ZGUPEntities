@@ -185,7 +185,7 @@ namespace ZG
         private static EntityCommandSharedSystemGroup __GetCommandSystem(World world)
         {
             if (__commander == null || __commander.World != world)
-                __commander = world.GetOrCreateSystemManaged<EntityCommandSharedSystemGroup>();
+                __commander = world.GetExistingSystemManaged<EntityCommandSharedSystemGroup>();
 
             return __commander;
         }

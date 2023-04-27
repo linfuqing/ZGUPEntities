@@ -473,7 +473,10 @@ namespace ZG
                 value.index = values.CountValuesForKey(key);
                 value.command = command;
 
-                if (value.index > 0)
+                if (value.index == 0)
+                    entityTypes.Add(key.entity, key.typeIndex);
+                //Fail In Enable Or Disable
+                /*else
                 {
                     if (command.type == Command.Type.ComponentData)
                     {
@@ -481,9 +484,7 @@ namespace ZG
 
                         value.index = 0;
                     }
-                }
-                else
-                    entityTypes.Add(key.entity, key.typeIndex);
+                }*/
 
                 values.Add(key, value);
             }
@@ -595,18 +596,26 @@ namespace ZG
                 AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
 #endif
 
+                int index = -1;
+
                 Key key;
                 key.entity = entity;
                 key.typeIndex = TypeManager.GetTypeIndex<T>();
 
-                if (__values.TryGetFirstValue(key, out var temp, out _))
+                if (__values.TryGetFirstValue(key, out var temp, out var iterator))
                 {
-                    value = temp.command.block.As<T>();
+                    do
+                    {
+                        if(temp.command.type == Command.Type.ComponentData && temp.index > index)
+                        {
+                            index = temp.index;
 
-                    return true;
+                            value = temp.command.block.As<T>();
+                        }
+                    } while (__values.TryGetNextValue(out temp, ref iterator));
                 }
 
-                return false;
+                return index != -1;
             }
 
             public bool TryGetBuffer<TValue, TList, TWrapper>(in Entity entity, ref TList list, ref TWrapper wrapper)

@@ -4,6 +4,7 @@ using Unity.Burst;
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
+using static ZG.TimeManager<T>;
 
 namespace ZG
 {
@@ -107,21 +108,29 @@ namespace ZG
             public UnsafeParallelHashMap<Entity, ComponentTypeSet> systemStateComponentTypes;
             public UnsafeParallelHashMap<Entity, ComponentTypeSet> instanceComponentTypes;
 
+#if UNITY_EDITOR
+            public UnsafeParallelHashMap<Entity, FixedString128Bytes> names;
+#endif
+
             public void Execute()
             {
-                Entity entity, temp;
+                Entity entity, prefab;
                 int length = entityArray.Length;
                 for (int i = 0; i < length; ++i)
                 {
                     entity = entityArray[i];
 
-                    if (prefabs.TryGetValue(entity, out temp))
+                    if (prefabs.TryGetValue(entity, out prefab))
                     {
                         prefabs.Remove(entity);
 
-                        entities.Remove(temp);
-                        systemStateComponentTypes.Remove(temp);
-                        instanceComponentTypes.Remove(temp);
+                        entities.Remove(prefab);
+                        systemStateComponentTypes.Remove(prefab);
+                        instanceComponentTypes.Remove(prefab);
+
+#if UNITY_EDITOR
+                        names.Remove(prefab);
+#endif
                     }
                 }
             }
@@ -138,6 +147,10 @@ namespace ZG
 
             public UnsafeParallelHashMap<Entity, ComponentTypeSet> systemStateComponentTypes;
             public UnsafeParallelHashMap<Entity, ComponentTypeSet> instanceComponentTypes;
+
+#if UNITY_EDITOR
+            public UnsafeParallelHashMap<Entity, FixedString128Bytes> names;
+#endif
 
             public void Execute(int index)
             {
@@ -159,6 +172,10 @@ namespace ZG
 
                 systemStateComponentTypes.Remove(prefab);
                 instanceComponentTypes.Remove(prefab);
+
+#if UNITY_EDITOR
+                names.Remove(prefab);
+#endif
             }
         }
 
@@ -431,6 +448,10 @@ namespace ZG
             clear.systemStateComponentTypes = __systemStateComponentTypes;
             clear.instanceComponentTypes = __instanceComponentTypes;
 
+#if UNITY_EDITOR
+            clear.names = __names;
+#endif
+
             ref var entityJobManager = ref entities.lookupJobManager;
             ref var prefabJobManager = ref prefabs.lookupJobManager;
 
@@ -464,6 +485,9 @@ namespace ZG
                 destroy.entities = entitiesWriter;
                 destroy.systemStateComponentTypes = __systemStateComponentTypes;
                 destroy.instanceComponentTypes = __instanceComponentTypes;
+#if UNITY_EDITOR
+                destroy.names = __names;
+#endif
                 destroy.Run(__entitiesToDestroy.length);
 
                 systemState.EntityManager.DestroyEntity(__entitiesToDestroy.AsArray()/*Unsafe.CollectionUtility.ToNativeArray(ref entitiesToDestroy)*/);

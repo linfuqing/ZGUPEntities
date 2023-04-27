@@ -74,5 +74,13 @@ namespace Unity.Entities
 
             return ref value;
         }
+
+        public static unsafe ref EntityStorageInfoLookup UpdateAsRef(this ref EntityStorageInfoLookup value, ref SystemState state)
+        {
+            value.Update(ref state);
+
+            return ref value;
+        }
+
     }
 }

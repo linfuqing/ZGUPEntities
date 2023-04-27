@@ -1,13 +1,10 @@
 using System;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using Unity.Jobs;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
-using Unity.Profiling;
 using ZG.Unsafe;
 
 namespace ZG
@@ -179,7 +176,7 @@ namespace ZG
 
 
     [BurstCompile]
-    public struct RollbackEntryTest<T> : IJobParalledForDeferBurstSchedulable where T : struct, IRollbackEntryTester
+    public struct RollbackEntryTest<T> : IJobParallelForDefer where T : struct, IRollbackEntryTester
     {
         [ReadOnly]
         public NativeArray<RollbackEntry> values;
@@ -252,7 +249,7 @@ namespace ZG
 
             public NativeList<RollbackEntryKey> keys;
 
-            public NativeParallelHashMap<uint, RollbackEntryType> frameEntryTypes;
+            public NativeHashMap<uint, RollbackEntryType> frameEntryTypes;
 
             public NativeParallelMultiHashMap<uint, RollbackEntry> frameEntries;
 
@@ -330,7 +327,7 @@ namespace ZG
 
             public NativeList<RollbackEntryKey> keys;
 
-            public NativeParallelHashMap<uint, RollbackEntryType> frameEntryTypes;
+            public NativeHashMap<uint, RollbackEntryType> frameEntryTypes;
 
             public void Execute()
             {
@@ -420,7 +417,7 @@ namespace ZG
             private NativeList<RollbackEntryKey> __keys;
             //private NativeList<MoveCommand> __moveCommands;
 
-            private NativeParallelHashMap<uint, RollbackEntryType> __frameEntryTypes;
+            private NativeHashMap<uint, RollbackEntryType> __frameEntryTypes;
             private NativeParallelMultiHashMap<uint, RollbackEntry> __frameEntries;
 
             public uint minFrameIndex => __frameIndices[(int)RollbackFrameIndexType.Min];
@@ -584,13 +581,13 @@ namespace ZG
             }*/
         }
 
-        private NativeArrayLite<JobHandle> __jobHandle;
-        private NativeArrayLite<uint> __frameIndices;
-        private NativeListLite<RollbackEntry> __values;
-        private NativeListLite<RollbackEntryKey> __keys;
-        //private NativeListLite<MoveCommand> __moveCommands;
-        private NativeHashMapLite<uint, RollbackEntryType> __frameEntryTypes;
-        private NativeMultiHashMapLite<uint, RollbackEntry> __frameEntries;
+        private NativeArray<JobHandle> __jobHandle;
+        private NativeArray<uint> __frameIndices;
+        private NativeList<RollbackEntry> __values;
+        private NativeList<RollbackEntryKey> __keys;
+        //private NativeList<MoveCommand> __moveCommands;
+        private NativeHashMap<uint, RollbackEntryType> __frameEntryTypes;
+        private NativeParallelMultiHashMap<uint, RollbackEntry> __frameEntries;
 
         public JobHandle jobHandle
         {
@@ -653,13 +650,13 @@ namespace ZG
             BurstUtility.InitializeJob<Init>();
             BurstUtility.InitializeJob<Command>();
 
-            __jobHandle = new NativeArrayLite<JobHandle>(1, allocator, NativeArrayOptions.ClearMemory);
-            __frameIndices = new NativeArrayLite<uint>((int)RollbackFrameIndexType.Count, allocator, NativeArrayOptions.ClearMemory);
-            __values = new NativeListLite<RollbackEntry>(allocator);
-            __keys = new NativeListLite<RollbackEntryKey>(allocator);
+            __jobHandle = new NativeArray<JobHandle>(1, allocator, NativeArrayOptions.ClearMemory);
+            __frameIndices = new NativeArray<uint>((int)RollbackFrameIndexType.Count, allocator, NativeArrayOptions.ClearMemory);
+            __values = new NativeList<RollbackEntry>(allocator);
+            __keys = new NativeList<RollbackEntryKey>(allocator);
             //__moveCommands = new NativeListLite<MoveCommand>(allocator);
-            __frameEntryTypes = new NativeHashMapLite<uint, RollbackEntryType>(1, allocator);
-            __frameEntries = new NativeMultiHashMapLite<uint, RollbackEntry>(1, allocator);
+            __frameEntryTypes = new NativeHashMap<uint, RollbackEntryType>(1, allocator);
+            __frameEntries = new NativeParallelMultiHashMap<uint, RollbackEntry>(1, allocator);
         }
 
         public void Dispose()
@@ -742,7 +739,7 @@ namespace ZG
             test.keys = __keys.AsDeferredJobArray();
             test.tester = tester;
 
-            jobHandle = test.ScheduleParallel((NativeList<RollbackEntryKey>)__keys, innerloopBatchCount, jobHandle);
+            jobHandle = test.ScheduleByRef(__keys, innerloopBatchCount, jobHandle);
 
             Command command;
             command.minRestoreFrameIndex = minRestoreFrameIndex;
