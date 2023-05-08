@@ -437,17 +437,18 @@ namespace ZG
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             internal AtomicSafetyHandle m_Safety;
 
-            private static readonly SharedStatic<int> StaticSafetyId = SharedStatic<int>.GetOrCreate<Container>();
+            internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<Data>();
 #endif
 
             public AllocatorManager.AllocatorHandle allocator => buffer.allocator;
 
-            public Data(Allocator allocator)
+            public Data(AllocatorManager.AllocatorHandle allocator)
             {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-                m_Safety = AtomicSafetyHandle.Create();
+                m_Safety =  CollectionHelper.CreateSafetyHandle(allocator);
 
-                __InitStaticSafetyId(ref m_Safety);
+                CollectionHelper.SetStaticSafetyId<EntityComponentAssigner>(ref m_Safety, ref StaticSafetyID.Data);
+                AtomicSafetyHandle.SetBumpSecondaryVersionOnScheduleWrite(m_Safety, true);
 #endif
 
                 buffer = new UnsafeBufferEx(allocator, 1);
@@ -488,18 +489,6 @@ namespace ZG
 
                 values.Add(key, value);
             }
-
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-            [BurstDiscard]
-            private static void __InitStaticSafetyId(ref AtomicSafetyHandle handle)
-            {
-                if (StaticSafetyId.Data == 0)
-                    StaticSafetyId.Data = AtomicSafetyHandle.NewStaticSafetyId<Container>();
-
-                AtomicSafetyHandle.SetStaticSafetyId(ref handle, StaticSafetyId.Data);
-            }
-#endif
-
         }
 
         [NativeContainer]
@@ -511,6 +500,8 @@ namespace ZG
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             internal AtomicSafetyHandle m_Safety;
+
+            internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<Container>();
 #endif
 
             internal Data data
@@ -535,8 +526,9 @@ namespace ZG
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 m_Safety = data.m_Safety;
 
-                //AtomicSafetyHandle.UseSecondaryVersion(ref container.m_Safety);
+                CollectionHelper.SetStaticSafetyId<Container>(ref m_Safety, ref StaticSafetyID.Data);
 #endif
+
                 __buffer = data.buffer;
                 __entityTypes = data.entityTypes;
                 __values = data.values;
@@ -1468,7 +1460,7 @@ namespace ZG
 
         private unsafe JobHandle* __jobHandle;
 
-        private NativeArrayLite<int> __bufferSizeAndTypeCount;
+        private NativeArray<int> __bufferSizeAndTypeCount;
 
         private Data __data;
 
@@ -1510,7 +1502,7 @@ namespace ZG
             __jobHandle = AllocatorManager.Allocate<JobHandle>(allocator);
             *__jobHandle = default;
 
-            __bufferSizeAndTypeCount = new NativeArrayLite<int>(2, allocator, NativeArrayOptions.ClearMemory);
+            __bufferSizeAndTypeCount = new NativeArray<int>(2, allocator, NativeArrayOptions.ClearMemory);
 
             __data = new Data(allocator);
         }

@@ -104,12 +104,12 @@ namespace ZG
         where T : unmanaged
         where U : unmanaged, IComponentData, IBuff<T>
     {
-        private NativeArrayLite<JobHandle> __jobHandle;
+        private NativeArray<JobHandle> __jobHandle;
 
-        private NativeListLite<Buff<EntityData<T>>> __buffs;
+        private NativeList<Buff<EntityData<T>>> __buffs;
         private TimeManager<EntityData<T>> __timeManager;
 
-        public bool isCreated => __jobHandle.isCreated;
+        public bool isCreated => __jobHandle.IsCreated;
 
         public JobHandle jobHandle
         {
@@ -123,8 +123,8 @@ namespace ZG
             BurstUtility.InitializeJob<BuffAdd<T, U>>();
             BurstUtility.InitializeJob<BuffSubtract<T, U>>();
 
-            __jobHandle = new NativeArrayLite<JobHandle>(1, allocator, NativeArrayOptions.ClearMemory);
-            __buffs = new NativeListLite<Buff<EntityData<T>>>(allocator);
+            __jobHandle = new NativeArray<JobHandle>(1, allocator, NativeArrayOptions.ClearMemory);
+            __buffs = new NativeList<Buff<EntityData<T>>>(allocator);
             __timeManager = new TimeManager<EntityData<T>>(allocator);
         }
 

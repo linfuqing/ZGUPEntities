@@ -6,6 +6,7 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using ZG.Unsafe;
+using static ZG.EntityComponentAssigner;
 
 namespace ZG
 {
@@ -766,7 +767,8 @@ namespace ZG
             public uint frameIndex;
 
             public long key;
-            public EntityCommander value;
+            //public EntityCommander value;
+            public int commanderIndex;
 
             public CallbackHandle clear;
         }
@@ -783,7 +785,8 @@ namespace ZG
             public RollbackEntryType rollbackEntryType;
             public int index;
             public long key;
-            public EntityCommander value;
+            //public EntityCommander value;
+            public int commanderIndex;
 
             public int CompareTo(Callback other)
             {
@@ -806,65 +809,103 @@ namespace ZG
             public Callback value;
         }
 
-        private struct Frame
+        /*private struct Frame
         {
             public EntityCommander commander;
             //任何指令都不能丢弃
             //public EntityCommander initCommander;
-        }
+        }*/
 
         private struct CommanderPool
         {
+            private struct FrameCommander : IComparable<FrameCommander>
+            {
+                public int index;
+
+                public int order;
+
+                public int CompareTo(FrameCommander other)
+                {
+                    return order.CompareTo(other.order);
+                }
+            }
+
             public struct Writer
             {
-                private NativeList<EntityCommander> __pool;
-                private NativeList<EntityCommander> __poolBuffer;
-                private NativeParallelHashMap<uint, Frame> __frames;
+                private NativeList<int> __indicesToAlloc;
+                private NativeList<int> __indicesToFree;
+                //private NativeHashMap<uint, Frame> __frames;
+                private NativeHashMap<uint, int> __frameIndices;
+                private NativeParallelMultiHashMap<uint, FrameCommander> __frameCommanders;
 
                 public Writer(ref CommanderPool commanderPool)
                 {
-                    __pool = commanderPool.__pool;
-                    __poolBuffer = commanderPool.__poolBuffer;
-                    __frames = commanderPool.__frames;
+                    __indicesToAlloc = commanderPool.__indicesToAlloc;
+                    __indicesToFree = commanderPool.__indicesToFree;
+                    __frameIndices = commanderPool.__frameIndices;
+                    __frameCommanders = commanderPool.__frameCommanders;
+                }
+
+                public void Clear(uint frameIndex)
+                {
+                    /*if (__frameCommanders.TryGetFirstValue(frameIndex, out var frameCommander, out var iterator))
+                    {
+                        do
+                        {
+                            Free(frameCommander.index);
+                            //Free(frame.initCommander);
+
+                        } while (__frameCommanders.TryGetNextValue(out frameCommander, ref iterator));
+
+                        __frameCommanders.Remove(frameIndex);
+
+                        return true;
+                    }*/
+
+                    if (__frameIndices.TryGetValue(frameIndex, out int index))
+                    {
+                        Free(index);
+
+                        __frameIndices.Remove(frameIndex);
+                    }
+
+                    __frameCommanders.Remove(frameIndex);
                 }
 
                 public void Clear(uint frameStartIndex, uint frameCount)
                 {
-                    uint index;
-                    Frame frame;
                     for (uint i = 0; i < frameCount; ++i)
-                    {
-                        index = i + frameStartIndex;
-                        if (__frames.TryGetValue(index, out frame))
-                        {
-                            Free(frame.commander);
-                            //Free(frame.initCommander);
-
-                            __frames.Remove(index);
-                        }
-                    }
+                        Clear(i + frameStartIndex);
                 }
 
-                public EntityCommander Alloc()
+                public void Append(uint frameIndex, int index)
                 {
-                    EntityCommander commander;
-                    int length = __pool.Length;
+                    FrameCommander frameCommander;
+                    frameCommander.index = index;
+                    frameCommander.order = __frameCommanders.CountValuesForKey(frameIndex);
+                    __frameCommanders.Add(frameIndex, frameCommander);
+                }
+
+                public int Alloc()
+                {
+                    int index;
+                    int length = __indicesToAlloc.Length;
                     UnityEngine.Assertions.Assert.IsTrue(length > 0);
                     //if (length > 0)
                     {
-                        commander = __pool[--length];
+                        index = __indicesToAlloc[--length];
 
                         //commander.writer.Clear();
 
-                        __pool.ResizeUninitialized(length);
+                        __indicesToAlloc.ResizeUninitialized(length);
                     }
                     /*else
                         commander = new EntityCommander(Allocator.Persistent);*/
 
-                    return commander;
+                    return index;
                 }
 
-                public Frame Alloc(uint frameIndex)
+                /*public Frame Alloc(uint frameIndex)
                 {
                     if (!__frames.TryGetValue(frameIndex, out var frame))
                     {
@@ -875,124 +916,126 @@ namespace ZG
                     }
 
                     return frame;
-                }
+                }*/
 
-                public bool Free(uint frameIndex)
-                {
-                    if (__frames.TryGetValue(frameIndex, out var frame))
-                    {
-                        Free(frame.commander);
-                        //Free(frame.initCommander);
-
-                        __frames.Remove(frameIndex);
-
-                        return true;
-                    }
-
-                    return false;
-                }
-
-                public void Free(EntityCommander commander)
+                public void Free(int index)
                 {
                     //commander.writer.Clear();
 
-                    __poolBuffer.Add(commander);
+                    __indicesToFree.Add(index);
                 }
             }
 
-            private NativeListLite<EntityCommander> __pool;
-            private NativeListLite<EntityCommander> __poolBuffer;
-            private NativeHashMapLite<uint, Frame> __frames;
+            private NativeList<EntityCommander> __commanders;
+            private NativeList<int> __indicesToAlloc;
+            private NativeList<int> __indicesToFree;
+            private NativeHashMap<uint, int> __frameIndices;
+            private NativeParallelMultiHashMap<uint, FrameCommander> __frameCommanders;
 
-            public CommanderPool(Allocator allocator)
+            public CommanderPool(in AllocatorManager.AllocatorHandle allocator)
             {
-                __frames = new NativeHashMapLite<uint, Frame>(1, allocator);
+                __commanders = new NativeList<EntityCommander>(allocator);
+                __indicesToAlloc = new NativeList<int>(allocator);
+                __indicesToFree = new NativeList<int>(allocator);
 
-                __pool = new NativeListLite<EntityCommander>(allocator);
+                __frameIndices = new NativeHashMap<uint, int>(1, allocator);
 
-                __poolBuffer = new NativeListLite<EntityCommander>(allocator);
+                __frameCommanders = new NativeParallelMultiHashMap<uint, FrameCommander>(1, allocator);
             }
 
-            public EntityCommander Alloc()
+            public EntityCommander Alloc(out int commanderIndex)
             {
-                return AsWriter(1).Alloc();
+                commanderIndex = AsWriter(1).Alloc();
+
+                return __commanders[commanderIndex];
             }
 
-            public void Free(EntityCommander commander)
+            public void Free(int commanderIndex)
             {
-                commander.Clear();
+                __commanders[commanderIndex].Clear();
 
-                __pool.Add(commander);
+                __indicesToAlloc.Add(commanderIndex);
             }
 
             public void Dispose()
             {
-                Frame frame;
-                var enumerator = __frames.GetEnumerator();
-                while (enumerator.MoveNext())
-                {
-                    frame = enumerator.Current.Value;
-                    frame.commander.Dispose();
-                    //frame.initCommander.Dispose();
-                }
+                foreach(var commander in __commanders)
+                    commander.Dispose();
+                //frame.initCommander.Dispose();
 
-                __frames.Dispose();
+                __commanders.Dispose();
 
-                int length = __pool.Length;
-                for (int i = 0; i < length; ++i)
-                    __pool[i].Dispose();
+                __indicesToAlloc.Dispose();
 
-                __pool.Dispose();
+                __indicesToFree.Dispose();
 
-                length = __poolBuffer.Length;
-                for (int i = 0; i < length; ++i)
-                    __poolBuffer[i].Dispose();
+                __frameIndices.Dispose();
 
-                __poolBuffer.Dispose();
+                __frameCommanders.Dispose();
             }
 
             public void Clear()
             {
-                Frame frame;
-                var enumerator = __frames.GetEnumerator();
+                /*var enumerator = __frameCommanders.GetEnumerator();
                 while (enumerator.MoveNext())
                 {
-                    frame = enumerator.Current.Value;
+                    Free(enumerator.Current.Value.index);
 
-                    Free(frame.commander);
                     //Free(frame.initCommander);
-                }
+                }*/
 
-                __frames.Clear();
+                foreach(var frameIndex in __frameIndices)
+                    Free(frameIndex.Value);
+
+                __frameCommanders.Clear();
             }
 
             public Writer AsWriter(int capacity)
             {
-                int length = __poolBuffer.Length;
+                int length = __indicesToFree.Length;
                 for (int i = 0; i < length; ++i)
-                    __poolBuffer[i].Clear();
+                    __commanders[__indicesToFree[i]].Clear();
 
-                __pool.AddRange(__poolBuffer.AsArray());
+                __indicesToAlloc.AddRange(__indicesToFree.AsArray());
 
-                __poolBuffer.Clear();
+                __indicesToFree.Clear();
 
-                for (int i = __pool.Length; i < capacity; ++i)
-                    __pool.Add(new EntityCommander(Allocator.Persistent));
+                for (int i = __indicesToAlloc.Length; i < capacity; ++i)
+                {
+                    __indicesToAlloc.Add(__commanders.Length);
+
+                    __commanders.Add(new EntityCommander(Allocator.Persistent));
+                }
 
                 return new Writer(ref this);
             }
 
             public bool Apply(bool isInitOnly, uint frameIndex, ref SystemState systemState)
             {
-                if (__frames.TryGetValue(frameIndex, out var frame))
+                EntityCommander commander;
+                if (__frameIndices.TryGetValue(frameIndex, out int commanderIndex))
+                    commander = __commanders[commanderIndex];
+                else if (!__frameCommanders.ContainsKey(frameIndex))
+                    return false;
+                else
                 {
-                    /*if (isInitOnly)
-                        return frame.initCommander.Apply(group, ref systemState);*/
+                    commander = Alloc(out commanderIndex);
 
-                    return frame.commander.Apply(ref systemState);
+                    var frameCommanders = new NativeList<FrameCommander>(systemState.WorldUpdateAllocator);
+                    foreach(var frameCommander in __frameCommanders.GetValuesForKey(frameIndex))
+                        frameCommanders.Add(frameCommander);
+
+                    frameCommanders.Sort();
+
+                    foreach (var frameCommander in frameCommanders)
+                        __commanders[frameCommander.index].AsReadOnly().AppendTo(ref commander);
+
+                    //frameCommanders.Dispose();
+
+                    __frameIndices[frameIndex] = commanderIndex;
                 }
 
-                return false;
+                return commander.Apply(ref systemState);
             }
         }
 
@@ -1023,7 +1066,7 @@ namespace ZG
                         {
                             __MaskDirty(frameIndex, ref dirtyFrameIndices);
 
-                            commanderPool.Free(callback.value.value);
+                            commanderPool.Free(callback.value.commanderIndex);
 
                             if (!callback.clear.Equals(CallbackHandle.Null))
                                 callbackHandles.Add(callback.clear);
@@ -1069,7 +1112,7 @@ namespace ZG
                             }
                             else
                             {
-                                commanderPool.Free(callback.value.value);
+                                commanderPool.Free(callback.value.commanderIndex);
 
                                 if (!callback.clear.Equals(CallbackHandle.Null))
                                     callbackHandles.Add(callback.clear);
@@ -1107,7 +1150,7 @@ namespace ZG
                         callback.value.rollbackEntryType = invokeCommand.rollbackEntryType;
                         callback.value.index = frameCallbacks.CountValuesForKey(invokeCommand.frameIndex);
                         callback.value.key = invokeCommand.key;
-                        callback.value.value = invokeCommand.value;
+                        callback.value.commanderIndex = invokeCommand.commanderIndex;
                         callback.clear = invokeCommand.clear;
                         frameCallbacks.Add(invokeCommand.frameIndex, callback);
 
@@ -1130,15 +1173,15 @@ namespace ZG
                 if (dirtyFrameIndices.IsCreated)
                 {
                     var callbacks = new NativeList<Callback>(Allocator.Temp);
-                    EntityCommander.ReadOnly commander;
-                    Frame frame;
+                    //EntityCommander.ReadOnly commander;
+                    //Frame frame;
                     uint dirtyFrameIndex;
                     int i, j, numCallbacks, numDirtyFrameIndices = dirtyFrameIndices.Length;
                     for (i = 0; i < numDirtyFrameIndices; ++i)
                     {
                         dirtyFrameIndex = dirtyFrameIndices[i];
 
-                        commanderPool.Free(dirtyFrameIndex);
+                        commanderPool.Clear(dirtyFrameIndex);
 
                         if (frameCallbacks.TryGetFirstValue(dirtyFrameIndex, out callback, out iterator))
                         {
@@ -1151,7 +1194,7 @@ namespace ZG
 
                             callbacks.Sort();
 
-                            frame = commanderPool.Alloc(dirtyFrameIndex);
+                            //frame = commanderPool.Alloc(dirtyFrameIndex);
 
                             //UnityEngine.Assertions.Assert.IsTrue(frameCommander.jobHandle.IsCompleted);
 
@@ -1159,9 +1202,11 @@ namespace ZG
                             for (j = 0; j < numCallbacks; ++j)
                             {
                                 //UnityEngine.Assertions.Assert.IsTrue(callbacks.ElementAt(j).value.jobHandle.IsCompleted);
-                                ref var callbackEntry = ref callbacks.ElementAt(j);
-                                commander = callbackEntry.value.AsReadOnly();
-                                commander.AppendTo(ref frame.commander);
+                                //ref var callbackEntry = ref callbacks.ElementAt(j);
+                                //commander = callbackEntry.value.AsReadOnly();
+                                //commander.AppendTo(ref frame.commander);
+
+                                commanderPool.Append(dirtyFrameIndex, callbacks.ElementAt(j).commanderIndex);
 
                                 /*if ((callbackEntry.rollbackEntryType & RollbackEntryType.Init) == RollbackEntryType.Init)
                                     commander.AppendTo(ref frame.initCommander);*/
@@ -1183,7 +1228,7 @@ namespace ZG
                         {
                             do
                             {
-                                commanderPool.Free(callback.value.value);
+                                commanderPool.Free(callback.value.commanderIndex);
 
                                 if (!callback.clear.Equals(CallbackHandle.Null))
                                     callbackHandles.Add(callback.clear);
@@ -1234,15 +1279,15 @@ namespace ZG
             }
         }
 
-        private NativeArrayLite<JobHandle> __jobHandles;
-        private NativeListLite<CallbackHandle> __callbackHandles;
-        private NativeListLite<InvokeCommand> __invokeCommands;
-        private NativeListLite<MoveCommand> __moveCommands;
-        private NativeMultiHashMapLite<uint, CallbackEx> __frameCallbacks;
+        private NativeArray<JobHandle> __jobHandles;
+        private NativeList<CallbackHandle> __callbackHandles;
+        private NativeList<InvokeCommand> __invokeCommands;
+        private NativeList<MoveCommand> __moveCommands;
+        private NativeParallelMultiHashMap<uint, CallbackEx> __frameCallbacks;
         private CommanderPool __commanderPool;
         private RollbackCommander __commander;
 
-        public bool isCreated => __jobHandles.isCreated;
+        public bool isCreated => __jobHandles.IsCreated;
 
         public uint restoreFrameIndex => __commander.restoreFrameIndex;
 
@@ -1264,11 +1309,11 @@ namespace ZG
         {
             BurstUtility.InitializeJob<Command>();
 
-            __jobHandles = new NativeArrayLite<JobHandle>(2, Allocator.Persistent, NativeArrayOptions.ClearMemory);
-            __callbackHandles = new NativeListLite<CallbackHandle>(allocator);
-            __invokeCommands = new NativeListLite<InvokeCommand>(allocator);
-            __moveCommands = new NativeListLite<MoveCommand>(allocator);
-            __frameCallbacks = new NativeMultiHashMapLite<uint, CallbackEx>(1, allocator);
+            __jobHandles = new NativeArray<JobHandle>(2, Allocator.Persistent, NativeArrayOptions.ClearMemory);
+            __callbackHandles = new NativeList<CallbackHandle>(allocator);
+            __invokeCommands = new NativeList<InvokeCommand>(allocator);
+            __moveCommands = new NativeList<MoveCommand>(allocator);
+            __frameCallbacks = new NativeParallelMultiHashMap<uint, CallbackEx>(1, allocator);
             __commander = new RollbackCommander(allocator);
             __commanderPool = new CommanderPool(allocator);
         }
@@ -1277,9 +1322,6 @@ namespace ZG
         {
             playbackJobHandle.Complete();
             updateJobHandle.Complete();
-
-            foreach (var frameCallback in (NativeParallelMultiHashMap<uint, CallbackEx>)__frameCallbacks)
-                frameCallback.Value.value.value.Dispose();
 
             __jobHandles.Dispose();
             __callbackHandles.Dispose();
@@ -1294,8 +1336,11 @@ namespace ZG
         {
             CompleteUpdateDependency();
 
-            foreach (var frameCallback in (NativeParallelMultiHashMap<uint, CallbackEx>)__frameCallbacks)
-                __commanderPool.Free(frameCallback.Value.value.value);
+            foreach (var frameCallback in __frameCallbacks)
+                __commanderPool.Free(frameCallback.Value.value.commanderIndex);
+
+            foreach (var invokeCommand in __invokeCommands)
+                __commanderPool.Free(invokeCommand.commanderIndex);
 
             __callbackHandles.Clear();
             __invokeCommands.Clear();
@@ -1328,14 +1373,13 @@ namespace ZG
 
             CompleteUpdateDependency();
 
-            var frameCommander = __commanderPool.Alloc();
-
             InvokeCommand invokeCommand;
             invokeCommand.rollbackEntryType = entry.type;
             invokeCommand.frameIndex = frameIndex;
             invokeCommand.key = entry.key;
-            invokeCommand.value = frameCommander;
             invokeCommand.clear = clear == null ? CallbackHandle.Null : clear.Register();
+
+            var frameCommander = __commanderPool.Alloc(out invokeCommand.commanderIndex);
 
             __invokeCommands.Add(invokeCommand);
 

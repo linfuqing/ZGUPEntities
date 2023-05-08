@@ -932,7 +932,7 @@ namespace ZG
 
         private EntityQuery __levelGroup;
         private EntityQuery __group;
-        private NativeMultiHashMapLite<BlobAssetReference<LandscapeDefinition>, LandscapeInput> __values;
+        private NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput> __values;
 
         public void OnCreate(ref SystemState state)
         {
@@ -954,7 +954,7 @@ namespace ZG
                     Options = EntityQueryOptions.IncludeDisabledEntities
                 });
 
-            __values = new NativeMultiHashMapLite<BlobAssetReference<LandscapeDefinition>, LandscapeInput>(1, Allocator.Persistent);
+            __values = new NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput>(1, Allocator.Persistent);
 
             manager = new LandscapeManager(Allocator.Persistent);
         }

@@ -33,7 +33,7 @@ namespace ZG
                 var enumerator = this.container[index].GetEnumerator();
                 while (enumerator.MoveNext())
                 {
-                    entities.AddNoResizeEx(enumerator.As<Entity>());
+                    entities.AddNoResize(enumerator.As<Entity>());
                 }
             }
         }
@@ -235,8 +235,8 @@ namespace ZG
                 {
                     value = enumerator.As<EntityData<T>>();
 
-                    entites.AddNoResizeEx(value.entity);
-                    values.AddNoResizeEx(value.value);
+                    entites.AddNoResize(value.entity);
+                    values.AddNoResize(value.value);
                 }
             }
         }

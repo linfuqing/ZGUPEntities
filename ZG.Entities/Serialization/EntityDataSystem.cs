@@ -563,7 +563,7 @@ namespace ZG
 
             InitTypes initTypes;
             initTypes.writer = writer;
-            initTypes.typeGuids = __typeGuids.AsDeferredJobArrayEx();
+            initTypes.typeGuids = __typeGuids.AsDeferredJobArray();
             jobHandle = initTypes.Schedule(jobHandle);
 
             _systemGroup.readWriteJobHandle = jobHandle;

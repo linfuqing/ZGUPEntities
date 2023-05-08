@@ -123,8 +123,8 @@ namespace ZG
             }
         }
 
-        private NativeListLite<T> __values;
-        private NativeRBTreeLite<TimeEvent<T>> __events;
+        private NativeList<T> __values;
+        private NativeRBTree<TimeEvent<T>> __events;
 
         public NativeArray<T> values => __values.AsDeferredJobArray();
 
@@ -135,8 +135,8 @@ namespace ZG
             BurstUtility.InitializeJob<Clear>();
             BurstUtility.InitializeJob<UpdateEvents>();
 
-            __values = new NativeListLite<T>(allocator);
-            __events = new NativeRBTreeLite<TimeEvent<T>>(allocator);
+            __values = new NativeList<T>(allocator);
+            __events = new NativeRBTree<TimeEvent<T>>(allocator);
         }
 
         public void Dispose()
@@ -167,9 +167,9 @@ namespace ZG
             return updateEvents.Schedule(inputDeps);
         }
 
-        public JobHandle ScheduleParallel<U>(in U job, int innerloopBatchCount, in JobHandle inputDeps) where U : struct, IJobParalledForDeferBurstSchedulable
+        public JobHandle ScheduleParallel<U>(ref U job, int innerloopBatchCount, in JobHandle inputDeps) where U : struct, IJobParallelForDefer
         {
-            return job.ScheduleParallel<U, T>(__values, innerloopBatchCount, inputDeps);
+            return job.ScheduleByRef(__values, innerloopBatchCount, inputDeps);
         }
     }
 

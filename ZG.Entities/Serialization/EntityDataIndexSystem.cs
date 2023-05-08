@@ -69,7 +69,7 @@ namespace ZG
         protected override Serializer _Get()
         {
             Serializer serializer;
-            serializer.guids = _GetResultGuids().AsDeferredJobArrayEx();
+            serializer.guids = _GetResultGuids().AsDeferredJobArray();
             return serializer;
         }
 
@@ -419,7 +419,7 @@ namespace ZG
 
         private NativeList<int> __indices;
 
-        public NativeArray<int> indices => __indices.AsDeferredJobArrayEx();
+        public NativeArray<int> indices => __indices.AsDeferredJobArray();
 
         #region LookupJob
         public JobHandle readOnlyJobHandle

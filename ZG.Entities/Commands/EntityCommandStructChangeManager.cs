@@ -61,7 +61,7 @@ namespace ZG
             {
                 var enumerator = container[index].GetEnumerator();
                 while (enumerator.MoveNext())
-                    commands.AddNoResizeEx(enumerator.As<EntityCommandStructChange>());
+                    commands.AddNoResize(enumerator.As<EntityCommandStructChange>());
             }
         }
 
@@ -106,7 +106,7 @@ namespace ZG
             jobHandle = apply.Schedule(container.length, container.innerloopBatchCount, jobHandle);
 
             Sort sort;
-            sort.commands = __commands.AsDeferredJobArrayEx();
+            sort.commands = __commands.AsDeferredJobArray();
             return JobHandle.CombineDependencies(sort.Schedule(jobHandle), disposeJobHandle);
         }
 

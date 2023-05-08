@@ -49,8 +49,8 @@ namespace ZG
                     {
                         value = enumerator.As<EntityData<T>>();
 
-                        entites.AddNoResizeEx(value.entity);
-                        values.AddNoResizeEx(value.value);
+                        entites.AddNoResize(value.entity);
+                        values.AddNoResize(value.value);
                     }
                 }
             }

@@ -605,7 +605,7 @@ namespace ZG
 
             data.lookupJobManager.AddReadOnlyDependency(jobHandle);
 
-            return new RollbackComponentSaveFunction<T>(values.AsDeferredJobArrayEx(), startIndex, type);
+            return new RollbackComponentSaveFunction<T>(values.AsDeferredJobArray(), startIndex, type);
         }
 
         private RollbackComponentSaveFunction(NativeArray<T> values, in NativeArray<int> startIndex, in ComponentTypeHandle<T> type)
@@ -893,7 +893,7 @@ namespace ZG
             resize.values = chunks;
             var jobHandle = resize.Schedule(data.lookupJobManager.readOnlyJobHandle);
 
-            var frameChunks = chunks.AsDeferredJobArrayEx();
+            var frameChunks = chunks.AsDeferredJobArray();
 
             RollbackSaveBufferCount<T> count;
             count.type = type;
@@ -910,7 +910,7 @@ namespace ZG
 
             data.lookupJobManager.AddReadOnlyDependency(jobHandle);
 
-            return new RollbackBufferSaveFunction<T>(type, startIndex, frameChunks, values.AsDeferredJobArrayEx());
+            return new RollbackBufferSaveFunction<T>(type, startIndex, frameChunks, values.AsDeferredJobArray());
         }
 
         private RollbackBufferSaveFunction(
@@ -1188,7 +1188,7 @@ namespace ZG
         private UnsafeList<uint> __frameIndices;
         //private UnsafeListEx<JobHandle> __saveJobHandles;
 
-        private NativeHashMapLite<Entity, int> __entityIndices;
+        private NativeParallelHashMap<Entity, int> __entityIndices;
 
 #if ENABLE_PROFILER
         private ProfilerMarker __restore;
@@ -1272,7 +1272,7 @@ namespace ZG
 
             //__saveJobHandles = new UnsafeListEx<JobHandle>(allocator);
 
-            __entityIndices = new NativeHashMapLite<Entity, int>(1, allocator);
+            __entityIndices = new NativeParallelHashMap<Entity, int>(1, allocator);
 
 #if ENABLE_PROFILER
             __restore = new ProfilerMarker("Restore Ex");

@@ -29,7 +29,7 @@ namespace ZG
 
         public struct Writer
         {
-            private NativeParallelHashMap<ComponentEntity, bool> __componentStates;
+            private NativeHashMap<ComponentEntity, bool> __componentStates;
 
             internal Writer(ref EntityStructChangeCommander instance)
             {
@@ -45,7 +45,7 @@ namespace ZG
         public struct ReadOnly
         {
             [ReadOnly]
-            private NativeParallelHashMap<ComponentEntity, bool> __componentStates;
+            private NativeHashMap<ComponentEntity, bool> __componentStates;
 
             internal ReadOnly(in EntityStructChangeCommander instance)
             {
@@ -54,7 +54,7 @@ namespace ZG
 
             public void AppendTo(ref EntityStructChangeCommander commander)
             {
-                KeyValue<ComponentEntity, bool> keyValue;
+                KVPair<ComponentEntity, bool> keyValue;
                 var enumerator = __componentStates.GetEnumerator();
                 while (enumerator.MoveNext())
                 {
@@ -68,7 +68,7 @@ namespace ZG
         [BurstCompile]
         private struct Init : IJob
         {
-            public NativeParallelHashMap<ComponentEntity, bool> componentStates;
+            public NativeHashMap<ComponentEntity, bool> componentStates;
             public NativeParallelMultiHashMap<int, Entity> addComponentCommanders;
             public NativeParallelMultiHashMap<int, Entity> removeComponentCommanders;
 
@@ -78,7 +78,7 @@ namespace ZG
                     return;
 
                 var enumerator = componentStates.GetEnumerator();
-                KeyValue<ComponentEntity, bool> keyValue;
+                KVPair<ComponentEntity, bool> keyValue;
                 ComponentEntity componentEntity;
                 while (enumerator.MoveNext())
                 {
@@ -286,7 +286,7 @@ namespace ZG
             }
         }
 
-        private NativeHashMapLite<ComponentEntity, bool> __componentStates;
+        private NativeHashMap<ComponentEntity, bool> __componentStates;
 
 #if ENABLE_PROFILER
         private ProfilerMarker __addComponentProfilerMarker;
@@ -297,7 +297,7 @@ namespace ZG
 
         public EntityStructChangeCommander(Allocator allocator)
         {
-            __componentStates = new NativeHashMapLite<ComponentEntity, bool>(1, allocator);
+            __componentStates = new NativeHashMap<ComponentEntity, bool>(1, allocator);
 
 #if ENABLE_PROFILER
             __addComponentProfilerMarker = new ProfilerMarker("AddComponents");
@@ -370,7 +370,7 @@ namespace ZG
             NativeParallelMultiHashMap<int, Entity> addComponentCommanders;
             NativeParallelMultiHashMap<int, Entity> removeComponentCommanders;
 
-            if (__componentStates.isEmpty)
+            if (__componentStates.IsEmpty)
             {
                 addComponentCommanders = default;
                 removeComponentCommanders = default;

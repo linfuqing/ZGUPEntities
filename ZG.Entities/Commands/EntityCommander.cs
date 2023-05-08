@@ -35,13 +35,13 @@ namespace ZG
 
                 __structChangeCommander.AppendTo(ref instance.__structChangeCommander);
 
-                NativeList<Entity> destroyEntityCommander = instance.__destroyEntityCommander;
+                var destroyEntityCommander = instance.__destroyEntityCommander;
                 Entity entity;
                 int numDestroyEntityCommanders = __destroyEntityCommander.Length;
                 for(int i = 0; i < numDestroyEntityCommanders; ++i)
                 {
                     entity = __destroyEntityCommander[i];
-                    if (destroyEntityCommander.IndexOf(entity) == -1)
+                    if (!destroyEntityCommander.AsArray().Contains(entity))
                         destroyEntityCommander.Add(entity);
                 }
             }
@@ -70,7 +70,7 @@ namespace ZG
 
         private EntityComponentAssigner __assigner;
         private EntityStructChangeCommander __structChangeCommander;
-        private NativeListLite<Entity> __destroyEntityCommander;
+        private NativeList<Entity> __destroyEntityCommander;
 
 #if ENABLE_PROFILER
         private ProfilerMarker __setComponentProfilerMarker;
@@ -90,7 +90,7 @@ namespace ZG
         {
             __assigner = new EntityComponentAssigner(allocator);
             __structChangeCommander = new EntityStructChangeCommander(allocator);
-            __destroyEntityCommander = new NativeListLite<Entity>(allocator);
+            __destroyEntityCommander = new NativeList<Entity>(allocator);
 
 #if ENABLE_PROFILER
             __setComponentProfilerMarker = new ProfilerMarker("SetComponents");

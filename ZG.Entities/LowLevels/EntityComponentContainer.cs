@@ -50,8 +50,8 @@ namespace ZG
                 AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
 #endif
 
-                __entities.AddNoResizeEx(entity);
-                __values.AddNoResizeEx(value);
+                __entities.AddNoResize(entity);
+                __values.AddNoResize(value);
             }
         }
 
