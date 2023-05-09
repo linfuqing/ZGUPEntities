@@ -390,6 +390,13 @@ namespace ZG
             return result;
         }
 
+        public static ref T GetExistingSystemUnmanaged<T>(this ref WorldUnmanaged world) where T : unmanaged, ISystem
+        {
+            var handle = world.GetExistingUnmanagedSystem<T>();
+
+            return ref world.GetUnsafeSystemRef<T>(handle);
+        }
+
         public static ref T GetExistingSystemUnmanaged<T>(this World world) where T : unmanaged, ISystem
         {
             var handle = world.Unmanaged.GetExistingUnmanagedSystem<T>();

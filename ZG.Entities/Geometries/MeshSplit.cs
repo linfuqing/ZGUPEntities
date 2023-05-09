@@ -314,7 +314,7 @@ namespace ZG
         }
 
         [BurstCompile(CompileSynchronously = true)]
-        public struct SplitSegments<TVertex, TMeshWrapper> : IJobParalledForDeferBurstSchedulable
+        public struct SplitSegments<TVertex, TMeshWrapper> : IJobParallelForDefer
                 where TVertex : unmanaged, ISplitVertex<TVertex>
                 where TMeshWrapper : struct, ISplitMeshWrapper<TVertex>
         {

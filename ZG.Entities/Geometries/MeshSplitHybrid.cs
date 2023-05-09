@@ -89,10 +89,6 @@ namespace ZG
             var outputs = Mesh.AllocateWritableMeshData((int)maxMeshCount);
             var results = new MeshArrayData((int)maxMeshCount, (int)Math.Min(maxSubMeshCount, int.MaxValue), Allocator.Persistent);
 
-            BurstUtility.InitializeJob<SplitInit>();
-            BurstUtility.InitializeJobParallelFor<SplitCopyMeshes<TVertex, TMeshWrapper>>();
-            BurstUtility.InitializeJobParalledForDefer<SplitSegments<TVertex, TMeshWrapper>>();
-
             jobHandle = Split<TVertex, TMeshWrapper>(
                 useNewMesh, 
                 length, 

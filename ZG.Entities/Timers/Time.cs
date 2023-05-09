@@ -164,7 +164,7 @@ namespace ZG
             updateEvents.values = __values;
             updateEvents.timeEvents = __events;
 
-            return updateEvents.Schedule(inputDeps);
+            return updateEvents.ScheduleByRef(inputDeps);
         }
 
         public JobHandle ScheduleParallel<U>(ref U job, int innerloopBatchCount, in JobHandle inputDeps) where U : struct, IJobParallelForDefer

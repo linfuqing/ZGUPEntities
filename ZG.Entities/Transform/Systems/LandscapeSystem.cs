@@ -229,7 +229,7 @@ namespace ZG
                 return count;
             }
 
-            public Layer(Allocator allocator)
+            public Layer(in AllocatorManager.AllocatorHandle allocator)
             {
                 __states = new UnsafeParallelHashMap<int3, Status>(1, allocator);
                 __addList = new UnsafeParallelHashMap<int3, int>(1, allocator);
@@ -475,7 +475,7 @@ namespace ZG
                 }
             }
 
-            public World(int layerCount, Allocator allocator)
+            public World(int layerCount, in AllocatorManager.AllocatorHandle allocator)
             {
                 __layers = new UnsafeList<Layer>(layerCount, allocator);
                 __layers.Resize(layerCount, NativeArrayOptions.UninitializedMemory);
@@ -612,7 +612,7 @@ namespace ZG
 
         public struct Writer
         {
-            public readonly Allocator Allocator;
+            public readonly AllocatorManager.AllocatorHandle Allocator;
 
             private SharedHashMap<BlobAssetReference<LandscapeDefinition>, World>.Writer __value;
 
@@ -628,7 +628,7 @@ namespace ZG
                 BlobAssetReference<LandscapeDefinition> key;
                 if (!__value.isEmpty)
                 {
-                    using (var keys = __value.GetKeyArray(Allocator.Temp))
+                    using (var keys = __value.GetKeyArray(Unity.Collections.Allocator.Temp))
                     {
                         int length = keys.Length;
                         for (int i = 0; i < length; ++i)
@@ -646,9 +646,9 @@ namespace ZG
 
                 if (!values.IsEmpty)
                 {
-                    using (var keys = values.GetKeyArray(Allocator.Temp))
+                    using (var keys = values.GetKeyArray(Unity.Collections.Allocator.Temp))
                     {
-                        var positionList = new NativeList<float3>(Allocator.Temp);
+                        var positionList = new NativeList<float3>(Unity.Collections.Allocator.Temp);
 
                         NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput>.Enumerator enumerator;
                         LandscapeInput value;
