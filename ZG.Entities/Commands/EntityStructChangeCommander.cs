@@ -339,7 +339,7 @@ namespace ZG
 
         public ParallelWriter AsParallelWriter(int capacity)
         {
-            __componentStates.Capacity = math.max(__componentStates.Capacity, capacity);
+            __componentStates.Capacity = math.max(__componentStates.Capacity, __componentStates.Count() + capacity);
 
             return new ParallelWriter(ref this);
         }
