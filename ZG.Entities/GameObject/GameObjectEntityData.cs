@@ -114,7 +114,7 @@ namespace ZG
                 private set;
             }
 
-            public ComponentTypeSet systemStateComponentTypes
+            public ComponentType[] systemStateComponentTypes
             {
                 get;
 
@@ -277,7 +277,7 @@ namespace ZG
                 {
                     var systemStateComponentTypes = new ComponentType[numSystemStateComponentTypes];
                     __systemStateComponentTypes.CopyTo(systemStateComponentTypes);
-                    this.systemStateComponentTypes = new ComponentTypeSet(systemStateComponentTypes);
+                    this.systemStateComponentTypes = systemStateComponentTypes;
                 }
 
                 if (__componentTypes.Count > 256)

@@ -47,6 +47,17 @@ namespace ZG
                 return __gameObjectEntity;
             }
         }
+
+        GameObjectEntityStatus IGameObjectEntity.status
+        {
+            get
+            {
+                GameObjectEntity gameObjectEntity = this.gameObjectEntity;
+
+                return gameObjectEntity == null ? GameObjectEntityStatus.Invalid : gameObjectEntity.status;
+            }
+        }
+
     }
 
     public class ComponentDataProxy<T> : EntityProxyComponent, IEntityComponent where T : struct, IComponentData

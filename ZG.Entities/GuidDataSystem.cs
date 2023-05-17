@@ -46,7 +46,7 @@ namespace ZG
 
         public NativeArray<TValue> AsArray()
         {
-            return __values.ToNativeArray();
+            return __values.AsArray();
         }
     }
 
@@ -159,7 +159,7 @@ namespace ZG
                     if (!this.values.TryGetValue(item.key, out var values))
                         return;
 
-                    outputs[item.entity].CopyFrom(values.ToNativeArray<U>());
+                    outputs[item.entity].CopyFrom(values.AsArray());
                 }
             }
 

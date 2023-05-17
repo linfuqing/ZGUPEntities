@@ -31,7 +31,7 @@ namespace ZG
 
             public void AppendTo(ref EntityCommander instance)
             {
-                __assigner.AppendTo(ref instance.__assigner);
+                __assigner.AppendTo(instance.__assigner.writer);
 
                 __structChangeCommander.AppendTo(ref instance.__structChangeCommander);
 
@@ -68,6 +68,45 @@ namespace ZG
             }
         }
 
+        public struct ParallelWriter
+        {
+            private EntityComponentAssigner.ParallelWriter __assigner;
+            private EntityStructChangeCommander.ParallelWriter __structChangeCommander;
+            private NativeList<Entity>.ParallelWriter __destroyEntityCommander;
+
+            internal ParallelWriter(ref EntityCommander commander, int bufferSize, int typeCount, int entityCount)
+            {
+                __assigner = commander.__assigner.AsParallelWriter(bufferSize, typeCount);
+                __structChangeCommander = commander.__structChangeCommander.AsParallelWriter(typeCount);
+
+                commander.__destroyEntityCommander.Capacity = math.max(commander.__destroyEntityCommander.Capacity, commander.__destroyEntityCommander.Length + entityCount);
+
+                __destroyEntityCommander = commander.__destroyEntityCommander.AsParallelWriter();
+            }
+
+            public void DestroyEntity(in Entity entity)
+            {
+                __destroyEntityCommander.AddNoResize(entity);
+            }
+
+            public bool RemoveComponent<T>(in Entity entity)
+            {
+                return __structChangeCommander.RemoveComponent<T>(entity);
+            }
+
+            public bool AddComponent<T>(in Entity entity)
+            {
+                return __structChangeCommander.AddComponent<T>(entity);
+            }
+
+            public void AddComponentData<T>(in Entity entity, in T value) where T : struct, IComponentData
+            {
+                AddComponent<T>(entity);
+
+                __assigner.SetComponentData(entity, value);
+            }
+        }
+
         private EntityComponentAssigner __assigner;
         private EntityStructChangeCommander __structChangeCommander;
         private NativeList<Entity> __destroyEntityCommander;
@@ -84,7 +123,9 @@ namespace ZG
             set => __assigner.jobHandle = value;
         }
 
-        public Writer writer => new Writer(ref this); 
+        public Writer writer => new Writer(ref this);
+
+        public NativeArray<Entity> destroiedEntities => __destroyEntityCommander.AsDeferredJobArray();
 
         public EntityCommander(Allocator allocator)
         {
@@ -112,8 +153,15 @@ namespace ZG
             return new ReadOnly(this);
         }
 
+        public ParallelWriter AsParallelWriter(int bufferSize, int typeCount, int entityCount)
+        {
+            return new ParallelWriter(ref this, bufferSize, typeCount, entityCount);
+        }
+
         public bool IsExists(Entity entity)
         {
+            CompleteDependency();
+
             int length = __destroyEntityCommander.Length;
             for (int i = 0; i < length; ++i)
             {
@@ -124,16 +172,34 @@ namespace ZG
             return true;
         }
 
-        public bool IsAddOrRemoveComponent(in Entity entity, int componentTypeIndex, out bool status) => __structChangeCommander.IsAddOrRemoveComponent(entity, componentTypeIndex, out status);
+        public bool IsAddOrRemoveComponent(in Entity entity, TypeIndex componentTypeIndex, out bool status)
+        {
+            CompleteDependency();
 
-        public bool TryGetComponentData<T>(in Entity entity, ref T value) where T : struct, IComponentData => __assigner.TryGetComponentData<T>(entity, ref value);
+            return __structChangeCommander.IsAddOrRemoveComponent(entity, componentTypeIndex, out status);
+        }
+
+        public bool TryGetComponentData<T>(in Entity entity, ref T value) where T : struct, IComponentData
+        {
+            return __assigner.TryGetComponentData(entity, ref value) || __structChangeCommander.HasComponent<T>(entity);
+        }
+
+        public bool TryGetBuffer<T>(in Entity entity, int index, ref T value, int indexOffset = 0) where T : struct, IBufferElementData
+        {
+            return __assigner.TryGetBuffer(entity, index, ref value, indexOffset);
+        }
 
         public bool TryGetBuffer<TValue, TList, TWrapper>(in Entity entity, ref TList list, ref TWrapper wrapper)
             where TValue : struct, IBufferElementData
-            where TWrapper : IWriteOnlyListWrapper<TValue, TList> => __assigner.TryGetBuffer<TValue, TList, TWrapper>(entity, ref list, ref wrapper);
+            where TWrapper : IWriteOnlyListWrapper<TValue, TList>
+        {
+            return __assigner.TryGetBuffer<TValue, TList, TWrapper>(entity, ref list, ref wrapper) || __structChangeCommander.HasComponent<TValue>(entity);
+        }
 
         public bool AddComponent<T>(in Entity entity)
         {
+            CompleteDependency();
+
             if (__structChangeCommander.AddComponent<T>(entity))
                 return true;
 
@@ -144,6 +210,8 @@ namespace ZG
 
         public bool RemoveComponent<T>(in Entity entity)
         {
+            CompleteDependency();
+
             if (__structChangeCommander.RemoveComponent<T>(entity))
             {
                 __assigner.RemoveComponent<T>(entity);
@@ -174,7 +242,7 @@ namespace ZG
         }
 
         public void SetBuffer<TValue, TCollection>(in Entity entity, in TCollection values)
-                where TValue : unmanaged, IBufferElementData
+                where TValue : struct, IBufferElementData
                 where TCollection : IReadOnlyCollection<TValue>
         {
             __assigner.SetBuffer<TValue, TCollection>(true, entity, values);
@@ -239,24 +307,30 @@ namespace ZG
 
         public void DestroyEntity(Entity entity)
         {
+            CompleteDependency();
+
             __destroyEntityCommander.Add(entity);
         }
 
         public void DestroyEntity(NativeArray<Entity> entities)
         {
+            CompleteDependency();
+
             __destroyEntityCommander.AddRange(entities);
         }
 
         public void Clear()
         {
+            __assigner.Clear();
+
             __destroyEntityCommander.Clear();
             __structChangeCommander.Clear();
-
-            __assigner.Clear();
         }
 
         public bool Apply(ref SystemState systemState)
         {
+            CompleteDependency();
+
             __structChangeCommander.Apply(ref systemState);
 
             if (!__destroyEntityCommander.IsEmpty)
@@ -279,6 +353,8 @@ namespace ZG
 
         public void Playback(ref SystemState systemState)
         {
+            CompleteDependency();
+
             __structChangeCommander.Playback(ref systemState);
 
             if (!__destroyEntityCommander.IsEmpty)

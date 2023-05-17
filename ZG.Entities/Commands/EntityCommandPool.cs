@@ -346,7 +346,7 @@ namespace ZG
             }
         }
 
-        public EntityCommandQueue(Allocator allocator)
+        public EntityCommandQueue(in AllocatorManager.AllocatorHandle allocator)
         {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             m_Safety = AtomicSafetyHandle.Create();
@@ -636,7 +636,7 @@ namespace ZG
                 value.Clear();
             }
             else
-                value = new EntityCommandQueue((Allocator)__values.allocator.Value);
+                value = new EntityCommandQueue(__values.allocator);
 
             __values.Add(value);
 

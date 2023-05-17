@@ -7,88 +7,189 @@ using Unity.Jobs;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using UnityEngine;
+using static ZG.Avatar.Node;
+using Google.JarResolver;
 
 namespace ZG
 {
-    public struct GameObjectEntityManager
+    public interface IGameObjectEntityStatus
     {
-        public struct Entry
+        int value { get; set; }
+    }
+
+    /*[NativeContainer]
+    public unsafe struct GameObjectEntityPool
+    {
+        private struct Data
         {
-            public Entity entity;
-            public UnsafeHashSet<int> instanceIDs;
+            public UnsafeHashMap<int, Prefab> prefabs;
+
+            public UnsafeHashMap<int, int> ids;
+
+            public int count;
         }
 
-        private NativeHashMap<int, Entry> __entries;
+        [NativeDisableUnsafePtrRestriction]
+        private SharedMultiHashMap<Entity, int> __instanceIDs;
 
-        private NativeHashMap<int, int> __ids;
+        public readonly AllocatorManager.AllocatorHandle Allocator;
 
-        public GameObjectEntityManager(Allocator allocator)
+        public GameObjectEntityPool(in AllocatorManager.AllocatorHandle allocator)
         {
-            __entries = new NativeHashMap<int, Entry>(1, allocator);
+            Allocator = allocator;
 
-            __ids = new NativeHashMap<int, int>(1, allocator);
+            __data = AllocatorManager.Allocate<Data>(allocator);
+
+            //__data->lookupJobManager = default;
+
+            __data->prefabs = new UnsafeHashMap<int, Prefab>(1, allocator);
+
+            __data->ids = new UnsafeHashMap<int, int>(1, allocator);
+
+            __data->count = 0;
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            m_Safety = CollectionHelper.CreateSafetyHandle(allocator);
+
+            CollectionHelper.SetStaticSafetyId<GameObjectEntityPool>(ref m_Safety, ref StaticSafetyID.Data);
+            AtomicSafetyHandle.SetBumpSecondaryVersionOnScheduleWrite(m_Safety, true);
+#endif
         }
 
         public void Dispsoe()
         {
-            foreach (var entry in __entries)
-                entry.Value.instanceIDs.Dispose();
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            CollectionHelper.DisposeSafetyHandle(ref m_Safety);
+#endif
 
-            __entries.Dispose();
+            //__data->lookupJobManager.CompleteReadWriteDependency();
 
-            __ids.Dispose();
+            __data->prefabs.Dispose();
+
+            __data->ids.Dispose();
+
+            AllocatorManager.Free(Allocator, __data);
+
+            __data = null;
         }
 
-        public Entity Retain(int prefabID, int instanceID, in Entity entity = default)
+        public int CreateID(in Entity entity)
         {
-            if (__TryGetEntry(prefabID, out int id, out var entry))
+            if (entity == Entity.Null)
+                return 0;
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
+#endif
+
+            int id = System.Threading.Interlocked.Increment(ref __data->count);
+
+            Prefab prefab;
+            prefab.entity = entity;
+            prefab.instanceIDs = default;
+
+            __data->prefabs[id] = prefab;
+
+            return id;
+        }
+
+        public void Bind(int instanceID, int id)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            AtomicSafetyHandle.CheckWriteAndBumpSecondaryVersion(m_Safety);
+#endif
+
+            __data->ids.Add(instanceID, id);
+        }
+
+        public int Retain(int instanceID, ref Entity entity)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            AtomicSafetyHandle.CheckWriteAndBumpSecondaryVersion(m_Safety);
+#endif
+
+            Prefab prefab;
+            if (__data->ids.TryGetValue(instanceID, out int id))
             {
-                if (Entity.Null != entity && entity != entry.entity)
-                    return Entity.Null;
+                if (__data->prefabs.TryGetValue(id, out prefab))
+                {
+                    if (Entity.Null != entity && entity != prefab.entity)
+                        return 0;
+
+                    entity = prefab.entity;
+                }
+                else
+                    prefab.instanceIDs = new UnsafeHashSet<int>(1, Allocator);
             }
-            else if (entity == Entity.Null)
-                return Entity.Null;
             else
-                entry.instanceIDs = new UnsafeHashSet<int>(1, Allocator.Persistent);
+            {
+                id = CreateID(entity);
+                if (id == 0)
+                    return 0;
 
-            if (!entry.instanceIDs.Add(instanceID))
-                return Entity.Null;
+                __data->ids[instanceID] = id;
 
-            __entries[id] = entry;
+                prefab.entity = entity;
+                prefab.instanceIDs = new UnsafeHashSet<int>(1, Allocator);
+            }
 
-            return entry.entity;
+            if (!prefab.instanceIDs.Add(instanceID))
+                return 0;
+
+            __data->prefabs[id] = prefab;
+
+            return id;
         }
 
         public Entity Release(int prefabID, int instanceID)
         {
-            if (!__TryGetEntry(prefabID, out int id, out var entry))
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            AtomicSafetyHandle.CheckWriteAndBumpSecondaryVersion(m_Safety);
+#endif
+
+            if (!__data->ids.TryGetValue(prefabID, out int id))
                 return Entity.Null;
 
-            if (!entry.instanceIDs.Remove(instanceID))
+            if (!__data->prefabs.TryGetValue(id, out var prefab))
                 return Entity.Null;
 
-            if (entry.instanceIDs.IsEmpty)
+            if (!prefab.instanceIDs.Remove(instanceID))
+                return Entity.Null;
+
+            if (!prefab.instanceIDs.IsEmpty)
             {
-                __entries.Remove(id);
+                __data->prefabs[id] = prefab;
 
                 return Entity.Null;
             }
 
-            __entries[id] = entry;
+            __data->prefabs.Remove(id);
 
-            return entry.entity;
+            return prefab.entity;
         }
+    }*/
 
-        private bool __TryGetEntry(int prefabID, out int id, out Entry entry)
+    public struct GameObjectEntityInstanceCount : IComponentData, IGameObjectEntityStatus
+    {
+        public int value;
+
+        int IGameObjectEntityStatus.value
         {
-            if (!__ids.TryGetValue(prefabID, out id))
-            {
-                entry = default;
+            get => value;
 
-                return false;
-            }
+            set => this.value = value;
+        }
+    }
 
-            return __entries.TryGetValue(id, out entry);
+    public struct GameObjectEntityActiveCount : IComponentData, IGameObjectEntityStatus
+    {
+        public int value;
+
+        int IGameObjectEntityStatus.value
+        {
+            get => value;
+
+            set => this.value = value;
         }
     }
 
@@ -97,13 +198,13 @@ namespace ZG
         public Entity entity;
     }
 
-    public struct EntityParent : IComponentData
+    public struct EntityParent : IBufferElementData, IEnableableComponent
     {
         public Entity entity;
 
-        public static Entity GetRoot(in Entity entity, in ComponentLookup<EntityParent> entityParents)
+        /*public static Entity GetRoot(in Entity entity, in BufferLookup<EntityParent> entityParents)
         {
-            if(entityParents.HasComponent(entity))
+            if(entityParents.HasBuffer(entity))
                 return GetRoot(entityParents[entity].entity, entityParents);
 
             return entity;
@@ -129,73 +230,123 @@ namespace ZG
                 return GetRoot(entityParents[entity].entity, entityParents, values);
 
             return values.HasBuffer(entity) ? entity : Entity.Null;
-        }
+        }*/
 
         public static Entity Get<T>(
             in Entity entity,
-            in ComponentLookup<EntityParent> entityParents,
+            in BufferLookup<EntityParent> entityParents,
             in ComponentLookup<T> values) where T : unmanaged, IComponentData
         {
             if (values.HasComponent(entity))
                 return entity;
 
-            if (entityParents.HasComponent(entity))
-                return Get(entityParents[entity].entity, entityParents, values);
+            if (entityParents.HasBuffer(entity))
+            {
+                Entity parent;
+                foreach (var entityParent in entityParents[entity])
+                {
+                    parent = Get(entityParent.entity, entityParents, values);
+                    if (parent != Entity.Null)
+                        return parent;
+                }
+            }
 
             return Entity.Null;
         }
 
-    }
-
-    public struct EntityStatus : ICleanupComponentData
-    {
-        public int activeCount;
-    }
-
-    [BurstCompile, UpdateInGroup(typeof(EntityCommandSharedSystemGroup), OrderFirst = true), UpdateAfter(typeof(GameObjectEntityInitSystem))]
-    public partial struct GameObjectEntityStatusSystem : ISystem
-    {
-        private struct Collect
+        public static Entity Get<T>(
+            in Entity entity,
+            in BufferLookup<EntityParent> entityParents,
+            in BufferLookup<T> values) where T : unmanaged, IBufferElementData
         {
-            public bool isDisabled;
+            if (values.HasBuffer(entity))
+                return entity;
+
+            if (entityParents.HasBuffer(entity))
+            {
+                Entity parent;
+                foreach (var entityParent in entityParents[entity])
+                {
+                    parent = Get(entityParent.entity, entityParents, values);
+                    if (parent != Entity.Null)
+                        return parent;
+                }
+            }
+
+            return Entity.Null;
+        }
+
+        public static Entity Get<T>(
+            in DynamicBuffer<EntityParent> entityParents, 
+            in BufferLookup<T> values) where T : unmanaged, IBufferElementData
+        {
+            foreach (var entityParent in entityParents)
+            {
+                if (values.HasBuffer(entityParent.entity))
+                    return entityParent.entity;
+
+            }
+
+            return Entity.Null;
+        }
+
+        public static Entity Get<T>(
+            in DynamicBuffer<EntityParent> entityParents,
+            in ComponentLookup<T> values) where T : unmanaged, IComponentData
+        {
+            foreach (var entityParent in entityParents)
+            {
+                if (values.HasComponent(entityParent.entity))
+                    return entityParent.entity;
+
+            }
+
+            return Entity.Null;
+        }
+    }
+
+    [BurstCompile,
+        CreateAfter(typeof(EntityCommandFactorySystem)),
+        UpdateInGroup(typeof(EntityCommandSharedSystemGroup), OrderFirst = true),
+        UpdateAfter(typeof(EntityCommandFactorySystem))]
+    public partial struct GameObjectEntityFactorySystem : ISystem
+    {
+        private struct CollectInstances
+        {
+            [ReadOnly]
+            public NativeArray<Entity> entityArray;
 
             [ReadOnly]
-            public NativeArray<EntityStatus> entityStates;
-            [ReadOnly]
-            public NativeArray<Entity> inputs;
-            public NativeList<Entity> outputs;
+            public NativeArray<GameObjectEntityInstanceCount> instanceCounts;
+
+            public EntityCommander.ParallelWriter entityManager;
+            //public NativeList<Entity> entitiesToDestroy;
 
             public void Execute(int index)
             {
-                if (isDisabled == entityStates[index].activeCount < 1)
-                    return;
-
-                outputs.Add(inputs[index]);
+                if (instanceCounts[index].value < 1)
+                    entityManager.DestroyEntity(entityArray[index]);
             }
         }
 
         [BurstCompile]
-        private struct CollectEx : IJobChunk
+        private struct CollectInstancesEx : IJobChunk
         {
             [ReadOnly]
             public EntityTypeHandle entityType;
 
             [ReadOnly]
-            public ComponentTypeHandle<EntityStatus> entityStatusType;
+            public ComponentTypeHandle<GameObjectEntityInstanceCount> instanceCountType;
 
-            [ReadOnly]
-            public ComponentTypeHandle<Disabled> disabledType;
-
-            public NativeList<Entity> entitiesToEnable;
-            public NativeList<Entity> entitiesToDisable;
+            //public NativeList<Entity> entitiesToDestroy;
+            public EntityCommander.ParallelWriter entityManager;
 
             public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
             {
-                Collect collect;
-                collect.isDisabled = chunk.Has(ref disabledType);
-                collect.entityStates = chunk.GetNativeArray(ref entityStatusType);
-                collect.inputs = chunk.GetNativeArray(entityType);
-                collect.outputs = collect.isDisabled ? entitiesToEnable : entitiesToDisable;
+                CollectInstances collect;
+                collect.entityArray = chunk.GetNativeArray(entityType);
+                collect.instanceCounts = chunk.GetNativeArray(ref instanceCountType);
+                collect.entityManager = entityManager;
 
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
                 while (iterator.NextEntityIndex(out int i))
@@ -203,168 +354,241 @@ namespace ZG
             }
         }
 
-        private EntityQuery __group;
+        private struct CollectActives
+        {
+            public bool isDisabled;
+
+            [ReadOnly]
+            public NativeArray<GameObjectEntityActiveCount> activeCounts;
+            [ReadOnly]
+            public NativeArray<Entity> entityArray;
+            public EntityCommander.ParallelWriter entityManager;
+            //public NativeList<Entity> entitiesToChange;
+
+            public void Execute(int index)
+            {
+                if (activeCounts[index].value > 0 == isDisabled)
+                {
+                    if(isDisabled)
+                        entityManager.RemoveComponent<Disabled>(entityArray[index]);
+                    else
+                        entityManager.AddComponent<Disabled>(entityArray[index]);
+                }
+            }
+        }
+
+        [BurstCompile]
+        private struct CollectActivesEx : IJobChunk
+        {
+            [ReadOnly]
+            public EntityTypeHandle entityType;
+
+            [ReadOnly]
+            public ComponentTypeHandle<GameObjectEntityActiveCount> activeCountType;
+
+            [ReadOnly]
+            public ComponentTypeHandle<Disabled> disabledType;
+
+            public EntityCommander.ParallelWriter entityManager;
+
+            //public NativeList<Entity> entitiesToEnable;
+            //public NativeList<Entity> entitiesToDisable;
+
+            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+            {
+                CollectActives collect;
+                collect.isDisabled = chunk.Has(ref disabledType);
+                collect.activeCounts = chunk.GetNativeArray(ref activeCountType);
+                collect.entityArray = chunk.GetNativeArray(entityType);
+                collect.entityManager = entityManager;//collect.isDisabled ? entitiesToEnable : entitiesToDisable;
+
+                var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+                while (iterator.NextEntityIndex(out int i))
+                    collect.Execute(i);
+            }
+        }
+
+        private EntityQuery __instanceGroup;
+        private EntityQuery __activeGroup;
 
         private EntityTypeHandle __entityType;
 
-        private ComponentTypeHandle<EntityStatus> __entityStatusType;
+        private ComponentTypeHandle<GameObjectEntityInstanceCount> __instanceCountType;
+
+        private ComponentTypeHandle<GameObjectEntityActiveCount> __activeCountType;
+
+        //private ComponentTypeHandle<EntityOrigin> __originType;
 
         private ComponentTypeHandle<Disabled> __disabledType;
 
-        private NativeList<Entity> __entitiesToEnable;
-        private NativeList<Entity> __entitiesToDisable;
+        private EntityCommander __commander;
+
+        /*private NativeList<Entity> __entitiesToEnable;
+        private NativeList<Entity> __entitiesToDisable;*/
+        private NativeList<Entity> __entitiesToDestroy;
+
+        public EntityCommandFactory factory
+        {
+            get;
+
+            private set;
+        }
+
+        [BurstCompile]
+        public void OnCreate(ref SystemState state)
+        {
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __instanceGroup = builder
+                    .WithAll<GameObjectEntityInstanceCount>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+
+            __instanceGroup.SetChangedVersionFilter(ComponentType.ReadWrite<GameObjectEntityInstanceCount>());
+
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __activeGroup = builder
+                    .WithAll<GameObjectEntityActiveCount>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+
+            __activeGroup.SetChangedVersionFilter(ComponentType.ReadWrite<GameObjectEntityActiveCount>());
+
+            __entityType = state.GetEntityTypeHandle();
+            __instanceCountType = state.GetComponentTypeHandle<GameObjectEntityInstanceCount>(true);
+            __activeCountType = state.GetComponentTypeHandle<GameObjectEntityActiveCount>(true);
+            __disabledType = state.GetComponentTypeHandle<Disabled>(true);
+
+            var world = state.WorldUnmanaged;
+            __commander = world.GetExistingSystemUnmanaged<EntityCommanderSystem>().value;
+            factory = world.GetExistingSystemUnmanaged<EntityCommandFactorySystem>().factory;
+
+            __entitiesToDestroy = new NativeList<Entity>(Allocator.Persistent);
+        }
+
+        [BurstCompile]
+        public void OnDestroy(ref SystemState state)
+        {
+            __entitiesToDestroy.Dispose();
+        }
+
+        [BurstCompile]
+        public void OnUpdate(ref SystemState state)
+        {
+            var entityManager = __commander.AsParallelWriter(
+                0, 
+                __activeGroup.CalculateEntityCountWithoutFiltering(), 
+                __instanceGroup.CalculateEntityCountWithoutFiltering());
+
+            var jobHandle = JobHandle.CombineDependencies(__commander.jobHandle, state.Dependency);
+
+            CollectInstancesEx collectInstances;
+            collectInstances.entityType = __entityType.UpdateAsRef(ref state);
+            collectInstances.instanceCountType = __instanceCountType.UpdateAsRef(ref state);
+            collectInstances.entityManager = entityManager;
+
+            jobHandle = collectInstances.ScheduleParallelByRef(__instanceGroup, jobHandle);
+
+            CollectActivesEx collectActive;
+            collectActive.entityType = __entityType.UpdateAsRef(ref state);
+            collectActive.activeCountType = __activeCountType.UpdateAsRef(ref state);
+            collectActive.disabledType = __disabledType.UpdateAsRef(ref state);
+            collectActive.entityManager = entityManager;
+
+            jobHandle = collectActive.ScheduleParallelByRef(__activeGroup, jobHandle);
+
+            jobHandle = factory.ClearEntity(__commander.destroiedEntities, jobHandle);
+
+            __commander.jobHandle = jobHandle;
+
+            state.Dependency = jobHandle;
+        }
+    }
+
+    [BurstCompile, 
+        CreateAfter(typeof(EntityCommandFactorySystem)), 
+        UpdateInGroup(typeof(EntityCommandSharedSystemGroup), OrderFirst = true), 
+        UpdateAfter(typeof(GameObjectEntityFactorySystem))]
+    public partial struct GameObjectEntityHierarchySystem : ISystem
+    {
+        private struct Reset
+        {
+            [ReadOnly]
+            public SharedHashMap<Entity, Entity>.Reader instances;
+
+            public BufferAccessor<EntityParent> parents;
+
+            public bool Execute(int index)
+            {
+                bool result = true;
+                Entity entity;
+                var parents = this.parents[index];
+                int numParents = parents.Length;
+                for(int i = 0; i < numParents; ++i)
+                {
+                    ref var parent = ref parents.ElementAt(i);
+
+                    if (instances.TryGetValue(parent.entity, out entity))
+                    {
+                        parent.entity = entity;
+
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0);
+                    }
+                    else
+                        result &= parent.entity.Index >= 0;
+                }
+
+                return result;
+            }
+        }
+
+        [BurstCompile]
+        private struct ResetEx : IJobChunk
+        {
+            [ReadOnly]
+            public SharedHashMap<Entity, Entity>.Reader instances;
+
+            public BufferTypeHandle<EntityParent> parentType;
+
+            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+            {
+                Reset reset;
+                reset.instances = instances;
+                reset.parents = chunk.GetBufferAccessor(ref parentType);
+
+                var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+                while (iterator.NextEntityIndex(out int i))
+                {
+                    if (reset.Execute(i))
+                        chunk.SetComponentEnabled(ref parentType, i, false);
+                }
+            }
+        }
+
+        private EntityQuery __group;
+
+        private BufferTypeHandle<EntityParent> __parentType;
+
+        private SharedHashMap<Entity, Entity> __instances;
 
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
             using (var builder = new EntityQueryBuilder(Allocator.Temp))
                 __group = builder
-                    .WithAll<EntityObjects, EntityStatus>()
-                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
-                    .Build(ref state);
+                        .WithAllRW<EntityParent>()
+                        .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                        .Build(ref state);
 
-            __group.SetChangedVersionFilter(ComponentType.ReadWrite<EntityStatus>());
+            __group.SetChangedVersionFilter(ComponentType.ReadWrite<EntityParent>());
 
-            __entityType = state.GetEntityTypeHandle();
-            __entityStatusType = state.GetComponentTypeHandle<EntityStatus>(true);
-            __disabledType = state.GetComponentTypeHandle<Disabled>(true);
+            __parentType = state.GetBufferTypeHandle<EntityParent>();
 
-            __entitiesToEnable = new NativeList<Entity>(Allocator.Persistent);
-            __entitiesToDisable = new NativeList<Entity>(Allocator.Persistent);
+            __instances = state.WorldUnmanaged.GetExistingSystemUnmanaged<EntityCommandFactorySystem>().factory.instances;
         }
 
         [BurstCompile]
         public void OnDestroy(ref SystemState state)
         {
-            __entitiesToEnable.Dispose();
-            __entitiesToDisable.Dispose();
-        }
-
-        [BurstCompile]
-        public void OnUpdate(ref SystemState state)
-        {
-            CollectEx collect;
-            collect.entityType = __entityType.UpdateAsRef(ref state);
-            collect.entityStatusType = __entityStatusType.UpdateAsRef(ref state);
-            collect.disabledType = __disabledType.UpdateAsRef(ref state);
-            collect.entitiesToEnable = __entitiesToEnable;
-            collect.entitiesToDisable = __entitiesToDisable;
-
-            collect.RunByRef(__group);
-
-            var entityManager = state.EntityManager;
-            if (__entitiesToEnable.Length > 0)
-            {
-                entityManager.RemoveComponent<Disabled>(__entitiesToEnable.AsArray());
-
-                __entitiesToEnable.Clear();
-            }
-
-            if(__entitiesToDisable.Length > 0)
-            {
-                entityManager.AddComponent<Disabled>(__entitiesToDisable.AsArray());
-
-                __entitiesToDisable.Clear();
-            }
-        }
-    }
-
-    [BurstCompile, UpdateInGroup(typeof(EntityCommandSharedSystemGroup), OrderFirst = true), UpdateAfter(typeof(GameObjectEntityStatusSystem))]
-    public partial struct GameObjectEntityHierarchySystem : ISystem
-    {
-        private struct Collect
-        {
-            [ReadOnly]
-            public NativeArray<Entity> entityArray;
-
-            [ReadOnly]
-            public NativeArray<EntityOrigin> orgins;
-
-            public NativeHashMap<Entity, Entity> instanceEntities;
-
-            public void Execute(int index)
-            {
-                instanceEntities.TryAdd(orgins[index].entity, entityArray[index]);
-            }
-        }
-
-        [BurstCompile]
-        private struct CollectEx : IJobChunk
-        {
-            [ReadOnly]
-            public EntityTypeHandle entityType;
-
-            [ReadOnly]
-            public ComponentTypeHandle<EntityOrigin> orginType;
-
-            public NativeHashMap<Entity, Entity> instanceEntities;
-
-            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
-            {
-                Collect collect;
-                collect.entityArray = chunk.GetNativeArray(entityType);
-                collect.orgins = chunk.GetNativeArray(ref orginType);
-                collect.instanceEntities = instanceEntities;
-
-                var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
-                while (iterator.NextEntityIndex(out int i))
-                    collect.Execute(i);
-            }
-        }
-
-        [BurstCompile]
-        private struct SetParents : IJobParallelFor
-        {
-            [ReadOnly, DeallocateOnJobCompletion]
-            public NativeArray<Entity> entityArray;
-
-            [ReadOnly]
-            public NativeHashMap<Entity, Entity> instanceEntities;
-
-            [NativeDisableParallelForRestriction]
-            public ComponentLookup<EntityParent> entityParents;
-
-            public void Execute(int index)
-            {
-                Entity entity = entityArray[index];
-                if (!entityParents.HasComponent(entity))
-                    return;
-
-                var entityParent = entityParents[entity];
-                if (!instanceEntities.TryGetValue(entityParent.entity, out Entity parentEntity))
-                    return;
-
-                entityParent.entity = parentEntity;
-
-                entityParents[entity] = entityParent;
-            }
-        }
-
-        public static readonly int InnerloopBatchCount = 1;
-
-        private EntityQuery __group;
-
-        private NativeHashMap<Entity, Entity> __instanceEntities;
-
-        public void OnCreate(ref SystemState state)
-        {
-            __group = state.GetEntityQuery(
-                new EntityQueryDesc()
-                {
-                    All = new ComponentType[]
-                    {
-                        ComponentType.ReadOnly<EntityOrigin>()
-                    }, 
-
-                    Options = EntityQueryOptions.IncludeDisabledEntities
-                });
-
-            __instanceEntities = new NativeHashMap<Entity, Entity>(1, Allocator.Persistent);
-        }
-
-        public void OnDestroy(ref SystemState state)
-        {
-            __instanceEntities.Dispose();
         }
 
         [BurstCompile]
@@ -372,54 +596,19 @@ namespace ZG
         {
             //var instanceEntities = new UnsafeParallelHashMap<Entity, Entity>(__group.CalculateEntityCount(), Allocator.TempJob);
 
-            __instanceEntities.Clear();
+            ResetEx reset;
+            reset.instances = __instances.reader;
+            reset.parentType = __parentType.UpdateAsRef(ref state);
 
-            state.CompleteDependency();
+            ref var lookupJobManager = ref __instances.lookupJobManager;
 
-            CollectEx collect;
-            collect.entityType = state.GetEntityTypeHandle();
-            collect.orginType = state.GetComponentTypeHandle<EntityOrigin>(true);
-            collect.instanceEntities = __instanceEntities;
-            collect.Run(__group);
+            var jobHandle = JobHandle.CombineDependencies(lookupJobManager.readOnlyJobHandle, state.Dependency);
 
-            state.EntityManager.RemoveComponent<EntityOrigin>(__group);
+            jobHandle = reset.ScheduleParallelByRef(__group, jobHandle);
 
-            SetParents setParents;
-            setParents.entityArray = __instanceEntities.GetValueArray(Allocator.TempJob);
-            setParents.instanceEntities = __instanceEntities;
-            setParents.entityParents = state.GetComponentLookup<EntityParent>();
+            lookupJobManager.AddReadOnlyDependency(jobHandle);
 
-            state.Dependency = setParents.Schedule(setParents.entityArray.Length, InnerloopBatchCount, state.Dependency);
-        }
-    }
-
-    [BurstCompile, UpdateInGroup(typeof(EntityObjectSystemGroup))]
-    public partial struct GameObjectEntityDestroySystem : ISystem
-    {
-        private EntityQuery __group;
-        private EntityCommandFactory __factory;
-
-        public void OnCreate(ref SystemState state)
-        {
-            __group = state.GetEntityQuery(
-                ComponentType.ReadOnly<EntityStatus>(),
-                ComponentType.Exclude<EntityObjects>());
-
-            __factory = state.World.GetFactory();
-        }
-
-        public void OnDestroy(ref SystemState state)
-        {
-
-        }
-
-        [BurstCompile]
-        public void OnUpdate(ref SystemState state)
-        {
-            var entityArray = __group.ToEntityArray(state.WorldUpdateAllocator);
-            state.EntityManager.RemoveComponent<EntityStatus>(__group);
-
-            state.Dependency = __factory.ClearEntity(entityArray, state.Dependency);
+            state.Dependency = jobHandle;
         }
     }
 
@@ -440,19 +629,68 @@ namespace ZG
         }
     }
 
-    [UpdateInGroup(typeof(EntityCommandSharedSystemGroup), OrderFirst = true), UpdateAfter(typeof(EntityCommandFactorySystem))]
+    [UpdateInGroup(typeof(EntityCommandSharedSystemGroup), OrderFirst = true), 
+        UpdateAfter(typeof(GameObjectEntityFactorySystem))]
     public partial class GameObjectEntityInitSystem : SystemBase
     {
         public int innerloopBatchCount = 1;
 
-        public static GameObjectEntityManager manager
-        {
-            get;
+        private EntityQuery __group;
 
-            private set;
+        private struct Callback
+        {
+            [ReadOnly]
+            public NativeArray<Entity> entityArray;
+            //[ReadOnly]
+            //public NativeArray<EntityOrigin> entityOrigins;
+            [ReadOnly]
+            public BufferAccessor<GameObjectEntityHandle> gcHandles;
+
+            public void Execute(int index)
+            {
+                GameObjectEntity gameObjectEntity;
+                Entity entity = entityArray[index];
+
+                //Debug.Log($"Apply {entity} To {entityOrigins[index].entity}");
+                foreach (var gcHandle in gcHandles[index])
+                {
+                    UnityEngine.Assertions.Assert.IsTrue(gcHandle.value.IsAllocated);
+                    gameObjectEntity = (GameObjectEntity)gcHandle.value.Target;
+                    if (gameObjectEntity != null)
+                    {
+                        try
+                        {
+                            gameObjectEntity._Create(entity);
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogException(e.InnerException ?? e, gameObjectEntity);
+                        }
+                    }
+                }
+            }
         }
 
-        private EntityQuery __group;
+        private struct CallbackEx : IJobChunk
+        {
+            [ReadOnly]
+            public EntityTypeHandle entityType;
+            //[ReadOnly]
+            //public ComponentTypeHandle<EntityOrigin> entityOriginType;
+            [ReadOnly]
+            public BufferTypeHandle<GameObjectEntityHandle> gcHandleType;
+
+            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+            {
+                Callback callback;
+                callback.entityArray = chunk.GetNativeArray(entityType);
+                //callback.entityOrigins = chunk.GetNativeArray(ref entityOriginType);
+                callback.gcHandles = chunk.GetBufferAccessor(ref gcHandleType);
+                var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+                while (iterator.NextEntityIndex(out int i))
+                    callback.Execute(i);
+            }
+        }
 
         protected override void OnCreate()
         {
@@ -462,105 +700,30 @@ namespace ZG
             {
                 All = new ComponentType[]
                 {
-                    ComponentType.ReadWrite<GameObjectEntityHandle>(),
-                    ComponentType.ReadWrite<EntityStatus>()
+                    ComponentType.ReadOnly<GameObjectEntityHandle>()
                 },
                 Options = EntityQueryOptions.IncludeDisabledEntities
             });
-
-            manager = new GameObjectEntityManager(Allocator.Persistent);
         }
 
         protected override void OnUpdate()
         {
+            //UnityEngine.Assertions.Assert.AreEqual(Dependency, EntityCommandFactory.JobHandle);
+
             //TODO: 
             CompleteDependency();
 
-            GameObjectEntity gameObjectEntity;
+            /*if(!__group.IsEmpty)
+                UnityEngine.Assertions.Assert.IsTrue(EntityCommandFactory.JobHandle.IsCompleted);*/
 
-            NativeList<Entity> entitiesToDestroy = default;
-            //using (var entityArray = __group.ToEntityArray(Allocator.Temp))
-            using (var chunks = __group.ToArchetypeChunkArray(Allocator.Temp))
-            //using (var handles = __group.ToComponentDataArray<GameObjectEntityHandle>(Allocator.Temp))
-            {
-                NativeArray<Entity> entityArray;
-                NativeArray<EntityStatus> entityStates;
-                DynamicBuffer<GameObjectEntityHandle> gcHandles;
-                BufferAccessor<GameObjectEntityHandle> gcHandleBufferAccessor;
-                BufferTypeHandle<GameObjectEntityHandle> gcHandleType = GetBufferTypeHandle<GameObjectEntityHandle>();
-                ComponentTypeHandle<EntityStatus> entityStatusType = GetComponentTypeHandle<EntityStatus>();
-                EntityTypeHandle entityType = GetEntityTypeHandle();
-                Entity entity;
-                EntityStatus entityStatus;
-                GCHandle gcHandle;
-                ArchetypeChunk chunk;
-                int numEntities, numChunks = chunks.Length, numGCHandles, i, j, k;
-                for (i = 0; i < numChunks; ++i)
-                {
-                    chunk = chunks[i];
-                    numEntities = chunk.Count;
-                    entityArray = chunk.GetNativeArray(entityType);
-                    entityStates = chunk.GetNativeArray(ref entityStatusType);
-                    gcHandleBufferAccessor = chunk.GetBufferAccessor(ref gcHandleType);
-                    for (j = 0; j < numEntities; ++j)
-                    {
-                        entity = entityArray[j];
-
-                        entityStatus = entityStates[j];
-
-                        gcHandles = gcHandleBufferAccessor[j];
-
-                        numGCHandles = gcHandles.Length;
-                        for (k = 0; k < numGCHandles; ++k)
-                        {
-                            gcHandle = gcHandles[k].value;
-
-                            gameObjectEntity = (GameObjectEntity)gcHandle.Target;
-                            if (gameObjectEntity == null)
-                            {
-                                gcHandles.RemoveAt(k--);
-
-                                --numGCHandles;
-                            }
-                            else
-                            {
-                                try
-                                {
-                                    gameObjectEntity._Create(entity);
-                                }
-                                catch (Exception e)
-                                {
-                                    Debug.LogException(e.InnerException ?? e, gameObjectEntity);
-                                }
-
-                                if (gameObjectEntity.isActiveAndEnabled)
-                                    ++entityStatus.activeCount;
-                            }
-                            gcHandle.Free();
-                        }
-
-                        if (numGCHandles < 1)
-                        {
-                            if (!entitiesToDestroy.IsCreated)
-                                entitiesToDestroy = new NativeList<Entity>(Allocator.Temp);
-
-                            entitiesToDestroy.Add(entity);
-                        }
-                        else
-                            entityStates[j] = entityStatus;
-                    }
-                }
-            }
+            CallbackEx callback;
+            callback.entityType = GetEntityTypeHandle();
+            //callback.entityOriginType = GetComponentTypeHandle<EntityOrigin>(true);
+            callback.gcHandleType = GetBufferTypeHandle<GameObjectEntityHandle>(true);
+            callback.RunByRefWithoutJobs(__group);
 
             var entityManager = EntityManager;
             entityManager.RemoveComponent<GameObjectEntityHandle>(__group);
-
-            if (entitiesToDestroy.IsCreated)
-            {
-                entityManager.DestroyEntity(entitiesToDestroy.AsArray());
-
-                entitiesToDestroy.Dispose();
-            }
         }
     }
 

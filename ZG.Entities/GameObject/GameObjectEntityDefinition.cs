@@ -3,6 +3,8 @@ using System.Reflection;
 using System.Collections.Generic;
 using Unity.Entities;
 using UnityEngine;
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 
 namespace ZG
 {
@@ -32,71 +34,115 @@ namespace ZG
             __data.GetRuntimeComponentTypes(__components, outComponentTypes);
         }
 
-        public Entity CreateEntityDefinition(
+        public void CreateEntityDefinition(
             GameObjectEntityInfo info, 
+            ref Entity entity, 
+            ref EntityCommandFactory factory, 
             out EntityComponentAssigner assigner, 
-            ComponentTypeSet componentTypes = default)
+            IEnumerable<ComponentType> componentTypes = null)
         {
             UnityEngine.Assertions.Assert.IsTrue(info.isValid);
 
-            var factory = info.world.GetFactory();
+            //var factory = info.world.GetFactory();
 
-            Entity entity;
             var systemStateComponentTypes = info.systemStateComponentTypes;
-            if (info.isPrefab)
+            if (entity == Entity.Null)
             {
-                Entity prefab = info.prefab;
-                if (!info.isValidPrefab)
+                if (info.isPrefab)
                 {
-                    if (prefab != Entity.Null)
-                        factory.DestroyEntity(prefab);
+                    Entity prefab = info.prefab;
+                    if (!info.isValidPrefab)
+                    {
+                        if (prefab != Entity.Null)
+                            factory.DestroyEntity(prefab);
 
-                    prefab = factory.CreateEntity(info.entityArchetype, systemStateComponentTypes);
+                        prefab = factory.CreateEntity();
+
+                        factory.InitEntity(prefab, info.entityArchetype);
+
+                        if (systemStateComponentTypes != null)
+                        {
+                            foreach (var systemStateComponentType in systemStateComponentTypes)
+                                factory.AddStateComponent(prefab, systemStateComponentType);
+                        }
 
 #if UNITY_EDITOR
-                    factory.SetName(prefab, $"[Prefab]{info.name}");
+                        factory.SetName(prefab, $"[Prefab]{info.name}");
 #endif
 
-                    __data.SetComponents(prefab, factory.prefabAssigner, __components);
+                        __data.SetComponents(prefab, factory.prefabAssigner, __components);
 
-                    info.SetPrefab(prefab);
+                        info.SetPrefab(prefab);
+                    }
+
+                    entity = factory.CreateEntity();
+
+                    factory.Instantiate(entity, prefab);
+
+                    assigner = factory.instanceAssigner;
+                }
+                else
+                {
+                    /*int numComponentTypes = componentTypes.Length;
+                    if (numComponentTypes > 0)
+                    {
+                        int numSystemStateComponentTypes = systemStateComponentTypes.Length;
+
+                        ComponentType[] prefabComponentTypes = new ComponentType[numSystemStateComponentTypes + numComponentTypes];
+                        for (int i = 0; i < numSystemStateComponentTypes; ++i)
+                            prefabComponentTypes[i] = systemStateComponentTypes.GetComponentType(i);
+
+                        for (int i = 0; i < numComponentTypes; ++i)
+                            prefabComponentTypes[i + numSystemStateComponentTypes] = componentTypes.GetComponentType(i);
+
+                        systemStateComponentTypes = new ComponentTypes(prefabComponentTypes);
+                    }*/
+
+                    entity = factory.CreateEntity();
+                    factory.InitEntity(entity, info.entityArchetype);
+
+                    if (systemStateComponentTypes != null)
+                    {
+                        foreach (var systemStateComponentType in systemStateComponentTypes)
+                            factory.AddComponent(entity, systemStateComponentType);
+                    }
+
+                    assigner = factory.prefabAssigner;
+
+                    __data.SetComponents(entity, assigner, __components);
                 }
 
-                entity = factory.Instantiate(prefab, componentTypes);
-
-                assigner = factory.instanceAssigner;
+#if UNITY_EDITOR
+                factory.SetName(entity, info.name);
+#endif
             }
             else
             {
-                /*int numComponentTypes = componentTypes.Length;
-                if (numComponentTypes > 0)
+                if (!factory.InitEntity(entity, info.entityArchetype))
                 {
-                    int numSystemStateComponentTypes = systemStateComponentTypes.Length;
+                    using (var entityArchetypeComponentTypes = info.entityArchetype.GetComponentTypes(Allocator.Temp))
+                    {
+                        foreach (var entityArchetypeComponentType in entityArchetypeComponentTypes)
+                            factory.AddComponent(entity, entityArchetypeComponentType);
+                    }
+                }
 
-                    ComponentType[] prefabComponentTypes = new ComponentType[numSystemStateComponentTypes + numComponentTypes];
-                    for (int i = 0; i < numSystemStateComponentTypes; ++i)
-                        prefabComponentTypes[i] = systemStateComponentTypes.GetComponentType(i);
+                if (systemStateComponentTypes != null)
+                {
+                    foreach(var systemStateComponentType in systemStateComponentTypes)
+                        factory.AddComponent(entity, systemStateComponentType);
+                }
 
-                    for (int i = 0; i < numComponentTypes; ++i)
-                        prefabComponentTypes[i + numSystemStateComponentTypes] = componentTypes.GetComponentType(i);
-
-                    systemStateComponentTypes = new ComponentTypes(prefabComponentTypes);
-                }*/
-
-                entity = factory.CreateEntity(info.entityArchetype, systemStateComponentTypes, componentTypes);
-
-                assigner = factory.prefabAssigner;
-
-                __data.SetComponents(entity, assigner, __components);
+                assigner = factory.instanceAssigner;
             }
 
-#if UNITY_EDITOR
-            factory.SetName(entity, info.name);
-#endif
+            if (componentTypes != null)
+            {
+                foreach (var componentType in componentTypes)
+                    factory.AddComponent(entity, componentType);
+            }
 
             info.SetComponents(entity, assigner, __data, __components);
-
-            return entity;
         }
 
         public GameObjectEntityData Rebuild()
@@ -153,41 +199,6 @@ namespace ZG
             __componentHash ^= index ^ component.GetType().GetHashCode();
 
             return index;
-        }
-    }
-
-    public static partial class GameObjectEntityUtility
-    {
-        private static EntityCommandSharedSystemGroup __commander = null;
-
-        public static EntityCommandFactory GetFactory(this World world)
-        {
-            return __GetCommandSystem(world).factory;
-        }
-
-        internal static void Destroy(this GameObjectEntityInfo info)
-        {
-            if (info == null)
-                return;
-
-            if (info.isValidPrefab)
-            {
-                var world = info.world;
-                if (world != null && world.IsCreated)
-                    __GetCommandSystem(world).factory.DestroyEntity(info.prefab);
-
-                info.SetPrefab(Entity.Null);
-            }
-
-            UnityEngine.Object.Destroy(info);
-        }
-
-        private static EntityCommandSharedSystemGroup __GetCommandSystem(World world)
-        {
-            if (__commander == null || __commander.World != world)
-                __commander = world.GetExistingSystemManaged<EntityCommandSharedSystemGroup>();
-
-            return __commander;
         }
     }
 }

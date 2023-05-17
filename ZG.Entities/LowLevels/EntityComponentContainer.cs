@@ -90,9 +90,9 @@ namespace ZG
             }
         }
 
-        public unsafe NativeArray<Entity> entities => __data->entities.ToNativeArray();
+        public unsafe NativeArray<Entity> entities => __data->entities.AsArray();
 
-        public unsafe NativeArray<T> values => __data->values.ToNativeArray();
+        public unsafe NativeArray<T> values => __data->values.AsArray();
 
         public unsafe void SetCapacityIfNeed(int value)
         {

@@ -660,8 +660,7 @@ namespace ZG
 
                                 break;
                             default:
-                                throw new System.InvalidOperationException();
-                                //break;
+                                break;
                         }
                     }
                 }
@@ -670,7 +669,67 @@ namespace ZG
                 return true;
             }
 
-            public void SetComponentData<T>(int typeIndex, in Entity entity, in T value) where T : struct
+            public bool TryGetBuffer<T>(in Entity entity, int index, ref T result, int indexOffset = 0)
+                where T : struct, IBufferElementData
+            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
+#endif
+
+                Key key;
+                key.entity = entity;
+                key.typeIndex = TypeManager.GetTypeIndex<T>();
+
+                int count = __values.CountValuesForKey(key);
+                if (count > 0)
+                {
+                    var commands = new NativeArray<Command>(count, Allocator.Temp);
+                    {
+                        if (__values.TryGetFirstValue(key, out var value, out var iterator))
+                        {
+                            do
+                            {
+                                commands[value.index] = value.command;
+                            } while (__values.TryGetNextValue(out value, ref iterator));
+                        }
+
+                        Command command;
+                        NativeArray<T> array;
+                        int resultIndex, length, i;
+                        for (i = 0; i < count; ++i)
+                        {
+                            command = commands[i];
+                            array = command.block.isCreated ? command.block.AsArray<T>() : default;
+                            length = array.IsCreated ? array.Length : 0;
+                            switch (command.type)
+                            {
+                                case Command.Type.BufferOverride:
+                                    indexOffset = length;
+                                    break;
+                                case Command.Type.BufferAppend:
+                                    indexOffset += length;
+                                    break;
+                                default:
+                                    break;
+                            }
+
+                            if (indexOffset > index)
+                            {
+                                resultIndex = length - indexOffset + index;
+                                if(resultIndex >= 0 && resultIndex < length)
+                                    result = array[resultIndex];
+                            }
+                        }
+                    }
+                    commands.Dispose();
+
+                    return true;
+                }
+
+                return false;
+            }
+
+            public void SetComponentData<T>(in TypeIndex typeIndex, in Entity entity, in T value) where T : struct
             {
                 __CheckTypeSize<T>(typeIndex);
                 __CheckWrite();
@@ -736,7 +795,7 @@ namespace ZG
             }
 
             public unsafe void SetBuffer<TValue, TCollection>(bool isOverride, in Entity entity, in TCollection values)
-                where TValue : unmanaged, IBufferElementData
+                where TValue : struct, IBufferElementData
                 where TCollection : IReadOnlyCollection<TValue>
             {
                 __CheckWrite();
@@ -764,7 +823,7 @@ namespace ZG
                 __Set<TValue>(entity, command);
             }
 
-            public void SetComponentEnabled<T>(in Entity entity, bool value) where T : unmanaged, IEnableableComponent
+            public void SetComponentEnabled<T>(in Entity entity, bool value) where T : struct, IEnableableComponent
             {
                 __CheckWrite();
 
@@ -831,12 +890,25 @@ namespace ZG
 
                     assign.typeHandleIndicess = typeHandleIndicess;
 
-                    Entity entity;
+                    Entity key, entity;
                     DisposeTypeIndicesJob disposeTypeIndices;
                     for (i = 0; i < numEntities; ++i)
                     {
-                        entity = keys[i];
-                        if (__entityTypes.TryGetFirstValue(entity, out componentType.TypeIndex, out iterator))
+                        key = keys[i];
+
+                        if (entities.isCreated)
+                        {
+                            if (entities.TryGetValue(key, out entity))
+                                keys[i] = entity;
+                            else
+                            {
+                                keys[i--] = keys[--numEntities];
+
+                                continue;
+                            }
+                        }
+
+                        if (__entityTypes.TryGetFirstValue(key, out componentType.TypeIndex, out iterator))
                         {
                             do
                             {
@@ -846,7 +918,7 @@ namespace ZG
                                 if (numTypes >= BurstCompatibleTypeArray.LENGTH)
                                 {
                                     if (i <= entityIndex)
-                                        UnityEngine.Debug.LogError($"{entity} Component More Than {BurstCompatibleTypeArray.LENGTH}");
+                                        UnityEngine.Debug.LogError($"{key} Component More Than {BurstCompatibleTypeArray.LENGTH}");
 
                                     __CheckComponent(i, entityIndex);
 
@@ -873,9 +945,6 @@ namespace ZG
                                 assign.types[numTypes++] = systemState.GetDynamicComponentTypeHandle(componentType);
                             } while (__entityTypes.TryGetNextValue(out componentType.TypeIndex, ref iterator));
                         }
-
-                        if (entities.isCreated)
-                            keys[i] = entities[entity];
                     }
 
                     if (numTypes > 0)
@@ -1016,24 +1085,26 @@ namespace ZG
                 __values = data.values;
             }
 
-            public void AppendTo(ref EntityComponentAssigner assigner)
+            public bool AppendTo(Writer assigner, in NativeArray<Entity> entityArray = default)
             {
-                AppendTo(ref assigner.__data);
+                var data = assigner.data;
+                return AppendTo(ref data, entityArray);
             }
 
-            internal void AppendTo(ref Data data)
+            internal bool AppendTo(ref Data data, in NativeArray<Entity> entityArray = default)
             {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-                //AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
+                AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
 #endif
 
                 if (__values.IsEmpty)
-                    return;
+                    return false;
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 AtomicSafetyHandle.CheckWriteAndThrow(data.m_Safety);
 #endif
 
+                bool result = false;
                 using (var keys = __values.GetKeyArray(Allocator.Temp))
                 {
                     var values = new NativeList<Value>(Allocator.Temp);
@@ -1047,8 +1118,13 @@ namespace ZG
                     for (i = 0; i < numKeys; ++i)
                     {
                         key = keys[i];
-                        if (__values.TryGetFirstValue(keys[i], out value, out iterator))
+                        if (entityArray.IsCreated && !entityArray.Contains(key.entity))
+                            continue;
+
+                        if (__values.TryGetFirstValue(key, out value, out iterator))
                         {
+                            result = true;
+
                             values.Clear();
 
                             do
@@ -1074,6 +1150,8 @@ namespace ZG
 
                     values.Dispose();
                 }
+
+                return result;
             }
 
             internal unsafe void Apply(
@@ -1188,6 +1266,8 @@ namespace ZG
         {
             private Container __container;
 
+            internal Data data => __container.data;
+
             internal Writer(ref Data data)
             {
                 __container = new Container(ref data);
@@ -1197,7 +1277,7 @@ namespace ZG
 #endif*/
             }
 
-            public void SetComponentData<T>(int typeIndex, in Entity entity, in T value) where T : struct => __container.SetComponentData(typeIndex, entity, value);
+            public void SetComponentData<T>(in TypeIndex typeIndex, in Entity entity, in T value) where T : struct => __container.SetComponentData(typeIndex, entity, value);
 
             public void SetComponentData<T>(in Entity entity, in T value) where T : struct, IComponentData => __container.SetComponentData(entity, value);
 
@@ -1497,12 +1577,12 @@ namespace ZG
 
         internal Container container => new Container(ref __data);
 
-        public unsafe EntityComponentAssigner(Allocator allocator)
+        public unsafe EntityComponentAssigner(in AllocatorManager.AllocatorHandle allocator)
         {
             __jobHandle = AllocatorManager.Allocate<JobHandle>(allocator);
             *__jobHandle = default;
 
-            __bufferSizeAndTypeCount = new NativeArray<int>(2, allocator, NativeArrayOptions.ClearMemory);
+            __bufferSizeAndTypeCount = new NativeArray<int>(2, (Allocator)allocator.Value, NativeArrayOptions.ClearMemory);
 
             __data = new Data(allocator);
         }
@@ -1608,6 +1688,14 @@ namespace ZG
             return container.TryGetBuffer<TValue, TList, TWrapper>(entity, ref list, ref wrapper);
         }
 
+        public bool TryGetBuffer<T>(in Entity entity, int index, ref T value, int indexOffset = 0)
+            where T : struct, IBufferElementData
+        {
+            CompleteDependency();
+
+            return container.TryGetBuffer(entity, index, ref value, indexOffset);
+        }
+
         public void SetComponentData<T>(in Entity entity, in T value) where T : struct, IComponentData
         {
             CompleteDependency();
@@ -1645,7 +1733,7 @@ namespace ZG
         }
 
         public void SetBuffer<TValue, TCollection>(bool isOverride, in Entity entity, in TCollection values)
-            where TValue : unmanaged, IBufferElementData
+            where TValue : struct, IBufferElementData
             where TCollection : IReadOnlyCollection<TValue>
         {
             CompleteDependency();
@@ -1653,7 +1741,7 @@ namespace ZG
             container.SetBuffer<TValue, TCollection>(isOverride, entity, values);
         }
 
-        public void SetComponentEnabled<T>(in Entity entity, bool value) where T : unmanaged, IEnableableComponent
+        public void SetComponentEnabled<T>(in Entity entity, bool value) where T : struct, IEnableableComponent
         {
             CompleteDependency();
 

@@ -78,7 +78,7 @@ namespace ZG
 
         public bool isSet => __offset != null;
 
-        public bool Set(in float3 offset)
+        public void Set(in float3 offset)
         {
             if (gameObjectEntity.isCreated)
             {
@@ -89,12 +89,10 @@ namespace ZG
                 screenSpaceNodeTarget.componentType = GetType();
                 this.AddComponentData(screenSpaceNodeTarget);
             }
-            else
-                gameObjectEntity.onCreated += __OnCreated;
+            /*else
+                gameObjectEntity.onCreated += __OnCreated;*/
 
             __offset = offset;
-
-            return true;
         }
 
         public void Unset()
@@ -107,16 +105,11 @@ namespace ZG
 
                 this.RemoveComponent<ScreenSpaceNodeTarget>();
             }
-            else
-                gameObjectEntity.onCreated -= __OnCreated;
+            /*else
+                gameObjectEntity.onCreated -= __OnCreated;*/
         }
 
-        protected void OnDisable()
-        {
-            Unset();
-        }
-
-        private void __OnCreated()
+        protected void Start()
         {
             if (__offset != null)
             {
@@ -127,6 +120,11 @@ namespace ZG
                 screenSpaceNodeTarget.componentType = GetType();
                 this.AddComponentData(screenSpaceNodeTarget);
             }
+        }
+
+        protected void OnDisable()
+        {
+            Unset();
         }
 
         protected internal abstract Transform _Create();

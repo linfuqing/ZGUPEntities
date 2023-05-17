@@ -1271,7 +1271,7 @@ namespace ZG
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void SetBuffer<TValue, TCollection>(this IEntityCommandScheduler scheduler, in Entity entity, in TCollection values) 
-            where TValue : unmanaged, IBufferElementData
+            where TValue : struct, IBufferElementData
             where TCollection : IReadOnlyCollection<TValue>
             => scheduler.commander.SetBuffer<TValue, TCollection>(entity, values);
 
@@ -1396,19 +1396,28 @@ namespace ZG
             return scheduler.commander.TryGetBuffer<TValue, TList, TWrapper>(entity, ref list, ref wrapper);
         }
 
-        public static bool TryGetBuffer<T>(this IEntityCommandScheduler scheduler, in Entity entity, int index, out T value)
+        public static bool TryGetBuffer<T>(this IEntityCommandScheduler scheduler, in Entity entity, int index, out T value, out int indexOffset)
             where T : unmanaged, IBufferElementData
         {
-            var list = new NativeList<T>(Allocator.Temp);
-            NativeListWriteOnlyWrapper<T> wrapper;
-            bool result = TryGetBuffer<T, NativeList<T>, NativeListWriteOnlyWrapper<T>>(scheduler, entity, ref list, ref wrapper) &&
-                list.Length > index;
+            bool result = false;
 
-            value = result ? list[index] : default;
+            var entityManager = scheduler.entityManager;
+            if (entityManager.HasComponent<T>(entity))
+            {
+                var buffer = entityManager.GetBuffer<T>(entity);
+                indexOffset = buffer.Length;
 
-            list.Dispose();
+                result = indexOffset > index;
+                value = result ? buffer[index] : default;
+            }
+            else
+            {
+                indexOffset = 0;
 
-            return result;
+                value = default;
+            }
+
+            return scheduler.commander.TryGetBuffer(entity, index, ref value, indexOffset) || result;
         }
 
         public static bool HasComponent(this IEntityCommandScheduler scheduler, in Entity entity, in ComponentType componentType)

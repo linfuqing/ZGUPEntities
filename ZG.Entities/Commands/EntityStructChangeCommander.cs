@@ -14,7 +14,7 @@ namespace ZG
         private struct ComponentEntity : IEquatable<ComponentEntity>
         {
             public Entity value;
-            public int componentTypeIndex;
+            public TypeIndex componentTypeIndex;
 
             public bool Equals(ComponentEntity other)
             {
@@ -29,7 +29,7 @@ namespace ZG
 
         public struct Writer
         {
-            private NativeHashMap<ComponentEntity, bool> __componentStates;
+            private NativeParallelHashMap<ComponentEntity, bool> __componentStates;
 
             internal Writer(ref EntityStructChangeCommander instance)
             {
@@ -42,10 +42,37 @@ namespace ZG
             }
         }
 
+        public struct ParallelWriter
+        {
+            private NativeParallelHashMap<ComponentEntity, bool>.ParallelWriter __componentStates;
+
+            internal ParallelWriter(ref EntityStructChangeCommander instance)
+            {
+                __componentStates = instance.__componentStates.AsParallelWriter();
+            }
+
+            public bool AddComponent<T>(in Entity entity)
+            {
+                ComponentEntity componentEntity;
+                componentEntity.value = entity;
+                componentEntity.componentTypeIndex = TypeManager.GetTypeIndex<T>();
+                return __componentStates.TryAdd(componentEntity, true);
+            }
+
+            public bool RemoveComponent<T>(in Entity entity)
+            {
+                ComponentEntity componentEntity;
+                componentEntity.value = entity;
+                componentEntity.componentTypeIndex = TypeManager.GetTypeIndex<T>();
+
+                return __componentStates.TryAdd(componentEntity, false);
+            }
+        }
+
         public struct ReadOnly
         {
             [ReadOnly]
-            private NativeHashMap<ComponentEntity, bool> __componentStates;
+            private NativeParallelHashMap<ComponentEntity, bool> __componentStates;
 
             internal ReadOnly(in EntityStructChangeCommander instance)
             {
@@ -54,7 +81,7 @@ namespace ZG
 
             public void AppendTo(ref EntityStructChangeCommander commander)
             {
-                KVPair<ComponentEntity, bool> keyValue;
+                KeyValue<ComponentEntity, bool> keyValue;
                 var enumerator = __componentStates.GetEnumerator();
                 while (enumerator.MoveNext())
                 {
@@ -68,7 +95,7 @@ namespace ZG
         [BurstCompile]
         private struct Init : IJob
         {
-            public NativeHashMap<ComponentEntity, bool> componentStates;
+            public NativeParallelHashMap<ComponentEntity, bool> componentStates;
             public NativeParallelMultiHashMap<int, Entity> addComponentCommanders;
             public NativeParallelMultiHashMap<int, Entity> removeComponentCommanders;
 
@@ -78,7 +105,7 @@ namespace ZG
                     return;
 
                 var enumerator = componentStates.GetEnumerator();
-                KVPair<ComponentEntity, bool> keyValue;
+                KeyValue<ComponentEntity, bool> keyValue;
                 ComponentEntity componentEntity;
                 while (enumerator.MoveNext())
                 {
@@ -286,7 +313,7 @@ namespace ZG
             }
         }
 
-        private NativeHashMap<ComponentEntity, bool> __componentStates;
+        private NativeParallelHashMap<ComponentEntity, bool> __componentStates;
 
 #if ENABLE_PROFILER
         private ProfilerMarker __addComponentProfilerMarker;
@@ -297,7 +324,7 @@ namespace ZG
 
         public EntityStructChangeCommander(Allocator allocator)
         {
-            __componentStates = new NativeHashMap<ComponentEntity, bool>(1, allocator);
+            __componentStates = new NativeParallelHashMap<ComponentEntity, bool>(1, allocator);
 
 #if ENABLE_PROFILER
             __addComponentProfilerMarker = new ProfilerMarker("AddComponents");
@@ -310,18 +337,33 @@ namespace ZG
             return new ReadOnly(this);
         }
 
+        public ParallelWriter AsParallelWriter(int capacity)
+        {
+            __componentStates.Capacity = math.max(__componentStates.Capacity, capacity);
+
+            return new ParallelWriter(ref this);
+        }
+
         public void Dispose()
         {
             __componentStates.Dispose();
         }
 
-        public bool IsAddOrRemoveComponent(in Entity entity, int componentTypeIndex, out bool status)
+        public bool IsAddOrRemoveComponent(in Entity entity, in TypeIndex componentTypeIndex, out bool status)
         {
             ComponentEntity componentEntity;
             componentEntity.value = entity;
             componentEntity.componentTypeIndex = componentTypeIndex;
 
             return __componentStates.TryGetValue(componentEntity, out status);
+        }
+
+        public bool HasComponent<T>(in Entity entity)
+        {
+            ComponentEntity componentEntity;
+            componentEntity.value = entity;
+            componentEntity.componentTypeIndex = TypeManager.GetTypeIndex<T>();
+            return __componentStates.TryGetValue(componentEntity, out var status) && status;
         }
 
         public bool AddComponent<T>(in Entity entity)

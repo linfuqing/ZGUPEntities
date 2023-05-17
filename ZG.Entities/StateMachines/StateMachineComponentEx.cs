@@ -64,9 +64,14 @@ namespace ZG
             }
         }
 
-        private void Awake()
+        /*private void Awake()
         {
             gameObjectEntity.onCreated += __OnCreated;
+        }*/
+
+        protected void Start()
+        {
+            OnEnable();
         }
 
         protected void OnEnable()
@@ -98,7 +103,7 @@ namespace ZG
             //base.OnDisable();
         }
 
-        private void __OnCreated()
+        /*private void __OnCreated()
         {
             if(!__isActive && isActiveAndEnabled)
             {
@@ -107,6 +112,6 @@ namespace ZG
 
                 __isActive = true;
             }
-        }
+        }*/
     }
 }

@@ -8,12 +8,23 @@ using Unity.Entities;
 using UnityEngine;
 //using UnityEngine.SceneManagement;
 using SceneManager = UnityEngine.SceneManagement.SceneManager;
-using Unity.Collections.LowLevel.Unsafe;
 
 namespace ZG
 {
+    public enum GameObjectEntityStatus
+    {
+        None,
+        Deserializing,
+        Creating,
+        Created,
+        Destroied,
+        Invalid
+    }
+
     public interface IGameObjectEntity
     {
+        GameObjectEntityStatus status { get; }
+
         Entity entity { get; }
 
         World world { get; }
@@ -21,6 +32,8 @@ namespace ZG
 
     public struct GameObjectEntityWrapper : IGameObjectEntity
     {
+        public GameObjectEntityStatus status => GameObjectEntityStatus.Created;
+
         public Entity entity { get; }
 
         public World world { get; }
@@ -39,16 +52,6 @@ namespace ZG
 
     public class GameObjectEntity : GameObjectEntityDefinition, IGameObjectEntity, ISerializationCallbackReceiver
     {
-        public enum Status
-        {
-            None,
-            Deserializing,
-            Creating,
-            Created,
-            Destroied,
-            Invalid
-        }
-
         public enum DeserializedType
         {
             Normal,
@@ -59,7 +62,7 @@ namespace ZG
         internal struct DestroiedEntity
         {
             public int instanceID;
-            public Status status;
+            public GameObjectEntityStatus status;
             public Entity entity;
             public GameObjectEntityInfo info;
 
@@ -83,16 +86,39 @@ namespace ZG
         [SerializeField]
         internal GameObjectEntity _parent;
 
+        private GameObjectEntity __next;
+
         private Entity __entity;
 
         private int __instanceID;
 
-        private GameObjectEntity __next;
-        private static volatile GameObjectEntity __deserializedEntities = null;
-        //private static ConcurrentDictionary<int, GameObjectEntityInfo> __instancedEntities = new ConcurrentDictionary<int, GameObjectEntityInfo>();
-        private static ConcurrentBag<DestroiedEntity> __destoriedEntities = new ConcurrentBag<DestroiedEntity>();
+        private bool __isActive;
 
-        private static List<ComponentType> __componentTypes;
+        private static volatile GameObjectEntity __deserializedEntities = null;
+
+        private static Entity __prefab;
+
+        //private static ConcurrentDictionary<int, GameObjectEntityInfo> __instancedEntities = new ConcurrentDictionary<int, GameObjectEntityInfo>();
+        private readonly static ConcurrentBag<DestroiedEntity> DestoriedEntities = new ConcurrentBag<DestroiedEntity>();
+
+        private readonly static List<ComponentType> ComponentTypeList = new List<ComponentType>();
+
+        private static ComponentType[] ComponentTypes = new ComponentType[]
+        {
+            ComponentType.ReadOnly<GameObjectEntityHandle>(),
+            ComponentType.ReadOnly<GameObjectEntityInstanceCount>(),
+            ComponentType.ReadOnly<GameObjectEntityActiveCount>(),
+            ComponentType.ReadOnly<EntityOrigin>()
+        };
+
+        private static ComponentType[] ComponentTypesWithParent = new ComponentType[]
+        {
+            ComponentType.ReadOnly<GameObjectEntityHandle>(),
+            ComponentType.ReadOnly<GameObjectEntityInstanceCount>(),
+            ComponentType.ReadOnly<GameObjectEntityActiveCount>(),
+            ComponentType.ReadOnly<EntityOrigin>(),
+            ComponentType.ReadOnly<EntityParent>()
+        };
 
         //private static ConcurrentDictionary<int, GameObjectEntityInfo> __infos = new ConcurrentDictionary<int, GameObjectEntityInfo>();
         //private static Dictionary<Scene, LinkedList<GameObjectEntity>> __sceneEntities = null;
@@ -118,27 +144,6 @@ namespace ZG
             }
         }*/
 
-        private static ComponentTypeSet __CreateComponentTypes(List<ComponentType> componentTypes)
-        {
-            switch(componentTypes.Count)
-            {
-                case 0:
-                    return default;
-                case 1:
-                    return new ComponentTypeSet(componentTypes[0]);
-                case 2:
-                    return new ComponentTypeSet(componentTypes[0], componentTypes[1]);
-                case 3:
-                    return new ComponentTypeSet(componentTypes[0], componentTypes[1], componentTypes[2]);
-                case 4:
-                    return new ComponentTypeSet(componentTypes[0], componentTypes[1], componentTypes[2], componentTypes[3]);
-                case 5:
-                    return new ComponentTypeSet(componentTypes[0], componentTypes[1], componentTypes[2], componentTypes[3], componentTypes[4]);
-                default:
-                    return new ComponentTypeSet(componentTypes.ToArray());
-            }
-        }
-
         private static bool __CreateDeserializedEntity(ref DeserializedType type)
         {
             GameObjectEntity deserializedEntity;
@@ -152,7 +157,7 @@ namespace ZG
 
             deserializedEntity.__next = null;
 
-            if (deserializedEntity.status != Status.Deserializing)
+            if (deserializedEntity.status != GameObjectEntityStatus.Deserializing)
                 return __CreateDeserializedEntity(ref type);
 
             if (!deserializedEntity.isInstance)
@@ -208,7 +213,7 @@ namespace ZG
                     {
                         bool result = __CreateDeserializedEntity(ref type);
 
-                        deserializedEntity.status = Status.Invalid;
+                        deserializedEntity.status = GameObjectEntityStatus.Invalid;
 
                         //Debug.LogError("Invalid GameObject Entity!", deserializedEntity);
 
@@ -271,8 +276,24 @@ namespace ZG
 
         public static void DisposeAllDestoriedEntities()
         {
-            while (__destoriedEntities.TryTake(out var destroiedEntity))
+            while (DestoriedEntities.TryTake(out var destroiedEntity))
                 destroiedEntity.Execute();
+        }
+
+        public static UnityEngine.Object Instantiate(UnityEngine.Object component, Transform parentin, in Vector3 position, in Quaternion rotation, in Entity prefab)
+        {
+            __prefab = prefab;
+
+            var target = Instantiate(component, position, rotation, parentin);
+
+            __prefab = Entity.Null;
+
+            return target;
+        }
+
+        public static T Instantiate<T>(T component, Transform parentin, in Vector3 position, in Quaternion rotation, in Entity prefab) where T : UnityEngine.Object
+        {
+            return Instantiate((UnityEngine.Object)component, parentin, position, rotation, prefab) as T;
         }
 
         public event Action onCreated
@@ -293,11 +314,26 @@ namespace ZG
 
         public bool isInstance { get; private set; }
 
+        public bool isActive
+        {
+            get => __isActive;
+
+            private set
+            {
+                if (__isActive == value || __entity == Entity.Null)
+                    return;
+
+                GameObjectEntityUtility._Add<GameObjectEntityActiveCount>(world, __entity, status, value ? 1 : -1);
+
+                __isActive = value;
+            }
+        }
+
         public bool isCreated
         {
             get
             {
-                if (status == Status.Created)
+                if (status == GameObjectEntityStatus.Created)
                 {
                     var world = this.world;
                     if (world != null)
@@ -312,7 +348,7 @@ namespace ZG
         {
             get
             {
-                if (status == Status.Creating || status == Status.Created)
+                if (status == GameObjectEntityStatus.Creating || status == GameObjectEntityStatus.Created)
                 {
                     var world = this.world;
                     if (world != null)
@@ -323,7 +359,7 @@ namespace ZG
             }
         }
 
-        public Status status
+        public GameObjectEntityStatus status
         {
             get;
 
@@ -334,10 +370,12 @@ namespace ZG
         {
             get
             {
-                if (status != Status.Created)
+                if (status != GameObjectEntityStatus.Created)
                     this.ExecuteAllCommands();
 
-                UnityEngine.Assertions.Assert.AreNotEqual(Entity.Null, __entity, name);
+                UnityEngine.Assertions.Assert.IsFalse(__entity.Index < 0, $"{name} : {status} : {__entity}");
+
+                UnityEngine.Assertions.Assert.AreNotEqual(Entity.Null, __entity, $"{name} : {status} : {__entity}");
 
                 return __entity;
             }
@@ -445,10 +483,11 @@ namespace ZG
                 return destroiedEntity;
             }
         }
+
         ~GameObjectEntity()
         {
-            if (status != Status.Destroied && (object)__info != null)
-                __destoriedEntities.Add(destroiedEntity);
+            if (status != GameObjectEntityStatus.Destroied && (object)__info != null)
+                DestoriedEntities.Add(destroiedEntity);
         }
 
         public new bool Contains(Type type)
@@ -460,13 +499,10 @@ namespace ZG
 
         public void RebuildArchetype()
         {
-            UnityEngine.Assertions.Assert.AreNotEqual(Status.Creating, status);
+            UnityEngine.Assertions.Assert.AreNotEqual(GameObjectEntityStatus.Creating, status);
             if (__entity != Entity.Null)
             {
-                if (Status.Creating == status)
-                    this.GetFactory().DestroyEntity(__entity);
-                else
-                    this.DestroyEntity(__entity);
+                destroiedEntity.Execute();
 
                 __entity = Entity.Null;
             }
@@ -488,30 +524,21 @@ namespace ZG
 
         protected void OnEnable()
         {
-            if (isCreated)
-            {
-#if UNITY_EDITOR
-                if (!__isNamed)
-                {
-                    __isNamed = true;
+            isActive = true;
 
-                    entityManager.SetName(entity, name);
-                }
-#endif
-                var entityStatus = this.GetComponentData<EntityStatus>();
-                ++entityStatus.activeCount;
-                this.SetComponentData(entityStatus);
+#if UNITY_EDITOR
+            if (isCreated && !__isNamed)
+            {
+                __isNamed = true;
+
+                entityManager.SetName(__entity, name);
             }
+#endif
         }
 
         protected void OnDisable()
         {
-            if (isCreated)
-            {
-                var entityStatus = this.GetComponentData<EntityStatus>();
-                --entityStatus.activeCount;
-                this.SetComponentData(entityStatus);
-            }
+            isActive = false;
 
             /*if (__entity != Entity.Null)
             {
@@ -545,13 +572,17 @@ namespace ZG
             }
 
             __entity = Entity.Null;
-            status = Status.Destroied;
+            status = GameObjectEntityStatus.Destroied;
         }
 
         internal void _Create(in Entity entity)
         {
+            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{name} : {status} : {entity}");
+
+            UnityEngine.Assertions.Assert.AreNotEqual(Entity.Null, entity, $"{name} : {status} : {entity}");
+
             UnityEngine.Assertions.Assert.IsFalse(__entity.Index > 0);
-            UnityEngine.Assertions.Assert.AreEqual(Status.Creating, status);
+            UnityEngine.Assertions.Assert.AreEqual(GameObjectEntityStatus.Creating, status);
             //UnityEngine.Assertions.Assert.AreEqual(Entity.Null, __entity);
 
             //__info.SetComponents(entity, __data, __components);
@@ -564,7 +595,7 @@ namespace ZG
 #endif
             __entity = entity;
 
-            status = Status.Created;
+            status = GameObjectEntityStatus.Created;
 
             if (__onCreated != null)
                 __onCreated();
@@ -574,9 +605,9 @@ namespace ZG
         {
             if (__entity == Entity.Null)
             {
-                if (status != Status.Creating)
+                if (status != GameObjectEntityStatus.Creating)
                 {
-                    UnityEngine.Assertions.Assert.AreEqual(Status.Deserializing, status);
+                    UnityEngine.Assertions.Assert.AreEqual(GameObjectEntityStatus.Deserializing, status);
 
                     __BuildArchetypeIfNeed(false);
 
@@ -591,14 +622,13 @@ namespace ZG
 
         private void __Rebuild()
         {
-            status = Status.Creating;
+            status = GameObjectEntityStatus.Creating;
 
-            if (__componentTypes == null)
-                __componentTypes = new List<ComponentType>();
-            else
-                __componentTypes.Clear();
+            var factory = this.GetFactory();
 
-            GetRuntimeComponentTypes(__componentTypes);
+            ComponentTypeList.Clear();
+
+            GetRuntimeComponentTypes(ComponentTypeList);
 
             if (_parent == null)
             {
@@ -607,13 +637,25 @@ namespace ZG
                 {
                     _parent = parent.GetComponentInParent<GameObjectEntity>(true);
                     if(_parent != null)
-                        __componentTypes.Add(ComponentType.ReadOnly<EntityParent>());
+                        ComponentTypeList.Add(ComponentType.ReadOnly<EntityParent>());
                 }
             }
 
-            var componentTypes = __CreateComponentTypes(__componentTypes);
+            UnityEngine.Assertions.Assert.AreEqual(Entity.Null, __entity);
 
-            __entity = CreateEntityDefinition(__info, out var assigner, componentTypes);
+            __entity = __prefab;
+
+            CreateEntityDefinition(__info, ref __entity, ref factory, out var assigner, ComponentTypeList);
+
+            var entityManager = world.EntityManager;
+            if (isActiveAndEnabled)
+                isActive = true;
+
+            GameObjectEntityUtility._Add<GameObjectEntityInstanceCount>(
+                    1,
+                    __entity,
+                    ref factory, 
+                    ref entityManager);
 
             GameObjectEntityHandle handle;
             handle.value = GCHandle.Alloc(this);
@@ -629,7 +671,9 @@ namespace ZG
 
                 EntityParent entityParent;
                 entityParent.entity = _parent.__entity;
-                assigner.SetComponentData(__entity, entityParent);
+                assigner.SetBuffer(false, __entity, entityParent);
+
+                assigner.SetComponentEnabled<EntityParent>(__entity, true);
             }
         }
 
@@ -657,18 +701,13 @@ namespace ZG
             if(_parent == null)
                 __info.Rebuild(
                     isPrefab, 
-                    data, 
-                    ComponentType.ReadOnly<GameObjectEntityHandle>(),
-                    ComponentType.ReadOnly<EntityStatus>(), 
-                    ComponentType.ReadOnly<EntityOrigin>());
+                    data,
+                    ComponentTypes);
             else
                 __info.Rebuild(
                     isPrefab, 
-                    data, 
-                    ComponentType.ReadOnly<GameObjectEntityHandle>(),
-                    ComponentType.ReadOnly<EntityStatus>(),
-                    ComponentType.ReadOnly<EntityOrigin>(), 
-                    ComponentType.ReadOnly<EntityParent>());
+                    data,
+                    ComponentTypesWithParent);
 
             /*if(isPrefab)
                 __infos[GetInstanceID()] = __info;*/
@@ -699,12 +738,14 @@ namespace ZG
             } while (Interlocked.CompareExchange(ref __deserializedEntities, this, __next) != __next);
         }
 
+        Entity IGameObjectEntity.entity => __entity;
+
         void ISerializationCallbackReceiver.OnAfterDeserialize()
         {
-            if (status != Status.None)
+            if (status != GameObjectEntityStatus.None)
                 return;
             
-            status = Status.Deserializing;
+            status = GameObjectEntityStatus.Deserializing;
 
             isInstance = __info != null && __info.isValid;
 
@@ -745,8 +786,9 @@ namespace ZG
             Debug.LogWarning("Execute All Game Object Entity Commands");
 #endif
 
-            var world = gameObjectEntity.world;
-            gameObjectEntity.world.GetExistingSystem<BeginFrameEntityCommandSystem>().Update(world.Unmanaged);
+            //var world = gameObjectEntity.world;
+            //gameObjectEntity.world.GetExistingSystem<BeginFrameEntityCommandSystem>().Update(world.Unmanaged);
+            __GetCommandSystem(gameObjectEntity).Update();
         }
 
         public static EntityCommandFactory GetFactory(this IGameObjectEntity gameObjectEntity)
@@ -754,91 +796,26 @@ namespace ZG
             return __GetCommandSystem(gameObjectEntity).factory;
         }
 
-        public static void DestroyEntity(this IGameObjectEntity gameObjectEntity, Entity entity)
-        {
-            __GetCommandSystem(gameObjectEntity).DestroyEntity(entity);
-        }
-
         public static void DestroyEntity(this IGameObjectEntity gameObjectEntity, NativeArray<Entity> entities)
         {
             __GetCommandSystem(gameObjectEntity).DestroyEntity(entities);
         }
 
-        public static bool AddComponent<T>(this IGameObjectEntity gameObjectEntity)
-        {
-            return __GetCommandSystem(gameObjectEntity).AddComponent<T>(gameObjectEntity.entity);
-        }
-
-        public static void AddComponentData<T>(this IGameObjectEntity gameObjectEntity, T value) where T : struct, IComponentData
-        {
-            __GetCommandSystem(gameObjectEntity).AddComponentData(gameObjectEntity.entity, value);
-        }
-
-        public static void AddBuffer<T>(this IGameObjectEntity gameObjectEntity, params T[] values) where T : unmanaged, IBufferElementData
-        {
-            __GetCommandSystem(gameObjectEntity).AddBuffer(gameObjectEntity.entity, values);
-        }
-        
-        public static void AppendBuffer<T>(this IGameObjectEntity gameObjectEntity, params T[] values) where T : unmanaged, IBufferElementData
-        {
-            __GetCommandSystem(gameObjectEntity).AppendBuffer<T, T[]>(gameObjectEntity.entity, values);
-        }
-
-        public static void AppendBuffer<T>(this IGameObjectEntity gameObjectEntity, in Entity entity, params T[] values) where T : unmanaged, IBufferElementData
+        /*public static void AppendBuffer<T>(this IGameObjectEntity gameObjectEntity, in Entity entity, params T[] values) where T : unmanaged, IBufferElementData
         {
             __GetCommandSystem(gameObjectEntity).AppendBuffer<T, T[]>(entity, values);
-        }
+        }*/
 
-        public static void AppendBuffer<TValue, TCollection>(this IGameObjectEntity gameObjectEntity, TCollection values) 
-            where TValue : unmanaged, IBufferElementData
-            where TCollection : IReadOnlyCollection<TValue>
-        {
-            __GetCommandSystem(gameObjectEntity).AppendBuffer<TValue, TCollection>(gameObjectEntity.entity, values);
-        }
-
-        public static bool RemoveComponent<T>(this IGameObjectEntity gameObjectEntity)
-        {
-            return __GetCommandSystem(gameObjectEntity).RemoveComponent<T>(gameObjectEntity.entity);
-        }
-        
-        public static void SetComponentData<T>(this IGameObjectEntity gameObjectEntity, T value) where T : struct, IComponentData
-        {
-            __GetCommandSystem(gameObjectEntity).SetComponentData(gameObjectEntity.entity, value);
-        }
-
-        public static void SetComponentData<T>(this IGameObjectEntity gameObjectEntity, in Entity entity, T value) where T : struct, IComponentData
+        /*public static void SetComponentData<T>(this IGameObjectEntity gameObjectEntity, in Entity entity, T value) where T : struct, IComponentData
         {
             __GetCommandSystem(gameObjectEntity).SetComponentData(entity, value);
-        }
-
-        public static void SetBuffer<T>(this IGameObjectEntity gameObjectEntity, params T[] values) where T : unmanaged, IBufferElementData
-        {
-            __GetCommandSystem(gameObjectEntity).SetBuffer(gameObjectEntity.entity, values);
-        }
-
-        public static void SetBuffer<T>(this IGameObjectEntity gameObjectEntity, in NativeArray<T> values) where T : struct, IBufferElementData
-        {
-            __GetCommandSystem(gameObjectEntity).SetBuffer(gameObjectEntity.entity, values);
-        }
-
-        public static void SetBuffer<TValue, TCollection>(this IGameObjectEntity gameObjectEntity, TCollection values) 
-            where TValue : unmanaged, IBufferElementData
-            where TCollection : IReadOnlyCollection<TValue>
-        {
-            __GetCommandSystem(gameObjectEntity).SetBuffer<TValue, TCollection>(gameObjectEntity.entity, values);
-        }
+        }*/
 
         public static void SetBuffer<TValue, TCollection>(this IGameObjectEntity gameObjectEntity, in Entity entity, TCollection values)
-            where TValue : unmanaged, IBufferElementData
+            where TValue : struct, IBufferElementData
             where TCollection : IReadOnlyCollection<TValue>
         {
             __GetCommandSystem(gameObjectEntity).SetBuffer<TValue, TCollection>(entity, values);
-        }
-
-        public static void SetComponentEnabled<T>(this IGameObjectEntity gameObjectEntity, bool value)
-            where T : unmanaged, IEnableableComponent
-        {
-            __GetCommandSystem(gameObjectEntity).SetComponentEnabled<T>(gameObjectEntity.entity, value);
         }
 
         public static void SetComponentEnabled<T>(this IGameObjectEntity gameObjectEntity, in Entity entity, bool value)
@@ -847,7 +824,7 @@ namespace ZG
             __GetCommandSystem(gameObjectEntity).SetComponentEnabled<T>(entity, value);
         }
 
-        public static void SetSharedComponentData<T>(this IGameObjectEntity gameObjectEntity, T value) where T : struct, ISharedComponentData
+        /*public static void SetSharedComponentData<T>(this IGameObjectEntity gameObjectEntity, T value) where T : struct, ISharedComponentData
         {
             __GetCommandSystem(gameObjectEntity).SetSharedComponentData(gameObjectEntity.entity, value);
         }
@@ -855,26 +832,16 @@ namespace ZG
         public static void SetComponentObject<T>(this IGameObjectEntity gameObjectEntity, EntityObject<T> value)
         {
             __GetCommandSystem(gameObjectEntity).SetComponentObject(gameObjectEntity.entity, value);
-        }
-
-        public static bool TryGetComponentData<T>(this IGameObjectEntity gameObjectEntity, out T value) where T : unmanaged, IComponentData
-        {
-            return __GetCommandSystem(gameObjectEntity).TryGetComponentData(gameObjectEntity.entity, out value);
-        }
+        }*/
 
         public static bool TryGetComponentData<T>(this IGameObjectEntity gameObjectEntity, Entity entity, out T value) where T : unmanaged, IComponentData
         {
             return __GetCommandSystem(gameObjectEntity).TryGetComponentData(entity, out value);
         }
 
-        public static bool TryGetBuffer<T>(this IGameObjectEntity gameObjectEntity, int index, out T value) where T : unmanaged, IBufferElementData
-        {
-            return __GetCommandSystem(gameObjectEntity).TryGetBuffer(gameObjectEntity.entity, index, out value);
-        }
-
         public static bool TryGetBuffer<T>(this IGameObjectEntity gameObjectEntity, in Entity entity, int index, out T value) where T : unmanaged, IBufferElementData
         {
-            return __GetCommandSystem(gameObjectEntity).TryGetBuffer(entity, index, out value);
+            return __GetCommandSystem(gameObjectEntity).TryGetBuffer(entity, index, out value, out _);
         }
 
         public static bool TryGetBuffer<TValue, TList, TWrapper>(
@@ -888,31 +855,9 @@ namespace ZG
             return __GetCommandSystem(gameObjectEntity).TryGetBuffer<TValue, TList, TWrapper>(entity, ref list, ref wrapper);
         }
 
-        public static bool TryGetBuffer<TValue, TList, TWrapper>(
-            this IGameObjectEntity gameObjectEntity,
-            ref TList list,
-            ref TWrapper wrapper)
-            where TValue : unmanaged, IBufferElementData
-            where TWrapper : IWriteOnlyListWrapper<TValue, TList>
-        {
-            return __GetCommandSystem(gameObjectEntity).TryGetBuffer<TValue, TList, TWrapper>(gameObjectEntity.entity, ref list, ref wrapper);
-        }
-
-        public static bool TryGetComponentObject<T>(this IGameObjectEntity gameObjectEntity, out T value)
-        {
-            return __GetCommandSystem(gameObjectEntity).TryGetComponentObject(gameObjectEntity.entity, out value);
-        }
-
         public static bool TryGetComponentObject<T>(this IGameObjectEntity gameObjectEntity, Entity entity, out T value)
         {
             return __GetCommandSystem(gameObjectEntity).TryGetComponentObject(entity, out value);
-        }
-
-        public static T GetComponentData<T>(this IGameObjectEntity gameObjectEntity) where T : unmanaged, IComponentData
-        {
-            __GetCommandSystem(gameObjectEntity).TryGetComponentData<T>(gameObjectEntity.entity, out var value);
-
-            return value;
         }
 
         public static T GetComponentData<T>(this IGameObjectEntity gameObjectEntity, Entity entity) where T : unmanaged, IComponentData
@@ -945,28 +890,13 @@ namespace ZG
             return null;
         }
 
-        public static T[] GetBuffer<T>(this IGameObjectEntity gameObjectEntity) where T : unmanaged, IBufferElementData
-        {
-            return GetBuffer<T>(gameObjectEntity, gameObjectEntity.entity);
-        }
-
-        public static T GetBuffer<T>(this IGameObjectEntity gameObjectEntity, int index) where T : unmanaged, IBufferElementData
-        {
-            __GetCommandSystem(gameObjectEntity).TryGetBuffer<T>(gameObjectEntity.entity, index, out var value);
-
-            return value;
-        }
-
         public static T GetBuffer<T>(this IGameObjectEntity gameObjectEntity, Entity entity, int index) where T : unmanaged, IBufferElementData
         {
-            __GetCommandSystem(gameObjectEntity).TryGetBuffer<T>(entity, index, out var value);
+            bool result = __GetCommandSystem(gameObjectEntity).TryGetBuffer<T>(entity, index, out var value, out _);
+
+            UnityEngine.Assertions.Assert.IsTrue(result);
 
             return value;
-        }
-
-        public static T GetComponentObject<T>(this IGameObjectEntity gameObjectEntity) where T : class
-        {
-            return __GetCommandSystem(gameObjectEntity).TryGetComponentObject(gameObjectEntity.entity, out T value) ? value : null;
         }
 
         public static T GetComponentObject<T>(this IGameObjectEntity gameObjectEntity, Entity entity) where T : class
@@ -974,19 +904,14 @@ namespace ZG
             return __GetCommandSystem(gameObjectEntity).TryGetComponentObject(entity, out T value) ? value : null;
         }
 
-        public static bool TryGetSharedComponentData<T>(this IGameObjectEntity gameObjectEntity, out T value) where T : struct, ISharedComponentData
-        {
-            return __GetCommandSystem(gameObjectEntity).TryGetSharedComponentData(gameObjectEntity.entity, out value);
-        }
-
         public static bool TryGetSharedComponentData<T>(this IGameObjectEntity gameObjectEntity, in Entity entity, out T value) where T : struct, ISharedComponentData
         {
             return __GetCommandSystem(gameObjectEntity).TryGetSharedComponentData(entity, out value);
         }
 
-        public static bool HasComponent<T>(this IGameObjectEntity gameObjectEntity)
+        public static bool TryGetSharedComponentData<T>(this IGameObjectEntity gameObjectEntity, out T value) where T : struct, ISharedComponentData
         {
-            return __GetCommandSystem(gameObjectEntity).HasComponent<T>(gameObjectEntity.entity);
+            return __GetCommandSystem(gameObjectEntity).TryGetSharedComponentData(gameObjectEntity.entity, out value);
         }
 
         public static bool HasComponent<T>(this IGameObjectEntity gameObjectEntity, Entity entity)
@@ -996,33 +921,85 @@ namespace ZG
 
         internal static void Execute(this in GameObjectEntity.DestroiedEntity destroiedEntity)
         {
-            bool isPrefab = destroiedEntity.instanceID == destroiedEntity.info.instanceID;
+            _Add<GameObjectEntityInstanceCount>(destroiedEntity.info.world, destroiedEntity.entity, destroiedEntity.status, -1);
 
-            var world = destroiedEntity.info.world;
-            if (world != null && world.IsCreated)
-            {
-                var commandSystem = __GetCommandSystem(world);
-
-                if (isPrefab && destroiedEntity.info.isValidPrefab)
-                {
-                    commandSystem.factory.DestroyEntity(destroiedEntity.info.prefab);
-
-                    //destroiedEntity.info.SetPrefab(Entity.Null);
-                }
-
-                if (destroiedEntity.status == GameObjectEntity.Status.Created)
-                    commandSystem.DestroyEntity(destroiedEntity.entity);
-            }
-
-            if (isPrefab)
+            if (destroiedEntity.info.instanceID == destroiedEntity.instanceID)
             {
 #if UNITY_EDITOR
                 if (Application.isPlaying)
 #endif
-                UnityEngine.Object.Destroy(destroiedEntity.info);
+                    UnityEngine.Object.Destroy(destroiedEntity.info);
             }
         }
 
-        private static EntityCommandSharedSystemGroup __GetCommandSystem(IGameObjectEntity gameObjectEntity) => __GetCommandSystem(gameObjectEntity.world);
+        internal static void Destroy(this GameObjectEntityInfo info)
+        {
+            if (info == null)
+                return;
+
+            if (info.isValidPrefab)
+            {
+                var world = info.world;
+                if (world != null && world.IsCreated && info.prefab != Entity.Null)
+                    __GetCommandSystem(world).factory.DestroyEntity(info.prefab);
+
+                info.SetPrefab(Entity.Null);
+            }
+
+            UnityEngine.Object.Destroy(info);
+        }
+
+        internal static void _Add<T>(World world, in Entity entity, GameObjectEntityStatus status, int value) where T : unmanaged, IComponentData, IGameObjectEntityStatus
+        {
+            if (world == null || !world.IsCreated)
+                return;
+
+            var commandSystem = __GetCommandSystem(world);
+
+            switch (status)
+            {
+                case GameObjectEntityStatus.Creating:
+                    var factory = commandSystem.factory;
+                    _Add<T, EntityCommandSharedSystemGroup>(
+                        commandSystem, 
+                        value,
+                        entity,
+                        ref factory);
+                    break;
+                case GameObjectEntityStatus.Created:
+                    if (commandSystem.TryGetComponentData(entity, out T componentData))
+                    {
+                        componentData.value += value;
+                        commandSystem.SetComponentData(entity, componentData);
+                    }
+                    break;
+            }
+        }
+
+        internal static void _Add<T>(
+            int value,
+            in Entity entity,
+            ref EntityCommandFactory factory,
+            ref EntityManager entityManager) where T : unmanaged, IComponentData, IGameObjectEntityStatus
+        {
+            var commandSystem = __GetCommandSystem(entityManager.World);
+
+            _Add<T, EntityCommandSharedSystemGroup>(commandSystem, value, entity, ref factory);
+        }
+
+        internal static void _Add<TValue, TScheduler>(
+            in TScheduler entityManager, 
+            int value, 
+            in Entity entity, 
+            ref EntityCommandFactory factory) 
+            where TValue : unmanaged, IComponentData, IGameObjectEntityStatus
+            where TScheduler : IEntityCommandScheduler
+        {
+            __TryGetComponentData(entityManager, entity, factory, out TValue componentData);
+
+            componentData.value += value;
+            factory.instanceAssigner.SetComponentData(entity, componentData);
+        }
+
     }
 }
