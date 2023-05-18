@@ -52,7 +52,7 @@ namespace ZG
         }
 
         private static int __previousProducerJobTypeIndex;
-        private static Unity.Entities.SystemHandle __system;
+        private static Dictionary<World, SystemHandle> __systems;
         private static System.Threading.Timer __timer;
         private static List<Type> __types;
 
@@ -82,6 +82,8 @@ namespace ZG
                 }
             }
 
+            __systems = new Dictionary<World, SystemHandle>();
+
             __timer = new System.Threading.Timer(x =>
             {
                 int producerJobTypeIndex = currentProducerJobTypeIndex;
@@ -96,17 +98,17 @@ namespace ZG
 
                 __previousProducerJobTypeIndex = producerJobTypeIndex;
 
-                var worlds = Unity.Entities.World.All;
+                var worlds = World.All;
                 foreach(var world in worlds)
                 {
-                    if(world.Name == "Client")
+                    if (__systems.TryGetValue(world, out var system))
                     {
                         var worldUnmanaged = world.Unmanaged;
-                        if (worldUnmanaged.ExecutingSystem != default && worldUnmanaged.ExecutingSystem == __system)
-                            UnityEngine.Debug.LogError($"System {worldUnmanaged.GetTypeOfSystem(__system)} is timeout!");
-
-                        __system = world.Unmanaged.ExecutingSystem;
+                        if (worldUnmanaged.ExecutingSystem != default && worldUnmanaged.ExecutingSystem == system)
+                            UnityEngine.Debug.LogError($"In World {world.Name} System {worldUnmanaged.GetTypeOfSystem(system)} is timeout!");
                     }
+
+                    __systems[world] = world.Unmanaged.ExecutingSystem;
                 }
             }, null, 0, 1000);
         }
