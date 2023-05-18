@@ -5,6 +5,7 @@ using Unity.Jobs;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
+using Unity.Entities;
 
 namespace ZG
 {
@@ -19,9 +20,9 @@ namespace ZG
         {
             public static readonly SharedStatic<int> CurrentIndex = SharedStatic<int>.GetOrCreate<SharedProducerJobType>();
 
-            public static ref int GetIndex(Type producerJobType)
+            public static ref int GetIndex<T>()
             {
-                return ref SharedStatic<int>.GetOrCreate(typeof(SharedProducerJobType), producerJobType).Data;
+                return ref SharedStatic<int>.GetOrCreate<SharedProducerJobType, T>().Data;
             }
 
             /*public static void Init(Type producerJobType, int index)
@@ -42,27 +43,26 @@ namespace ZG
         private static int __previousProducerJobTypeIndex;
         private static Unity.Entities.SystemHandle __system;
         private static System.Threading.Timer __timer;
-        private static List<Type> __types;
+        private readonly static UnsafeList<TypeIndex> __types = new UnsafeList<TypeIndex>(0, Allocator.Persistent);
 
-        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.AfterAssembliesLoaded)]
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void __Init()
         {
-            if(__types == null)
-                __types = new List<Type>();
+            TypeManager.Initialize();
 
             var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-            foreach (var assembly in assemblies)
+            /*foreach (var assembly in assemblies)
             {
                 foreach (var type in assembly.GetTypes())
                     RegisterProducerJobType(type);
-            }
+            }*/
 
             __timer = new System.Threading.Timer(x =>
             {
                 int producerJobTypeIndex = currentProducerJobTypeIndex;
                 if (producerJobTypeIndex != 0)
                 {
-                    if(producerJobTypeIndex < 0 || producerJobTypeIndex > __types.Count)
+                    if(producerJobTypeIndex < 0 || producerJobTypeIndex > __types.Length)
                         UnityEngine.Debug.LogError($"WTF Of Job {producerJobTypeIndex}??");
 
                     if (__previousProducerJobTypeIndex != 0 && __previousProducerJobTypeIndex == producerJobTypeIndex)
@@ -92,10 +92,10 @@ namespace ZG
 
         public static void RegisterProducerJobType<T>() where T : IEntityCommandProducerJob
         {
-            __RegisterProducerJobType(typeof(T));
+            __RegisterProducerJobType<T>();
         }
 
-        private static bool RegisterProducerJobType(Type type)
+        /*private static bool RegisterProducerJobType(Type type)
         {
             if (Array.IndexOf(type.GetInterfaces(), typeof(IEntityCommandProducerJob)) != -1)
             {
@@ -105,16 +105,13 @@ namespace ZG
             }
 
             return false;
-        }
+        }*/
 
-        private static void __RegisterProducerJobType(Type type)
+        private static void __RegisterProducerJobType<T>()
         {
-            if (__types == null)
-                __types = new List<Type>();
+            __types.Add(TypeManager.GetTypeIndex<T>());
 
-            __types.Add(type);
-
-            SharedProducerJobType.GetIndex(type) = __types.Count;
+            SharedProducerJobType.GetIndex<T>() = __types.Length;
         }
 
         //public static FixedString128 GetProducerJobTypeName<T>() where T : IEntityCommandProducerJob => SharedProducerJobType<T>.Name.Data;
