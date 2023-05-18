@@ -13,6 +13,17 @@ namespace ZG
     {
     }
 
+    [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
+    public class RegisterEntityCommandProducerJobAttribute : Attribute
+    {
+        public Type type;
+
+        public RegisterEntityCommandProducerJobAttribute(Type type)
+        {
+            this.type = type;
+        }
+    }
+
 #if DEBUG
     public static partial class EntityCommandUtility
     {
@@ -20,9 +31,9 @@ namespace ZG
         {
             public static readonly SharedStatic<int> CurrentIndex = SharedStatic<int>.GetOrCreate<SharedProducerJobType>();
 
-            public static ref int GetIndex<T>()
+            public static ref int GetIndex(Type type)
             {
-                return ref SharedStatic<int>.GetOrCreate<SharedProducerJobType, T>().Data;
+                return ref SharedStatic<int>.GetOrCreate(typeof(SharedProducerJobType), type).Data;
             }
 
             /*public static void Init(Type producerJobType, int index)
@@ -43,26 +54,40 @@ namespace ZG
         private static int __previousProducerJobTypeIndex;
         private static Unity.Entities.SystemHandle __system;
         private static System.Threading.Timer __timer;
-        private readonly static UnsafeList<TypeIndex> __types = new UnsafeList<TypeIndex>(0, Allocator.Persistent);
+        private static List<Type> __types;
 
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void __Init()
         {
-            TypeManager.Initialize();
-
+            RegisterEntityCommandProducerJobAttribute attribute;
+            object[] attributes;
             var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-            /*foreach (var assembly in assemblies)
+            foreach (var assembly in assemblies)
             {
                 foreach (var type in assembly.GetTypes())
-                    RegisterProducerJobType(type);
-            }*/
+                    __RegisterProducerJobType(type);
+
+                attributes = assembly.GetCustomAttributes(typeof(RegisterEntityCommandProducerJobAttribute), false);
+                if (attributes != null)
+                {
+                    foreach (var temp in attributes)
+                    {
+                        attribute = temp as RegisterEntityCommandProducerJobAttribute;
+                        if (attribute == null)
+                            continue;
+
+                        if (!__RegisterProducerJobType(attribute.type))
+                            UnityEngine.Debug.LogError($"Fail to register EntityCommandProducerJob: {attribute.type}");
+                    }
+                }
+            }
 
             __timer = new System.Threading.Timer(x =>
             {
                 int producerJobTypeIndex = currentProducerJobTypeIndex;
                 if (producerJobTypeIndex != 0)
                 {
-                    if(producerJobTypeIndex < 0 || producerJobTypeIndex > __types.Length)
+                    if(producerJobTypeIndex < 0 || producerJobTypeIndex > __types.Count)
                         UnityEngine.Debug.LogError($"WTF Of Job {producerJobTypeIndex}??");
 
                     if (__previousProducerJobTypeIndex != 0 && __previousProducerJobTypeIndex == producerJobTypeIndex)
@@ -92,7 +117,7 @@ namespace ZG
 
         public static void RegisterProducerJobType<T>() where T : IEntityCommandProducerJob
         {
-            __RegisterProducerJobType<T>();
+            __RegisterProducerJobType(typeof(T));
         }
 
         /*private static bool RegisterProducerJobType(Type type)
@@ -107,11 +132,21 @@ namespace ZG
             return false;
         }*/
 
-        private static void __RegisterProducerJobType<T>()
+        private static bool __RegisterProducerJobType(Type type)
         {
-            __types.Add(TypeManager.GetTypeIndex<T>());
+            if (Array.IndexOf(type.GetInterfaces(), typeof(IEntityCommandProducerJob)) != -1)
+            {
+                if (__types == null)
+                    __types = new List<Type>();
 
-            SharedProducerJobType.GetIndex<T>() = __types.Length;
+                __types.Add(type);
+
+                SharedProducerJobType.GetIndex(type) = __types.Count;
+
+                return true;
+            }
+
+            return false;
         }
 
         //public static FixedString128 GetProducerJobTypeName<T>() where T : IEntityCommandProducerJob => SharedProducerJobType<T>.Name.Data;
