@@ -69,6 +69,26 @@ namespace ZG
             }
         }
 
+        public static void AddBuffer<TValue, TCollection>(this IGameObjectEntity gameObjectEntity, TCollection values)
+            where TValue : unmanaged, IBufferElementData
+            where TCollection : IReadOnlyCollection<TValue>
+        {
+            var entity = gameObjectEntity.entity;
+
+            var commandSystem = __GetCommandSystem(gameObjectEntity);
+            switch (gameObjectEntity.status)
+            {
+                case GameObjectEntityStatus.Creating:
+                    commandSystem.factory.AddBuffer<TValue, TCollection>(entity, values);
+                    break;
+                case GameObjectEntityStatus.Created:
+                    commandSystem.AddBuffer<TValue, TCollection>(entity, values);
+                    break;
+                default:
+                    throw new InvalidOperationException();
+            }
+        }
+
         public static void AppendBuffer<T>(this IGameObjectEntity gameObjectEntity, params T[] values) where T : unmanaged, IBufferElementData
         {
             var entity = gameObjectEntity.entity;

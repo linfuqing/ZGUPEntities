@@ -469,6 +469,15 @@ namespace ZG
             instanceAssigner.SetBuffer(true, prefab, values);
         }
 
+        public void AddBuffer<TValue, TCollection>(in Entity prefab, TCollection values)
+            where TValue : unmanaged, IBufferElementData
+            where TCollection : IReadOnlyCollection<TValue>
+        {
+            AddComponent<TValue>(prefab);
+
+            instanceAssigner.SetBuffer<TValue, TCollection>(true, prefab, values);
+        }
+
         public void AppendBuffer<T>(in Entity prefab, T[] values) where T : unmanaged, IBufferElementData
         {
             AddComponent<T>(prefab);

@@ -370,12 +370,12 @@ namespace ZG
         {
             get
             {
-                if (status != GameObjectEntityStatus.Created)
+                /*if (status != GameObjectEntityStatus.Created)
                     this.ExecuteAllCommands();
 
                 UnityEngine.Assertions.Assert.IsFalse(__entity.Index < 0, $"{name} : {status} : {__entity}");
 
-                UnityEngine.Assertions.Assert.AreNotEqual(Entity.Null, __entity, $"{name} : {status} : {__entity}");
+                UnityEngine.Assertions.Assert.AreNotEqual(Entity.Null, __entity, $"{name} : {status} : {__entity}");*/
 
                 return __entity;
             }
@@ -434,7 +434,7 @@ namespace ZG
                     __instanceID = GetInstanceID();
 
                     if (__info != null && __info.instanceID == __instanceID)
-                        Destroy(__info);
+                        DestroyImmediate(__info);
 
                     __info = GameObjectEntityInfo.Create(__instanceID, componentHash, _worldName);
                 }
@@ -513,7 +513,7 @@ namespace ZG
                 __Rebuild();
         }
 
-        protected void Awake()
+        public void Awake()
         {
             __ForceBuildIfNeed();
         }
@@ -738,13 +738,33 @@ namespace ZG
             } while (Interlocked.CompareExchange(ref __deserializedEntities, this, __next) != __next);
         }
 
-        Entity IGameObjectEntity.entity => __entity;
+        //Entity IGameObjectEntity.entity => __entity;
 
         void ISerializationCallbackReceiver.OnAfterDeserialize()
         {
-            if (status != GameObjectEntityStatus.None)
-                return;
-            
+            switch (status)
+            {
+                case GameObjectEntityStatus.None:
+                    break;
+                case GameObjectEntityStatus.Deserializing:
+                    for (var deserializedEntity = __deserializedEntities; deserializedEntity != null; deserializedEntity = deserializedEntity.__next)
+                    {
+                        if (deserializedEntity == this)
+                            return;
+                    }
+
+                    __next = null;
+
+                    break;
+                case GameObjectEntityStatus.Creating:
+                case GameObjectEntityStatus.Created:
+                    if (__info != null && __info.isValid)
+                        return;
+                    break;
+                default:
+                    return;
+            }
+
             status = GameObjectEntityStatus.Deserializing;
 
             isInstance = __info != null && __info.isValid;
@@ -946,7 +966,7 @@ namespace ZG
                 info.SetPrefab(Entity.Null);
             }
 
-            UnityEngine.Object.Destroy(info);
+            UnityEngine.Object.DestroyImmediate(info);
         }
 
         internal static void _Add<T>(World world, in Entity entity, GameObjectEntityStatus status, int value) where T : unmanaged, IComponentData, IGameObjectEntityStatus

@@ -75,7 +75,7 @@ namespace ZG
                 private set;
             }
 
-            public bool isValid => version > 0;
+            public bool isValid => version > 0 && entityArchetype.Valid && world != null;
 
             public bool isValidPrefab => version == prefabVersion;
 

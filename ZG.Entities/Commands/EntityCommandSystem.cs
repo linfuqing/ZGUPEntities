@@ -1293,6 +1293,11 @@ namespace ZG
         public static void AddBuffer<T>(this IEntityCommandScheduler scheduler, in Entity entity, params T[] values) where T : unmanaged, IBufferElementData => scheduler.commander.AddBuffer(entity, values);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void AddBuffer<TValue, TCollection>(this IEntityCommandScheduler scheduler, in Entity entity, TCollection values)
+            where TValue : unmanaged, IBufferElementData
+            where TCollection : IReadOnlyCollection<TValue> => scheduler.commander.AddBuffer<TValue, TCollection>(entity, values);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void AddSharedComponentData<T>(this IEntityCommandScheduler scheduler, in Entity entity, in T value) where T : struct, ISharedComponentData => scheduler.sharedComponentCommander.AddSharedComponentData(entity, value);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

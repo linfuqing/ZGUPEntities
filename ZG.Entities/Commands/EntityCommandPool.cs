@@ -56,9 +56,11 @@ namespace ZG
         private static System.Threading.Timer __timer;
         private static List<Type> __types;
 
-        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.AfterAssembliesLoaded)]
         private static void __Init()
         {
+            __types = new List<Type>();
+            
             RegisterEntityCommandProducerJobAttribute attribute;
             object[] attributes;
             var assemblies = AppDomain.CurrentDomain.GetAssemblies();
@@ -83,6 +85,9 @@ namespace ZG
             }
 
             __systems = new Dictionary<World, SystemHandle>();
+
+            if (__timer != null)
+                __timer.Dispose();
 
             __timer = new System.Threading.Timer(x =>
             {
@@ -119,6 +124,9 @@ namespace ZG
 
         public static void RegisterProducerJobType<T>() where T : IEntityCommandProducerJob
         {
+            if (__types == null)
+                __Init();
+
             __RegisterProducerJobType(typeof(T));
         }
 
@@ -138,9 +146,6 @@ namespace ZG
         {
             if (Array.IndexOf(type.GetInterfaces(), typeof(IEntityCommandProducerJob)) != -1)
             {
-                if (__types == null)
-                    __types = new List<Type>();
-
                 __types.Add(type);
 
                 SharedProducerJobType.GetIndex(type) = __types.Count;
