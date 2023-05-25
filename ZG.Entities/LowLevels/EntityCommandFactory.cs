@@ -1025,7 +1025,9 @@ namespace ZG
                 componentType.AccessModeType = ComponentType.AccessMode.ReadWrite;
                 do
                 {
-                    componentTypes.Add(componentType);
+                    if(!componentTypes.Contains(componentType))
+                        componentTypes.Add(componentType);
+
                     if (componentTypes.Length == componentTypes.Capacity)
                     {
                         if(entityArray.IsCreated)
