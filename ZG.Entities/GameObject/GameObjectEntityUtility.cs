@@ -258,7 +258,8 @@ namespace ZG
                 case GameObjectEntityStatus.Creating:
                     return __TryGetComponentData(commandSystem, entity, commandSystem.factory, out value);
                 case GameObjectEntityStatus.Created:
-                    return commandSystem.TryGetComponentData(entity, out value);
+                    value = default;
+                    return commandSystem.TryGetComponentData(entity, ref value);
                 default:
                     throw new InvalidOperationException();
             }
@@ -274,7 +275,8 @@ namespace ZG
                 case GameObjectEntityStatus.Creating:
                     return __TryGetBuffer(index, commandSystem, entity, commandSystem.factory, out value);
                 case GameObjectEntityStatus.Created:
-                    return commandSystem.TryGetBuffer(entity, index, out value, out _);
+                    value = default;
+                    return commandSystem.TryGetBuffer(entity, index, ref value);
                 default:
                     throw new InvalidOperationException();
             }
@@ -339,7 +341,7 @@ namespace ZG
         {
             bool result = TryGetComponentData<T>(gameObjectEntity, out var value);
 
-            UnityEngine.Assertions.Assert.IsTrue(result);
+            UnityEngine.Assertions.Assert.IsTrue(result, gameObjectEntity.ToString());
 
             return value;
         }
@@ -419,15 +421,11 @@ namespace ZG
         {
             value = default;
 
-            if (factory.instanceAssigner.TryGetComponentData(entity, ref value))
-                return true;
+            bool result = factory.TryGetComponentData(entity, ref value, out Entity instance);
+            if (instance != Entity.Null)
+                result = entityManager.TryGetComponentData(instance, ref value, result) || result;
 
-            var instances = factory.instances;
-            instances.lookupJobManager.CompleteReadOnlyDependency();
-
-            return instances.reader.TryGetValue(entity, out var instance) ?
-                entityManager.TryGetComponentData(instance, out value) :
-                factory.HasComponent<TValue>(entity);
+            return result || factory.HasComponent<TValue>(entity);
         }
 
         private static bool __TryGetBuffer<TValue, TScheduler>(
@@ -439,18 +437,34 @@ namespace ZG
             where TValue : unmanaged, IBufferElementData
             where TScheduler : IEntityCommandScheduler
         {
+            bool result;
+            int indexOffset = 0;
             value = default;
 
-            int indexOffset = 0;
-            var instances = factory.instances;
-            instances.lookupJobManager.CompleteReadOnlyDependency();
-            return instances.reader.TryGetValue(entity, out var instance) &&
-                scheduler.TryGetBuffer(instance, index, out value, out indexOffset) || 
-                factory.instanceAssigner.TryGetBuffer(entity, index, ref value, indexOffset);
+            Entity instance = factory.GetEntity(entity);
+            if (instance != Entity.Null)
+            {
+                var entityManager = scheduler.entityManager;
+                if (entityManager.HasComponent<TValue>(instance))
+                {
+                    var buffer = entityManager.GetBuffer<TValue>(instance);
+                    indexOffset = buffer.Length;
+
+                    result = indexOffset > index;
+
+                    value = result ? buffer[index] : default;
+                }
+            }
+
+            result = factory.TryGetBuffer(entity, index, ref value, out _, indexOffset);
+            if (instance != Entity.Null)
+                result = scheduler.TryGetBuffer(instance, index, ref value, indexOffset) || result;
+
+            return result;
         }
 
         private static bool __TryGetBuffer<TValue, TList, TWrapper, TScheduler>(
-            in TScheduler entityManager,
+            in TScheduler scheduler,
             in Entity entity,
             in EntityCommandFactory factory,
             ref TWrapper wrapper,
@@ -459,15 +473,28 @@ namespace ZG
             where TWrapper : IWriteOnlyListWrapper<TValue, TList>
             where TScheduler : IEntityCommandScheduler
         {
-            if (factory.instanceAssigner.TryGetBuffer<TValue, TList, TWrapper>(entity, ref list, ref wrapper))
-                return true;
+            bool result = false;
+            Entity instance = factory.GetEntity(entity);
+            if (instance != Entity.Null)
+            {
+                var entityManager = scheduler.entityManager;
+                if (entityManager.HasComponent<TValue>(instance))
+                {
+                    var buffer = entityManager.GetBuffer<TValue>(instance);
+                    int length = buffer.Length;
+                    wrapper.SetCount(ref list, length);
+                    for (int i = 0; i < length; ++i)
+                        wrapper.Set(ref list, buffer[i], i);
 
-            var instances = factory.instances;
-            instances.lookupJobManager.CompleteReadOnlyDependency();
+                    result = true;
+                }
+            }
 
-            return instances.reader.TryGetValue(entity, out var instance) ? 
-                entityManager.TryGetBuffer<TValue, TList, TWrapper>(instance, ref list, ref wrapper) :
-                factory.HasComponent<TValue>(entity);
+            result = factory.TryGetBuffer<TValue, TList, TWrapper>(entity, ref list, ref wrapper, out _) || result;
+            if (instance != Entity.Null)
+                result = scheduler.TryGetBuffer<TValue, TList, TWrapper>(instance, ref list, ref wrapper, result) || result;
+
+            return result || factory.HasComponent<TValue>(entity);
         }
 
         private static EntityCommandSharedSystemGroup __GetCommandSystem(IGameObjectEntity gameObjectEntity) => __GetCommandSystem(gameObjectEntity.world);

@@ -4,9 +4,7 @@ using System.Runtime.CompilerServices;
 using Unity.Jobs;
 using Unity.Burst;
 using Unity.Entities;
-using Unity.Mathematics;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
 using Unity.Profiling;
 
 namespace ZG
@@ -1308,21 +1306,14 @@ namespace ZG
             where TValue : unmanaged, IBufferElementData
             where TCollection : IReadOnlyCollection<TValue> => scheduler.commander.AppendBuffer<TValue, TCollection>(entity, values);
 
-        public static TValue GetComponentData<TValue>(this IEntityCommandScheduler scheduler, in Entity entity)
-            where TValue : unmanaged, IComponentData
-        {
-            TryGetComponentData<TValue>(scheduler, entity, out var value);
-
-            return value;
-        }
-
-        public static bool TryGetComponentData<TValue>(this IEntityCommandScheduler scheduler, in Entity entity, out TValue value) 
+        public static bool TryGetComponentData<TValue>(this IEntityCommandScheduler scheduler, in Entity entity, ref TValue value, bool isOverride = false) 
             where TValue : unmanaged, IComponentData
         {
             var entityManager = scheduler.entityManager;
             if (entityManager.HasComponent<TValue>(entity))
             {
-                value = entityManager.GetComponentData<TValue>(entity);
+                if(!isOverride)
+                    value = entityManager.GetComponentData<TValue>(entity);
 
                 scheduler.commander.TryGetComponentData(entity, ref value);
 
@@ -1364,7 +1355,8 @@ namespace ZG
 
         public static bool TryGetComponentObject<TValue>(this IEntityCommandScheduler scheduler, in Entity entity, out TValue value)
         {
-            if(TryGetComponentData<EntityObject<TValue>>(scheduler, entity, out var result))
+            EntityObject<TValue> result = default;
+            if (TryGetComponentData(scheduler, entity, ref result))
             {
                 value = result.value;
 
@@ -1380,18 +1372,22 @@ namespace ZG
             this IEntityCommandScheduler scheduler,
             in Entity entity,
             ref TList list,
-            ref TWrapper wrapper)
+            ref TWrapper wrapper, 
+            bool isOverride = false)
             where TValue : unmanaged, IBufferElementData
             where TWrapper : IWriteOnlyListWrapper<TValue, TList>
         {
             var entityManager = scheduler.entityManager;
             if (entityManager.HasComponent<TValue>(entity))
             {
-                var buffer = entityManager.GetBuffer<TValue>(entity);
-                int length = buffer.Length;
-                wrapper.SetCount(ref list, length);
-                for (int i = 0; i < length; ++i)
-                    wrapper.Set(ref list, buffer[i], i);
+                if (!isOverride)
+                {
+                    var buffer = entityManager.GetBuffer<TValue>(entity);
+                    int length = buffer.Length;
+                    wrapper.SetCount(ref list, length);
+                    for (int i = 0; i < length; ++i)
+                        wrapper.Set(ref list, buffer[i], i);
+                }
 
                 scheduler.commander.TryGetBuffer<TValue, TList, TWrapper>(entity, ref list, ref wrapper);
 
@@ -1401,25 +1397,27 @@ namespace ZG
             return scheduler.commander.TryGetBuffer<TValue, TList, TWrapper>(entity, ref list, ref wrapper);
         }
 
-        public static bool TryGetBuffer<T>(this IEntityCommandScheduler scheduler, in Entity entity, int index, out T value, out int indexOffset)
+        public static bool TryGetBuffer<T>(
+            this IEntityCommandScheduler scheduler, 
+            in Entity entity, 
+            int index, 
+            ref T value, 
+            int indexOffset = 0)
             where T : unmanaged, IBufferElementData
         {
             bool result = false;
-
-            var entityManager = scheduler.entityManager;
-            if (entityManager.HasComponent<T>(entity))
+            if (indexOffset == 0)
             {
-                var buffer = entityManager.GetBuffer<T>(entity);
-                indexOffset = buffer.Length;
+                var entityManager = scheduler.entityManager;
+                if (entityManager.HasComponent<T>(entity))
+                {
+                    var buffer = entityManager.GetBuffer<T>(entity);
+                    indexOffset = buffer.Length;
 
-                result = indexOffset > index;
-                value = result ? buffer[index] : default;
-            }
-            else
-            {
-                indexOffset = 0;
+                    result = indexOffset > index;
 
-                value = default;
+                    value = result ? buffer[index] : default;
+                }
             }
 
             return scheduler.commander.TryGetBuffer(entity, index, ref value, indexOffset) || result;

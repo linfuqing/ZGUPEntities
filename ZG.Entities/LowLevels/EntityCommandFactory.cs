@@ -388,26 +388,212 @@ namespace ZG
             return new EntityCommandRef(refIndex, __entities);*/
         }
 
-        public bool HasComponent<T>(in Entity entity)
+        public bool TryGetBuffer<T>(
+            in Entity prefab, 
+            int index, 
+            ref T value, 
+            out Entity entity, 
+            int indexOffset = 0) where T : struct, IBufferElementData
+        {
+            if (instanceAssigner.TryGetBuffer(prefab, index, ref value, indexOffset))
+            {
+                entity = Entity.Null;
+
+                return true;
+            }
+
+            var instances = this.instances;
+            instances.lookupJobManager.CompleteReadOnlyDependency();
+
+            var reader = instances.reader;
+            if (reader.TryGetValue(prefab, out entity))
+                return false;
+            Entity key = prefab;
+            foreach (var pair in __instantiateCommander)
+            {
+                if (pair.Value == prefab)
+                {
+                    key = pair.Key;
+
+                    break;
+                }
+            }
+
+            if (prefabAssigner.TryGetBuffer(key, index, ref value, indexOffset))
+            {
+                entity = Entity.Null;
+
+                return true;
+            }
+
+            if (!reader.TryGetValue(key, out entity))
+                entity = Entity.Null;
+
+            return false;
+        }
+
+        public bool TryGetBuffer<TValue, TList, TWrapper>(
+            in Entity prefab,
+            ref TList list,
+            ref TWrapper wrapper, 
+            out Entity entity)
+            where TValue : struct, IBufferElementData
+            where TWrapper : IWriteOnlyListWrapper<TValue, TList>
+        {
+            if (instanceAssigner.TryGetBuffer<TValue, TList, TWrapper>(prefab, ref list, ref wrapper))
+            {
+                entity = Entity.Null;
+
+                return true;
+            }
+
+            var instances = this.instances;
+            instances.lookupJobManager.CompleteReadOnlyDependency();
+
+            var reader = instances.reader;
+            if (reader.TryGetValue(prefab, out entity))
+                return false;
+
+            Entity key = prefab;
+            foreach (var pair in __instantiateCommander)
+            {
+                if (pair.Value == prefab)
+                {
+                    key = pair.Key;
+
+                    break;
+                }
+            }
+
+            if (prefabAssigner.TryGetBuffer<TValue, TList, TWrapper>(key, ref list, ref wrapper))
+            {
+                entity = Entity.Null;
+
+                return true;
+            }
+
+            if (!reader.TryGetValue(key, out entity))
+                entity = Entity.Null;
+
+            return false;
+        }
+
+        public bool TryGetComponentData<T>(in Entity prefab, ref T value, out Entity entity) where T : struct, IComponentData
+        {
+            if (instanceAssigner.TryGetComponentData(prefab, ref value))
+            {
+                entity = Entity.Null;
+
+                return true;
+            }
+
+            var instances = this.instances;
+            instances.lookupJobManager.CompleteReadOnlyDependency();
+
+            var reader = instances.reader;
+            if (reader.TryGetValue(prefab, out entity))
+                return false;
+
+            Entity key = prefab;
+            foreach (var pair in __instantiateCommander)
+            {
+                if (pair.Value == prefab)
+                {
+                    key = pair.Key;
+
+                    break;
+                }
+            }
+
+            if (prefabAssigner.TryGetComponentData(key, ref value))
+            {
+                entity = Entity.Null;
+
+                return true;
+            }
+
+            if (!reader.TryGetValue(key, out entity))
+                entity = Entity.Null;
+
+            return false;
+        }
+
+        public Entity GetEntity(in Entity prefab)
+        {
+            var instances = this.instances;
+            instances.lookupJobManager.CompleteReadOnlyDependency();
+
+            var reader = instances.reader;
+            if (reader.TryGetValue(prefab, out Entity entity))
+                return entity;
+
+            Entity key = prefab;
+            foreach (var pair in __instantiateCommander)
+            {
+                if (pair.Value == prefab)
+                {
+                    key = pair.Key;
+
+                    break;
+                }
+            }
+
+            if (reader.TryGetValue(key, out entity))
+                return entity;
+
+            return Entity.Null;
+        }
+
+        public bool HasComponent<T>(in Entity prefab)
         {
             var destination = TypeManager.GetTypeIndex<T>();
-            if (__systemStateComponentTypes.TryGetFirstValue(entity, out var source, out var iterator))
+
+            if (__instanceComponentTypes.TryGetFirstValue(prefab, out var source, out var iterator))
             {
                 do
                 {
                     if (source == destination)
                         return true;
+
                 } while (__instanceComponentTypes.TryGetNextValue(out source, ref iterator));
             }
 
-            if (__instanceComponentTypes.TryGetFirstValue(entity, out source, out iterator))
+            Entity key = prefab;
+            foreach (var pair in __instantiateCommander)
+            {
+                if (pair.Value == prefab)
+                {
+                    key = pair.Key;
+
+                    break;
+                }
+            }
+
+            if (__systemStateComponentTypes.TryGetFirstValue(key, out source, out iterator))
             {
                 do
                 {
                     if (source == destination)
                         return true;
 
-                } while (__instanceComponentTypes.TryGetNextValue(out source, ref iterator));
+                } while (__systemStateComponentTypes.TryGetNextValue(out source, ref iterator));
+            }
+
+            foreach(var pair in __createEntityCommander)
+            {
+                if(pair.Value == key)
+                {
+                    using(var componentTypes = pair.Key.GetComponentTypes(Unity.Collections.Allocator.Temp))
+                    {
+                        foreach(var componentType in componentTypes)
+                        {
+                            if (componentType.TypeIndex == destination)
+                                return true;
+                        }
+                    }
+
+                    break;
+                }
             }
 
             return false;

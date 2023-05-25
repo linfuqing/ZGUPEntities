@@ -856,12 +856,14 @@ namespace ZG
 
         public static bool TryGetComponentData<T>(this IGameObjectEntity gameObjectEntity, Entity entity, out T value) where T : unmanaged, IComponentData
         {
-            return __GetCommandSystem(gameObjectEntity).TryGetComponentData(entity, out value);
+            value = default;
+            return __GetCommandSystem(gameObjectEntity).TryGetComponentData(entity, ref value);
         }
 
         public static bool TryGetBuffer<T>(this IGameObjectEntity gameObjectEntity, in Entity entity, int index, out T value) where T : unmanaged, IBufferElementData
         {
-            return __GetCommandSystem(gameObjectEntity).TryGetBuffer(entity, index, out value, out _);
+            value = default;
+            return __GetCommandSystem(gameObjectEntity).TryGetBuffer(entity, index, ref value);
         }
 
         public static bool TryGetBuffer<TValue, TList, TWrapper>(
@@ -882,7 +884,8 @@ namespace ZG
 
         public static T GetComponentData<T>(this IGameObjectEntity gameObjectEntity, Entity entity) where T : unmanaged, IComponentData
         {
-            __GetCommandSystem(gameObjectEntity).TryGetComponentData<T>(entity, out var value);
+            T value = default;
+            __GetCommandSystem(gameObjectEntity).TryGetComponentData<T>(entity, ref value);
 
             return value;
         }
@@ -912,7 +915,8 @@ namespace ZG
 
         public static T GetBuffer<T>(this IGameObjectEntity gameObjectEntity, Entity entity, int index) where T : unmanaged, IBufferElementData
         {
-            bool result = __GetCommandSystem(gameObjectEntity).TryGetBuffer<T>(entity, index, out var value, out _);
+            T value = default;
+            bool result = __GetCommandSystem(gameObjectEntity).TryGetBuffer<T>(entity, index, ref value);
 
             UnityEngine.Assertions.Assert.IsTrue(result);
 
@@ -987,7 +991,8 @@ namespace ZG
                         ref factory);
                     break;
                 case GameObjectEntityStatus.Created:
-                    if (commandSystem.TryGetComponentData(entity, out T componentData))
+                    T componentData = default;
+                    if (commandSystem.TryGetComponentData(entity, ref componentData))
                     {
                         componentData.value += value;
                         commandSystem.SetComponentData(entity, componentData);
