@@ -17,55 +17,64 @@ namespace ZG
 
         public static void AddComponent<T>(this IGameObjectEntity gameObjectEntity)
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    commandSystem.factory.AddComponent<T>(entity);
-                    break;
-                case GameObjectEntityStatus.Created:
-                    commandSystem.AddComponent<T>(entity);
-                    break;
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        commandSystem.factory.AddComponent<T>(entity);
+                        break;
+                    case GameObjectEntityStatus.Created:
+                        commandSystem.AddComponent<T>(entity);
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
         }
 
         public static void AddComponentData<T>(this IGameObjectEntity gameObjectEntity, T value) where T : struct, IComponentData
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    commandSystem.factory.AddComponentData(entity, value);
-                    break;
-                case GameObjectEntityStatus.Created:
-                    commandSystem.AddComponentData(entity, value);
-                    break;
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        commandSystem.factory.AddComponentData(entity, value);
+                        break;
+                    case GameObjectEntityStatus.Created:
+                        commandSystem.AddComponentData(entity, value);
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
         }
 
         public static void AddBuffer<T>(this IGameObjectEntity gameObjectEntity, params T[] values) where T : unmanaged, IBufferElementData
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    commandSystem.factory.AddBuffer(entity, values);
-                    break;
-                case GameObjectEntityStatus.Created:
-                    commandSystem.AddBuffer(entity, values);
-                    break;
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        commandSystem.factory.AddBuffer(entity, values);
+                        break;
+                    case GameObjectEntityStatus.Created:
+                        commandSystem.AddBuffer(entity, values);
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
         }
 
@@ -73,37 +82,43 @@ namespace ZG
             where TValue : unmanaged, IBufferElementData
             where TCollection : IReadOnlyCollection<TValue>
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    commandSystem.factory.AddBuffer<TValue, TCollection>(entity, values);
-                    break;
-                case GameObjectEntityStatus.Created:
-                    commandSystem.AddBuffer<TValue, TCollection>(entity, values);
-                    break;
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        commandSystem.factory.AddBuffer<TValue, TCollection>(entity, values);
+                        break;
+                    case GameObjectEntityStatus.Created:
+                        commandSystem.AddBuffer<TValue, TCollection>(entity, values);
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
         }
 
         public static void AppendBuffer<T>(this IGameObjectEntity gameObjectEntity, params T[] values) where T : unmanaged, IBufferElementData
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    commandSystem.factory.AppendBuffer(entity, values);
-                    break;
-                case GameObjectEntityStatus.Created:
-                    commandSystem.AppendBuffer<T, T[]>(entity, values);
-                    break;
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        commandSystem.factory.AppendBuffer(entity, values);
+                        break;
+                    case GameObjectEntityStatus.Created:
+                        commandSystem.AppendBuffer<T, T[]>(entity, values);
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
         }
 
@@ -111,91 +126,106 @@ namespace ZG
             where TValue : unmanaged, IBufferElementData
             where TCollection : IReadOnlyCollection<TValue>
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    commandSystem.factory.AppendBuffer<TValue, TCollection>(entity, values);
-                    break;
-                case GameObjectEntityStatus.Created:
-                    commandSystem.AppendBuffer<TValue, TCollection>(entity, values);
-                    break;
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        commandSystem.factory.AppendBuffer<TValue, TCollection>(entity, values);
+                        break;
+                    case GameObjectEntityStatus.Created:
+                        commandSystem.AppendBuffer<TValue, TCollection>(entity, values);
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
         }
 
         public static void RemoveComponent<T>(this IGameObjectEntity gameObjectEntity) where T : struct
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    commandSystem.factory.RemoveComponent<T>(entity);
-                    break;
-                case GameObjectEntityStatus.Created:
-                    commandSystem.RemoveComponent<T>(entity);
-                    break;
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        commandSystem.factory.RemoveComponent<T>(entity);
+                        break;
+                    case GameObjectEntityStatus.Created:
+                        commandSystem.RemoveComponent<T>(entity);
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
         }
 
         public static void SetComponentData<T>(this IGameObjectEntity gameObjectEntity, in T value) where T : struct, IComponentData
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    commandSystem.factory.SetComponentData(entity, value);
-                    break;
-                case GameObjectEntityStatus.Created:
-                    commandSystem.SetComponentData(entity, value);
-                    break;
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        commandSystem.factory.SetComponentData(entity, value);
+                        break;
+                    case GameObjectEntityStatus.Created:
+                        commandSystem.SetComponentData(entity, value);
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
         }
 
         public static void SetBuffer<T>(this IGameObjectEntity gameObjectEntity, params T[] values) where T : unmanaged, IBufferElementData
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    commandSystem.factory.SetBuffer(entity, values);
-                    break;
-                case GameObjectEntityStatus.Created:
-                    commandSystem.SetBuffer(entity, values);
-                    break;
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        commandSystem.factory.SetBuffer(entity, values);
+                        break;
+                    case GameObjectEntityStatus.Created:
+                        commandSystem.SetBuffer(entity, values);
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
         }
 
         public static void SetBuffer<T>(this IGameObjectEntity gameObjectEntity, in NativeArray<T> values) where T : struct, IBufferElementData
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    commandSystem.factory.SetBuffer(entity, values);
-                    break;
-                case GameObjectEntityStatus.Created:
-                    commandSystem.SetBuffer(entity, values);
-                    break;
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        commandSystem.factory.SetBuffer(entity, values);
+                        break;
+                    case GameObjectEntityStatus.Created:
+                        commandSystem.SetBuffer(entity, values);
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
         }
 
@@ -203,38 +233,44 @@ namespace ZG
             where TValue : struct, IBufferElementData
             where TCollection : IReadOnlyCollection<TValue>
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    commandSystem.factory.SetBuffer<TValue, TCollection>(entity, values);
-                    break;
-                case GameObjectEntityStatus.Created:
-                    commandSystem.SetBuffer<TValue, TCollection>(entity, values);
-                    break;
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        commandSystem.factory.SetBuffer<TValue, TCollection>(entity, values);
+                        break;
+                    case GameObjectEntityStatus.Created:
+                        commandSystem.SetBuffer<TValue, TCollection>(entity, values);
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
         }
 
         public static void SetComponentEnabled<T>(this IGameObjectEntity gameObjectEntity, bool value)
             where T : unmanaged, IEnableableComponent
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    commandSystem.factory.SetComponentEnabled<T>(entity, value);
-                    break;
-                case GameObjectEntityStatus.Created:
-                    commandSystem.SetComponentEnabled<T>(entity, value);
-                    break;
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        commandSystem.factory.SetComponentEnabled<T>(entity, value);
+                        break;
+                    case GameObjectEntityStatus.Created:
+                        commandSystem.SetComponentEnabled<T>(entity, value);
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
         }
 
@@ -250,36 +286,50 @@ namespace ZG
 
         public static bool TryGetComponentData<T>(this IGameObjectEntity gameObjectEntity, out T value) where T : unmanaged, IComponentData
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    return __TryGetComponentData(commandSystem, entity, commandSystem.factory, out value);
-                case GameObjectEntityStatus.Created:
-                    value = default;
-                    return commandSystem.TryGetComponentData(entity, ref value);
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        return __TryGetComponentData(commandSystem, entity, commandSystem.factory, out value);
+                    case GameObjectEntityStatus.Created:
+                        value = default;
+                        return commandSystem.TryGetComponentData(entity, ref value);
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
+
+            value = default;
+
+            return false;
         }
 
         public static bool TryGetBuffer<T>(this IGameObjectEntity gameObjectEntity, int index, out T value) where T : unmanaged, IBufferElementData
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    return __TryGetBuffer(index, commandSystem, entity, commandSystem.factory, out value);
-                case GameObjectEntityStatus.Created:
-                    value = default;
-                    return commandSystem.TryGetBuffer(entity, index, ref value);
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        return __TryGetBuffer(index, commandSystem, entity, commandSystem.factory, out value);
+                    case GameObjectEntityStatus.Created:
+                        value = default;
+                        return commandSystem.TryGetBuffer(entity, index, ref value);
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
+
+            value = default;
+
+            return false;
         }
 
         public static bool TryGetBuffer<TValue, TList, TWrapper>(
@@ -289,52 +339,64 @@ namespace ZG
             where TValue : unmanaged, IBufferElementData
             where TWrapper : IWriteOnlyListWrapper<TValue, TList>
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    return __TryGetBuffer<TValue, TList, TWrapper, EntityCommandSharedSystemGroup>(
-                        commandSystem,
-                        entity,
-                        commandSystem.factory,
-                        ref wrapper,
-                        ref list);
-                case GameObjectEntityStatus.Created:
-                    return commandSystem.TryGetBuffer<TValue, TList, TWrapper>(entity, ref list, ref wrapper);
-                default:
-                    throw new InvalidOperationException();
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        return __TryGetBuffer<TValue, TList, TWrapper, EntityCommandSharedSystemGroup>(
+                            commandSystem,
+                            entity,
+                            commandSystem.factory,
+                            ref wrapper,
+                            ref list);
+                    case GameObjectEntityStatus.Created:
+                        return commandSystem.TryGetBuffer<TValue, TList, TWrapper>(entity, ref list, ref wrapper);
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
+
+            return false;
         }
 
         public static bool TryGetComponentObject<T>(this IGameObjectEntity gameObjectEntity, out T value)
         {
-            var entity = gameObjectEntity.entity;
-
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            if (commandSystem != null)
             {
-                case GameObjectEntityStatus.Creating:
-                    if (__TryGetComponentData(
-                        commandSystem,
-                        entity,
-                        commandSystem.factory,
-                        out EntityObject<T> target))
-                    {
-                        value = target.value;
+                var entity = gameObjectEntity.entity;
 
-                        return true;
-                    }
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        if (__TryGetComponentData(
+                            commandSystem,
+                            entity,
+                            commandSystem.factory,
+                            out EntityObject<T> target))
+                        {
+                            value = target.value;
 
-                    value = default;
+                            return true;
+                        }
 
-                    return false;
-                case GameObjectEntityStatus.Created:
-                    return commandSystem.TryGetComponentObject(entity, out value);
-                default:
-                    throw new InvalidOperationException();
+                        value = default;
+
+                        return false;
+                    case GameObjectEntityStatus.Created:
+                        return commandSystem.TryGetComponentObject(entity, out value);
+                    default:
+                        throw new InvalidOperationException();
+                }
             }
+
+            value = default;
+
+            return false;
         }
 
         public static T GetComponentData<T>(this IGameObjectEntity gameObjectEntity) where T : unmanaged, IComponentData
@@ -501,11 +563,13 @@ namespace ZG
 
         private static EntityCommandSharedSystemGroup __GetCommandSystem(World world)
         {
+            if (!world.IsCreated)
+                return null;
+
             if (__commander == null || __commander.World != world)
                 __commander = world.GetExistingSystemManaged<EntityCommandSharedSystemGroup>();
 
             return __commander;
         }
-
     }
 }

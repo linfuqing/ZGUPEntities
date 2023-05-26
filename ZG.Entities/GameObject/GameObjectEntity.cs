@@ -513,7 +513,7 @@ namespace ZG
                 __Rebuild();
         }
 
-        public void Awake()
+        protected void Awake()
         {
             __ForceBuildIfNeed();
         }
