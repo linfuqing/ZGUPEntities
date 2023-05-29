@@ -508,7 +508,9 @@ namespace ZG
 
             public void Execute(int index)
             {
-                instances[index].value.scrollRect.normalizedPosition = nodes[index].normalizedPosition;
+                var scrollRect = instances[index].value.scrollRect;
+                if(scrollRect != null)
+                    scrollRect.normalizedPosition = nodes[index].normalizedPosition;
             }
         }
 

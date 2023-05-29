@@ -353,23 +353,11 @@ namespace ZG
             return entity;
         }
 
-        public bool InitEntity(in Entity entity, in EntityArchetype entityArchetype)
+        public void CreateEntity(in Entity entity, in EntityArchetype entityArchetype)
         {
             //__CompletePrefabJob();
 
-            if(__createEntityCommander.TryGetFirstValue(entityArchetype, out Entity prefab, out var iterator))
-            {
-                do
-                {
-                    if (prefab == entity)
-                        return false;
-
-                } while (__createEntityCommander.TryGetNextValue(out prefab, ref iterator));
-            }
-
             __createEntityCommander.Add(entityArchetype, entity);
-
-            return true;
         }
 
         public void Instantiate(in Entity entity, in Entity prefab)
@@ -379,6 +367,7 @@ namespace ZG
             //int refIndex = __entities.length;
 
             //__entities.Add(entity);
+
             __instantiateCommander.Add(prefab, entity);
             /*Instance instance;
             instance.refIndex = refIndex;
@@ -386,6 +375,28 @@ namespace ZG
             __instantiateCommander.Add(prefab, instance);
 
             return new EntityCommandRef(refIndex, __entities);*/
+        }
+
+        public bool Exists(in Entity prefab)
+        {
+            var instances = this.instances;
+            instances.lookupJobManager.CompleteReadOnlyDependency();
+            if (instances.reader.ContainsKey(prefab))
+                return true;
+
+            foreach(var pair in __createEntityCommander)
+            {
+                if (pair.Value == prefab)
+                    return true;
+            }
+
+            foreach(var pair in __instantiateCommander)
+            {
+                if (pair.Value == prefab)
+                    return true;
+            }
+
+            return false;
         }
 
         public bool TryGetBuffer<T>(

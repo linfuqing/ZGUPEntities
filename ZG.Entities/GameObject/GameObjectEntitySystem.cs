@@ -617,7 +617,7 @@ namespace ZG
         {
             try
             {
-                GameObjectEntity.DisposeAllDestoriedEntities();
+                GameObjectEntity.DestroiedEntity.DisposeAllDestoriedEntities();
                 GameObjectEntity.CreateAllDeserializedEntities();
             }
             catch(Exception e)

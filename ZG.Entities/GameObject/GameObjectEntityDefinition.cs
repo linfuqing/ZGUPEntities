@@ -46,8 +46,11 @@ namespace ZG
             //var factory = info.world.GetFactory();
 
             var systemStateComponentTypes = info.systemStateComponentTypes;
-            if (entity == Entity.Null)
+            if (entity == Entity.Null || !factory.Exists(entity))
             {
+                if (entity == Entity.Null)
+                    entity = factory.CreateEntity();
+
                 if (info.isPrefab)
                 {
                     Entity prefab = info.prefab;
@@ -58,7 +61,7 @@ namespace ZG
 
                         prefab = factory.CreateEntity();
 
-                        factory.InitEntity(prefab, info.entityArchetype);
+                        factory.CreateEntity(prefab, info.entityArchetype);
 
                         if (systemStateComponentTypes != null)
                         {
@@ -74,8 +77,6 @@ namespace ZG
 
                         info.SetPrefab(prefab);
                     }
-
-                    entity = factory.CreateEntity();
 
                     factory.Instantiate(entity, prefab);
 
@@ -98,8 +99,7 @@ namespace ZG
                         systemStateComponentTypes = new ComponentTypes(prefabComponentTypes);
                     }*/
 
-                    entity = factory.CreateEntity();
-                    factory.InitEntity(entity, info.entityArchetype);
+                    factory.CreateEntity(entity, info.entityArchetype);
 
                     if (systemStateComponentTypes != null)
                     {
@@ -118,12 +118,14 @@ namespace ZG
             }
             else
             {
-                if (!factory.InitEntity(entity, info.entityArchetype))
+                using (var entityArchetypeComponentTypes = info.entityArchetype.GetComponentTypes(Allocator.Temp))
                 {
-                    using (var entityArchetypeComponentTypes = info.entityArchetype.GetComponentTypes(Allocator.Temp))
+                    foreach (var entityArchetypeComponentType in entityArchetypeComponentTypes)
                     {
-                        foreach (var entityArchetypeComponentType in entityArchetypeComponentTypes)
-                            factory.AddComponent(entity, entityArchetypeComponentType);
+                        if (entityArchetypeComponentType.TypeIndex == TypeManager.GetTypeIndex<Prefab>())
+                            continue;
+
+                        factory.AddComponent(entity, entityArchetypeComponentType);
                     }
                 }
 

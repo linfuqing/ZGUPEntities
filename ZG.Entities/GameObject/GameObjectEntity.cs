@@ -59,14 +59,74 @@ namespace ZG
             InstanceOnly
         }
 
-        internal struct DestroiedEntity
+        internal class DestroiedEntity : IDisposable
         {
             public int instanceID;
             public GameObjectEntityStatus status;
             public Entity entity;
             public GameObjectEntityInfo info;
 
-            public DestroiedEntity(GameObjectEntity instance)
+            private DestroiedEntity __next;
+
+            private static DestroiedEntity __head;
+
+            private static DestroiedEntity __pool;
+
+            public static void DisposeAllDestoriedEntities()
+            {
+                DestroiedEntity head;
+                do
+                {
+                    head = __head;
+                    if (head == null)
+                        return;
+
+                } while (System.Threading.Interlocked.CompareExchange(ref __head, head.__next, head) != head);
+
+                head.Execute();
+
+                head.Dispose();
+
+                DisposeAllDestoriedEntities();
+            }
+
+            public static DestroiedEntity Create(GameObjectEntity instance)
+            {
+                DestroiedEntity destroiedEntity;
+                do
+                {
+                    destroiedEntity = __pool;
+                    if (destroiedEntity == null)
+                    {
+                        destroiedEntity = new DestroiedEntity();
+
+                        break;
+                    }
+
+                } while (System.Threading.Interlocked.CompareExchange(ref __pool, destroiedEntity.__next, destroiedEntity) != destroiedEntity);
+
+                destroiedEntity.__Init(instance);
+
+                return destroiedEntity;
+            }
+
+            public void Dispose()
+            {
+                do
+                {
+                    __next = __pool;
+                } while (System.Threading.Interlocked.CompareExchange(ref __pool, this, __next) != __next);
+            }
+
+            public void AsManaged()
+            {
+                do
+                {
+                    __next = __head;
+                } while (System.Threading.Interlocked.CompareExchange(ref __head, this, __next) != __next);
+            }
+
+            private void __Init(GameObjectEntity instance)
             {
                 instanceID = instance.__instanceID;
                 status = instance.status;
@@ -99,7 +159,7 @@ namespace ZG
         private static Entity __prefab;
 
         //private static ConcurrentDictionary<int, GameObjectEntityInfo> __instancedEntities = new ConcurrentDictionary<int, GameObjectEntityInfo>();
-        private readonly static ConcurrentBag<DestroiedEntity> DestoriedEntities = new ConcurrentBag<DestroiedEntity>();
+        //private readonly static ConcurrentBag<DestroiedEntity> DestoriedEntities = new ConcurrentBag<DestroiedEntity>();
 
         private readonly static List<ComponentType> ComponentTypeList = new List<ComponentType>();
 
@@ -274,11 +334,11 @@ namespace ZG
             }*/
         }
 
-        public static void DisposeAllDestoriedEntities()
+        /*public static void DisposeAllDestoriedEntities()
         {
             while (DestoriedEntities.TryTake(out var destroiedEntity))
                 destroiedEntity.Execute();
-        }
+        }*/
 
         public static UnityEngine.Object Instantiate(UnityEngine.Object component, Transform parentin, in Vector3 position, in Quaternion rotation, in Entity prefab)
         {
@@ -377,6 +437,8 @@ namespace ZG
 
                 UnityEngine.Assertions.Assert.AreNotEqual(Entity.Null, __entity, $"{name} : {status} : {__entity}");*/
 
+                __ForceBuildIfNeed();
+
                 return __entity;
             }
         }
@@ -470,7 +532,7 @@ namespace ZG
             }
         }
 
-        internal DestroiedEntity destroiedEntity
+        /*internal DestroiedEntity destroiedEntity
         {
             get
             {
@@ -482,12 +544,13 @@ namespace ZG
 
                 return destroiedEntity;
             }
-        }
+        }*/
 
         ~GameObjectEntity()
         {
             if (status != GameObjectEntityStatus.Destroied && (object)__info != null)
-                DestoriedEntities.Add(destroiedEntity);
+                DestroiedEntity.Create(this).AsManaged();
+                //DestoriedEntities.Add(destroiedEntity);
         }
 
         public new bool Contains(Type type)
@@ -502,7 +565,8 @@ namespace ZG
             UnityEngine.Assertions.Assert.AreNotEqual(GameObjectEntityStatus.Creating, status);
             if (__entity != Entity.Null)
             {
-                destroiedEntity.Execute();
+                using (var destroiedEntity = DestroiedEntity.Create(this))
+                    destroiedEntity.Execute();
 
                 __entity = Entity.Null;
             }
@@ -566,7 +630,8 @@ namespace ZG
 
             if ((object)__info != null)
             {
-                destroiedEntity.Execute();
+                using (var destroiedEntity = DestroiedEntity.Create(this))
+                    destroiedEntity.Execute();
 
                 __info = null;
             }
@@ -943,7 +1008,7 @@ namespace ZG
             return __GetCommandSystem(gameObjectEntity).HasComponent<T>(entity);
         }
 
-        internal static void Execute(this in GameObjectEntity.DestroiedEntity destroiedEntity)
+        internal static void Execute(this GameObjectEntity.DestroiedEntity destroiedEntity)
         {
             _Add<GameObjectEntityInstanceCount>(destroiedEntity.info.world, destroiedEntity.entity, destroiedEntity.status, -1);
 

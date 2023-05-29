@@ -13,9 +13,7 @@ namespace ZG
 {
     public interface IEntityDataInitializer
     {
-        World world { get; }
-
-        GameObjectEntityWrapper Invoke(Entity entity);
+        void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity;
     }
 
     [Serializable]
@@ -50,26 +48,14 @@ namespace ZG
 
             public Hash128 guid => __identity.guid;
 
-            public World world
-            {
-                get;
-
-                private set;
-            }
-
-            public Initializer(in EntityDataIdentity identity, World world)
+            public Initializer(in EntityDataIdentity identity)
             {
                 __identity = identity;
-
-                this.world = world;
             }
 
-            public GameObjectEntityWrapper Invoke(Entity entity)
+            public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
             {
-                var gameObjectEntity = new GameObjectEntityWrapper(entity, world);
                 gameObjectEntity.AddComponentData(__identity);
-
-                return gameObjectEntity;
             }
         }
 
@@ -77,7 +63,7 @@ namespace ZG
 
         public abstract bool Create<T>(in EntityDataIdentity identity, in T initializer) where T : IEntityDataInitializer;
 
-        public virtual bool Create(in EntityDataIdentity identity, World world) => Create(identity, new Initializer(identity, world));
+        public virtual bool Create(in EntityDataIdentity identity) => Create(identity, new Initializer(identity));
 
         public virtual void Execute(
             EntityCommandPool<EntityDataIdentity>.Context context, 
@@ -87,12 +73,11 @@ namespace ZG
         {
             isDone = false;
 
-            World world = system.World;
             while (context.TryDequeue(out var command))
             {
                 dependency.CompleteAll(inputDeps);
 
-                if (!Create(command, world))
+                if (!Create(command))
                     return;
             }
 
@@ -885,27 +870,25 @@ namespace ZG
         {
             private EntityDataCommander.Initializer __origin;
 
-            public World world => __origin.world;
-
             public Initializer(EntityDataCommander.Initializer origin)
             {
                 __origin = origin;
             }
 
-            public GameObjectEntityWrapper Invoke(Entity entity)
+
+            public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
             {
-                var gameObjectEntity = __origin.Invoke(entity);
+                __origin.Invoke(ref gameObjectEntity);
+
                 EntityDataDeserializable deserializable;
                 deserializable.guid = __origin.guid;
                 gameObjectEntity.AddComponentData(deserializable);
-
-                return gameObjectEntity;
             }
         }
 
-        public override bool Create(in EntityDataIdentity identity, World world)
+        public override bool Create(in EntityDataIdentity identity)
         {
-            return Create(identity, new Initializer(new EntityDataCommander.Initializer(identity, world)));
+            return Create(identity, new Initializer(new EntityDataCommander.Initializer(identity)));
         }
     }
 
