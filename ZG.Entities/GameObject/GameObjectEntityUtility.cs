@@ -8,6 +8,7 @@ using Unity.Entities;
 using UnityEngine;
 using System.Reflection;
 using FNSDK;
+using System.Xml.Linq;
 
 namespace ZG
 {
@@ -28,6 +29,8 @@ namespace ZG
                         commandSystem.factory.AddComponent<T>(entity);
                         break;
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         commandSystem.AddComponent<T>(entity);
                         break;
                     default:
@@ -49,6 +52,8 @@ namespace ZG
                         commandSystem.factory.AddComponentData(entity, value);
                         break;
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         commandSystem.AddComponentData(entity, value);
                         break;
                     default:
@@ -70,6 +75,8 @@ namespace ZG
                         commandSystem.factory.AddBuffer(entity, values);
                         break;
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         commandSystem.AddBuffer(entity, values);
                         break;
                     default:
@@ -93,6 +100,8 @@ namespace ZG
                         commandSystem.factory.AddBuffer<TValue, TCollection>(entity, values);
                         break;
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         commandSystem.AddBuffer<TValue, TCollection>(entity, values);
                         break;
                     default:
@@ -114,6 +123,8 @@ namespace ZG
                         commandSystem.factory.AppendBuffer(entity, values);
                         break;
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         commandSystem.AppendBuffer<T, T[]>(entity, values);
                         break;
                     default:
@@ -137,6 +148,8 @@ namespace ZG
                         commandSystem.factory.AppendBuffer<TValue, TCollection>(entity, values);
                         break;
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         commandSystem.AppendBuffer<TValue, TCollection>(entity, values);
                         break;
                     default:
@@ -158,6 +171,8 @@ namespace ZG
                         commandSystem.factory.RemoveComponent<T>(entity);
                         break;
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         commandSystem.RemoveComponent<T>(entity);
                         break;
                     default:
@@ -179,6 +194,8 @@ namespace ZG
                         commandSystem.factory.SetComponentData(entity, value);
                         break;
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         commandSystem.SetComponentData(entity, value);
                         break;
                     default:
@@ -200,6 +217,8 @@ namespace ZG
                         commandSystem.factory.SetBuffer(entity, values);
                         break;
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         commandSystem.SetBuffer(entity, values);
                         break;
                     default:
@@ -221,6 +240,8 @@ namespace ZG
                         commandSystem.factory.SetBuffer(entity, values);
                         break;
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         commandSystem.SetBuffer(entity, values);
                         break;
                     default:
@@ -244,6 +265,8 @@ namespace ZG
                         commandSystem.factory.SetBuffer<TValue, TCollection>(entity, values);
                         break;
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         commandSystem.SetBuffer<TValue, TCollection>(entity, values);
                         break;
                     default:
@@ -266,6 +289,8 @@ namespace ZG
                         commandSystem.factory.SetComponentEnabled<T>(entity, value);
                         break;
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         commandSystem.SetComponentEnabled<T>(entity, value);
                         break;
                     default:
@@ -296,6 +321,8 @@ namespace ZG
                     case GameObjectEntityStatus.Creating:
                         return __TryGetComponentData(commandSystem, entity, commandSystem.factory, out value);
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         value = default;
                         return commandSystem.TryGetComponentData(entity, ref value);
                     default:
@@ -320,6 +347,8 @@ namespace ZG
                     case GameObjectEntityStatus.Creating:
                         return __TryGetBuffer(index, commandSystem, entity, commandSystem.factory, out value);
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         value = default;
                         return commandSystem.TryGetBuffer(entity, index, ref value);
                     default:
@@ -354,6 +383,8 @@ namespace ZG
                             ref wrapper,
                             ref list);
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         return commandSystem.TryGetBuffer<TValue, TList, TWrapper>(entity, ref list, ref wrapper);
                     default:
                         throw new InvalidOperationException();
@@ -388,6 +419,8 @@ namespace ZG
 
                         return false;
                     case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                         return commandSystem.TryGetComponentObject(entity, out value);
                     default:
                         throw new InvalidOperationException();
@@ -467,6 +500,8 @@ namespace ZG
                 case GameObjectEntityStatus.Creating:
                     return commandSystem.factory.HasComponent<T>(entity);
                 case GameObjectEntityStatus.Created:
+                    UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
                     return commandSystem.HasComponent<T>(entity);
                 default:
                     throw new InvalidOperationException();

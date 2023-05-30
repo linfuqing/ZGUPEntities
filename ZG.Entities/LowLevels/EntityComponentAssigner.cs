@@ -669,12 +669,14 @@ namespace ZG
                 return true;
             }
 
-            public bool TryGetBuffer<T>(in Entity entity, int index, ref T result, int indexOffset = 0)
+            public bool TryGetBuffer<T>(in Entity entity, int index, ref T value, int indexOffset = 0)
                 where T : struct, IBufferElementData
             {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
 #endif
+
+                bool result = false;
 
                 Key key;
                 key.entity = entity;
@@ -685,12 +687,12 @@ namespace ZG
                 {
                     var commands = new NativeArray<Command>(count, Allocator.Temp);
                     {
-                        if (__values.TryGetFirstValue(key, out var value, out var iterator))
+                        if (__values.TryGetFirstValue(key, out var temp, out var iterator))
                         {
                             do
                             {
-                                commands[value.index] = value.command;
-                            } while (__values.TryGetNextValue(out value, ref iterator));
+                                commands[temp.index] = temp.command;
+                            } while (__values.TryGetNextValue(out temp, ref iterator));
                         }
 
                         Command command;
@@ -716,17 +718,19 @@ namespace ZG
                             if (indexOffset > index)
                             {
                                 resultIndex = length - indexOffset + index;
-                                if(resultIndex >= 0 && resultIndex < length)
-                                    result = array[resultIndex];
+                                if (resultIndex >= 0 && resultIndex < length)
+                                {
+                                    value = array[resultIndex];
+
+                                    result = true;
+                                }
                             }
                         }
                     }
                     commands.Dispose();
-
-                    return true;
                 }
 
-                return false;
+                return result;
             }
 
             public void SetComponentData<T>(in TypeIndex typeIndex, in Entity entity, in T value) where T : struct

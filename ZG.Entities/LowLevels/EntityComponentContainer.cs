@@ -8,19 +8,20 @@ using ZG.Unsafe;
 namespace ZG
 {
     [BurstCompile]
-    public struct EntityComponentContainerMoveComponentJob<T> : IJobParallelFor where T : unmanaged, IComponentData
+    public struct EntityComponentContainerCopyComponentJob<T> : IJobParallelFor where T : unmanaged, IComponentData
     {
         [ReadOnly]
         public EntityComponentContainer<T> container;
-        [ReadOnly]
+        [NativeDisableParallelForRestriction]
         public ComponentLookup<T> values;
 
         public void Execute(int index)
         {
-            container.MoveTo(index, values);
+            container.CopyTo(index, ref values);
         }
     }
 
+    [NativeContainer]
     public struct EntityComponentContainer<T> where T : unmanaged
     {
         [NativeContainerIsAtomicWriteOnly]
@@ -66,6 +67,8 @@ namespace ZG
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
         internal AtomicSafetyHandle m_Safety;
+
+        internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<EntityComponentContainer<T>>();
 #endif
 
         public unsafe bool isEmpty
@@ -90,9 +93,31 @@ namespace ZG
             }
         }
 
-        public unsafe NativeArray<Entity> entities => __data->entities.AsArray();
+        public unsafe NativeArray<Entity> entities
+        {
+            get
+            {
+                var shadow = NativeArrayUnsafeUtility.ConvertExistingDataToNativeArray<Entity>(__data->entities.Ptr, __data->entities.Length, Allocator.None);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                NativeArrayUnsafeUtility.SetAtomicSafetyHandle(ref shadow, m_Safety);
+#endif
+                return shadow;
+            }
+        }
 
-        public unsafe NativeArray<T> values => __data->values.AsArray();
+        public unsafe Entity GetEntity(int index)
+        {
+            _CheckRead();
+
+            return __data->entities[index];
+        }
+
+        public unsafe T GetValue(int index)
+        {
+            _CheckRead();
+
+            return __data->values[index];
+        }
 
         public unsafe void SetCapacityIfNeed(int value)
         {
@@ -105,10 +130,12 @@ namespace ZG
                 __data->values.SetCapacity(value);
         }
 
-        public unsafe EntityComponentContainer(Allocator allocator)
+        public unsafe EntityComponentContainer(in AllocatorManager.AllocatorHandle allocator)
         {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-            m_Safety = AtomicSafetyHandle.Create();
+            m_Safety = CollectionHelper.CreateSafetyHandle(allocator);
+
+            CollectionHelper.SetStaticSafetyId<EntityComponentContainer<T>>(ref m_Safety, ref StaticSafetyID.Data);
 #endif
 
             __data = AllocatorManager.Allocate<Data>(allocator);
@@ -133,9 +160,7 @@ namespace ZG
         public unsafe void Dispose()
         {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-            AtomicSafetyHandle.CheckDeallocateAndThrow(m_Safety);
-
-            AtomicSafetyHandle.Release(m_Safety);
+            CollectionHelper.DisposeSafetyHandle(ref m_Safety);
 #endif
 
             var allocator = __data->entities.Allocator;
@@ -150,8 +175,6 @@ namespace ZG
         public unsafe JobHandle Dispose(in JobHandle inputDeps)
         {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-            AtomicSafetyHandle.CheckDeallocateAndThrow(m_Safety);
-
             AtomicSafetyHandle.Release(m_Safety);
 #endif
 
@@ -182,14 +205,12 @@ namespace ZG
 
     public static class EntityComponentContainerUtility
     {
-        public static unsafe void MoveTo<T>(
-            this ref EntityComponentContainer<T> container, 
+        public static unsafe void CopyTo<T>(
+            this in EntityComponentContainer<T> container, 
             int index, 
-            ComponentLookup<T> values) where T : unmanaged, IComponentData
+            ref ComponentLookup<T> values) where T : unmanaged, IComponentData
         {
-            container._CheckRead();
-
-            values[container.entities[index]] = container.values[index];
+            values[container.GetEntity(index)] = container.GetValue(index);
         }
 
         public static void AddComponentData<T>(
@@ -197,22 +218,19 @@ namespace ZG
             ref SystemState state, 
             int innerloopBatchCount) where T : unmanaged, IComponentData
         {
-            JobHandle jobHandle;
-            if (container.isEmpty)
-                jobHandle = state.Dependency;
-            else
+            if (!container.isEmpty)
             {
                 //state.CompleteDependency();
-                state.EntityManager.AddComponentBurstCompatible<T>(container.entities);
+                state.EntityManager.AddComponent<T>(container.entities);
 
-                EntityComponentContainerMoveComponentJob<T> job;
+                EntityComponentContainerCopyComponentJob<T> job;
                 job.container = container;
                 job.values = state.GetComponentLookup<T>();
 
-                jobHandle = job.Schedule(container.length, innerloopBatchCount, state.Dependency);
-            }
+                var jobHandle = job.ScheduleByRef(container.length, innerloopBatchCount, state.Dependency);
 
-            state.Dependency = jobHandle;
+                state.Dependency = jobHandle;
+            }
         }
     }
 }

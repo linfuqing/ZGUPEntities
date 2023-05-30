@@ -419,6 +419,7 @@ namespace ZG
             var reader = instances.reader;
             if (reader.TryGetValue(prefab, out entity))
                 return false;
+
             Entity key = prefab;
             foreach (var pair in __instantiateCommander)
             {
