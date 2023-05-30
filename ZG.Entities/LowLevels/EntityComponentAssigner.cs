@@ -99,17 +99,6 @@ namespace ZG
             }
         }
 
-        [BurstCompile]
-        private struct DisposeTypeIndicesJob : IJob
-        {
-            public UnsafeParallelHashMap<int, int> value;
-
-            public void Execute()
-            {
-                value.Dispose();
-            }
-        }
-
         internal struct Command
         {
             public enum Type
@@ -895,7 +884,6 @@ namespace ZG
                     assign.typeHandleIndicess = typeHandleIndicess;
 
                     Entity key, entity;
-                    DisposeTypeIndicesJob disposeTypeIndices;
                     for (i = 0; i < numEntities; ++i)
                     {
                         key = keys[i];
@@ -935,8 +923,7 @@ namespace ZG
 
                                     numTypes = 0;
 
-                                    disposeTypeIndices.value = typeHandleIndicess;
-                                    jobHandle = disposeTypeIndices.Schedule(jobHandle);
+                                    jobHandle = typeHandleIndicess.Dispose(jobHandle);
 
                                     typeHandleIndicess = new UnsafeParallelHashMap<int, int>(BurstCompatibleTypeArray.LENGTH, Allocator.TempJob);
                                     assign.typeHandleIndicess = typeHandleIndicess;
@@ -957,8 +944,7 @@ namespace ZG
                         jobHandle = assign.ScheduleByRef(assign.entityArray.Length, innerloopBatchCount, jobHandle);
                     }
 
-                    disposeTypeIndices.value = typeHandleIndicess;
-                    jobHandle = disposeTypeIndices.Schedule(jobHandle);
+                    jobHandle = typeHandleIndicess.Dispose(jobHandle);
                 }
                 //keys.Dispose();
 
@@ -1801,14 +1787,6 @@ namespace ZG
         public unsafe long GetHashCode64()
         {
             return (long)__jobHandle;
-        }
-
-        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.AfterAssembliesLoaded)]
-        static void __InitJobs()
-        {
-            BurstUtility.InitializeJob<ClearJob>();
-            BurstUtility.InitializeJob<ResizeJob>();
-            BurstUtility.InitializeJob<DisposeTypeIndicesJob>();
         }
 
         [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]

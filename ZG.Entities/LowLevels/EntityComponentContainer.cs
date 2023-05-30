@@ -45,7 +45,7 @@ namespace ZG
 
             }
 
-        public void AddNoResize(in Entity entity, in T value)
+            public void AddNoResize(in Entity entity, in T value)
             {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
@@ -178,13 +178,14 @@ namespace ZG
             AtomicSafetyHandle.Release(m_Safety);
 #endif
 
-            var allocator = __data->entities.Allocator;
-            var jobHandle = JobHandle.CombineDependencies(__data->entities.Dispose(inputDeps), __data->values.Dispose(inputDeps));
+            var entities = __data->entities;
+            var values = __data->values;
+            var allocator = entities.Allocator;
+
+            var jobHandle = JobHandle.CombineDependencies(entities.Dispose(inputDeps), values.Dispose(inputDeps));
 
             return Unsafe.CollectionUtility.Dispose(__data, allocator, jobHandle);
         }
-
-
 
         [System.Diagnostics.Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
         internal void _CheckRead()
