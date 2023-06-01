@@ -493,6 +493,10 @@ namespace ZG
         {
             get
             {
+#if UNITY_EDITOR
+                if (!Application.isPlaying)
+                    return null;
+#endif
                 if (__info == null || !__info.isValid)
                 {
                     __instanceID = GetInstanceID();
