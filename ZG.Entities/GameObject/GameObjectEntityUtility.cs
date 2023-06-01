@@ -598,7 +598,7 @@ namespace ZG
 
         private static EntityCommandSharedSystemGroup __GetCommandSystem(World world)
         {
-            if (!world.IsCreated)
+            if (world == null || !world.IsCreated)
                 return null;
 
             if (__commander == null || __commander.World != world)
