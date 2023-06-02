@@ -13,20 +13,17 @@ using ZG;
 
 namespace ZG
 {
-    [Serializable]
     public struct ScreenSpaceNode : IComponentData
     {
         public Entity entity;
     }
 
-    [Serializable]
     public struct ScreenSpaceNodeTarget : IComponentData
     {
         public float3 offset;
         public ComponentType componentType;
     }
     
-    [Serializable]
     public struct ScreenSpaceNodeSphere
     {
         public float radiusSquare;
@@ -62,7 +59,6 @@ namespace ZG
         }
     }
     
-    [Serializable]
     public struct ScreenSpaceNodeVisible : ICleanupComponentData
     {
         public Entity entity;
@@ -80,17 +76,10 @@ namespace ZG
 
         public void Set(in float3 offset)
         {
-            if (gameObjectEntity.isCreated)
-            {
-                //Debug.LogError($"V {name} S");
-
-                ScreenSpaceNodeTarget screenSpaceNodeTarget;
-                screenSpaceNodeTarget.offset = offset;
-                screenSpaceNodeTarget.componentType = GetType();
-                this.AddComponentData(screenSpaceNodeTarget);
-            }
-            /*else
-                gameObjectEntity.onCreated += __OnCreated;*/
+            ScreenSpaceNodeTarget screenSpaceNodeTarget;
+            screenSpaceNodeTarget.offset = offset;
+            screenSpaceNodeTarget.componentType = GetType();
+            this.AddComponentData(screenSpaceNodeTarget);
 
             __offset = offset;
         }
@@ -99,17 +88,10 @@ namespace ZG
         {
             __offset = null;
 
-            if (gameObjectEntity.isCreated)
-            {
-                //Debug.LogError($"V {name} U");
-
-                this.RemoveComponent<ScreenSpaceNodeTarget>();
-            }
-            /*else
-                gameObjectEntity.onCreated -= __OnCreated;*/
+            this.RemoveComponent<ScreenSpaceNodeTarget>();
         }
 
-        protected void Start()
+        /*protected void Start()
         {
             if (__offset != null)
             {
@@ -120,7 +102,7 @@ namespace ZG
                 screenSpaceNodeTarget.componentType = GetType();
                 this.AddComponentData(screenSpaceNodeTarget);
             }
-        }
+        }*/
 
         protected void OnDisable()
         {
