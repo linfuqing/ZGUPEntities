@@ -69,28 +69,41 @@ namespace ZG
 
             public void Execute()
             {
-                int elementCount, typeCount;
+                int elementCount, typeCount, bufferSize;
                 switch (counterLength)
                 {
-                    case 0:
-                        return;
                     case 1:
                         if (counts.Length < 1)
                             return;
 
-                        elementCount = typeCount = counts[0];
+                        typeCount = counts[0];
+
+                        elementCount = typeCount;
+
+                        bufferSize = elementSize * elementCount;
+                        break;
+                    case 2:
+                        if (counts.Length < 2)
+                            return;
+
+                        typeCount = counts[0];
+
+                        elementCount = counts[1];
+
+                        bufferSize = elementSize * elementCount;
                         break;
                     default:
                         if (counts.Length < 2)
                             return;
 
-                        elementCount = counts[1];
-
                         typeCount = counts[0];
+
+                        bufferSize = counts[1];
+
                         break;
                 }
 
-                int bufferSize = elementSize * elementCount;
+                //int bufferSize = elementSize * elementCount;
 
                 bufferSize = bufferSizeAndTypeCount[0] += bufferSize;
                 typeCount = bufferSizeAndTypeCount[1] += typeCount;
@@ -1309,7 +1322,7 @@ namespace ZG
 #endif
             }
 
-            public void SetComponentData<T>(int typeIndex, in Entity entity, in T value) where T : struct, IComponentData
+            public void SetComponentData<T>(in TypeIndex typeIndex, in Entity entity, in T value) where T : struct
             {
                 __CheckTypeSize<T>(typeIndex);
                 __CheckWrite();
@@ -1324,7 +1337,7 @@ namespace ZG
 
             public void SetComponentData<T>(in Entity entity, in T value) where T : struct, IComponentData => SetComponentData(TypeManager.GetTypeIndex<T>(), entity, value);
 
-            public unsafe void AppendBuffer<T>(int typeIndex, in Entity entity, void* values, int length) where T : struct, IBufferElementData
+            public unsafe void AppendBuffer<T>(in TypeIndex typeIndex, in Entity entity, void* values, int length) where T : struct
             {
                 __CheckTypeSize<T>(typeIndex);
                 __CheckWrite();
@@ -1340,9 +1353,9 @@ namespace ZG
                 __Set(typeIndex, entity, command);
             }
 
-            public unsafe void AppendBuffer<T>(int typeIndex, in Entity entity, ref T value) where T : struct, IBufferElementData => AppendBuffer<T>(typeIndex, entity, UnsafeUtility.AddressOf(ref value), 1);
+            public unsafe void AppendBuffer<T>(in TypeIndex typeIndex, in Entity entity, ref T value) where T : struct, IBufferElementData => AppendBuffer<T>(typeIndex, entity, UnsafeUtility.AddressOf(ref value), 1);
 
-            public unsafe void AppendBuffer<T>(int typeIndex, in Entity entity, NativeArray<T> values) where T : struct, IBufferElementData => AppendBuffer<T>(typeIndex, entity, NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(values), values.Length);
+            public unsafe void AppendBuffer<T>(in TypeIndex typeIndex, in Entity entity, NativeArray<T> values) where T : struct, IBufferElementData => AppendBuffer<T>(typeIndex, entity, NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(values), values.Length);
 
             public void AppendBuffer<T>(in Entity entity, ref T value) where T : struct, IBufferElementData => AppendBuffer<T>(TypeManager.GetTypeIndex<T>(), entity, ref value);
 
@@ -1364,7 +1377,7 @@ namespace ZG
             }
 
             [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-            static void __CheckTypeSize<T>(int typeIndex) where T : struct
+            static void __CheckTypeSize<T>(in TypeIndex typeIndex) where T : struct
             {
                 if (UnsafeUtility.SizeOf<T>() != TypeManager.GetTypeInfo(typeIndex).ElementSize)
                     throw new System.InvalidCastException();
@@ -1618,6 +1631,21 @@ namespace ZG
             typeCount = this.typeCount += typeCount;
 
             writer._Reset(bufferSize, typeCount);
+
+            return new ParallelWriter(ref __data);
+        }
+
+        public ParallelWriter AsParallelWriter(in NativeArray<int> typeCountAndBufferSize, ref JobHandle jobHandle)
+        {
+            ResizeJob resize;
+            resize.elementSize = 0;
+            resize.counterLength = 0;
+            resize.counts = typeCountAndBufferSize;
+            resize.bufferSizeAndTypeCount = __bufferSizeAndTypeCount;
+            resize.writer = writer;
+            jobHandle = resize.Schedule(JobHandle.CombineDependencies(jobHandle, this.jobHandle));
+
+            this.jobHandle = jobHandle;
 
             return new ParallelWriter(ref __data);
         }
