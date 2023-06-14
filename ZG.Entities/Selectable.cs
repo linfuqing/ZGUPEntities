@@ -21,25 +21,15 @@ namespace ZG
                 if (__selection == null)
                     return;
 
-                if (__selection.__isSelected)
-                {
-                    EventSystem eventSystem = EventSystem.current;
-                    GameObject gameObject = eventSystem == null ? null : eventSystem.currentSelectedGameObject;
-                    Transform temp = gameObject == null ? null : gameObject.transform;
-                    if (temp != null && temp != __selection.transform && (!(temp is RectTransform) || temp.parent == null))
-                        __selection.isSelected = false;
-                    else if (__selection.isHold)
-                    {
-                        bool isHold = false;
-                        if ((__selection.__flag & Flag.Update) != Flag.Update || __selection._Update())
-                        {
-                            isHold = __selection != null && __selection.__handler != null && __selection.__handler();
-
-                            if (__selection != null && (!isHold || (__selection.__flag & Flag.Hold) != Flag.Hold))
-                                __selection.isHold = false;
-                        }
-                    }
-                }
+                EventSystem eventSystem = EventSystem.current;
+                GameObject gameObject = eventSystem == null ? null : eventSystem.currentSelectedGameObject;
+                Transform temp = gameObject == null ? null : gameObject.transform;
+                if (temp != null && temp != __selection.transform && (!(temp is RectTransform) || temp.parent == null))
+                    __selection.isSelected = false;
+                else if (__selection.isHold && 
+                    ((__selection.__flag & Flag.Update) != Flag.Update || __selection._Update()) &&
+                    (__selection.__handler == null || !__selection.__handler()))
+                    __selection.__flag = 0;
             }
         }
 
@@ -53,8 +43,6 @@ namespace ZG
 
         public Predicate<PointerEventData> onSelect;
         
-        private bool __isSelected;
-
         private Flag __flag;
 
         private Func<bool> __handler;
@@ -73,14 +61,16 @@ namespace ZG
         {
             get
             {
-                return __isSelected;
+                return this == __selection;
             }
 
             set
             {
-                if (__isSelected == value)
+                if (value == isSelected)
                     return;
-                
+
+                __flag = 0;
+
                 if (value)
                 {
                     if (!isActiveAndEnabled)
@@ -95,6 +85,10 @@ namespace ZG
                         onChanged(this);
 
                     __selection = this;
+
+                    EventSystem eventSystem = EventSystem.current;
+                    if (eventSystem != null)
+                        eventSystem.SetSelectedGameObject(gameObject);
                 }
                 else if (__selection == this)
                 {
@@ -105,31 +99,27 @@ namespace ZG
                         onChanged(null);
 
                     __selection = null;
-
-                    isHold = false;
                 }
-
-                __isSelected = value;
             }
         }
 
         public bool isHold
         {
-            get;
+            get => (__flag & Flag.Hold) == Flag.Hold;
 
-            set;
+            set
+            {
+                if (value)
+                    __flag |= Flag.Hold;
+                else
+                    __flag = 0;
+            }
         }
         
         public void Select(Func<bool> handler, Flag flag)
         {
-            EventSystem eventSystem = EventSystem.current;
-            if (eventSystem != null)
-                eventSystem.SetSelectedGameObject(gameObject);
-
             isSelected = true;
 
-            isHold = true;
-            
             __flag = flag;
 
             __handler = handler == null ? onSelected : handler;
@@ -162,8 +152,6 @@ namespace ZG
         {
             //FrameObjectManager.onUpdate -= __OnUpdate;
             
-            isHold = false;
-
             isSelected = false;
         }
 
@@ -221,14 +209,16 @@ namespace ZG
 
         void IPointerClickHandler.OnPointerClick(PointerEventData eventData)
         {
-            if (Input.touchCount > 1 || eventData == null || eventData.button != PointerEventData.InputButton.Left || eventData.dragging)
+            /*if (Input.touchCount > 1 || eventData == null || eventData.button != PointerEventData.InputButton.Left || eventData.dragging)
             {
                 EventSystem eventSystem = EventSystem.current;
                 if (eventSystem != null && eventSystem.currentSelectedGameObject == gameObject)
                     eventSystem.SetSelectedGameObject(null);
             }
             else if (onSelect == null || onSelect(eventData))
-                Select();
+                Select();*/
+
+            isSelected = true;
         }
     }
 }
