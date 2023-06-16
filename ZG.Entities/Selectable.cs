@@ -18,18 +18,21 @@ namespace ZG
         {
             protected override void OnUpdate()
             {
-                if (__selection == null)
+                var selection = __selection;
+                if (selection == null)
                     return;
 
                 EventSystem eventSystem = EventSystem.current;
                 GameObject gameObject = eventSystem == null ? null : eventSystem.currentSelectedGameObject;
                 Transform temp = gameObject == null ? null : gameObject.transform;
-                if (temp != null && temp != __selection.transform && (!(temp is RectTransform) || temp.parent == null))
-                    __selection.isSelected = false;
-                else if (__selection.isHold && 
-                    ((__selection.__flag & Flag.Update) != Flag.Update || __selection._Update()) &&
-                    (__selection.__handler == null || !__selection.__handler()))
-                    __selection.__flag = 0;
+                if (temp != null && temp != selection.transform && (!(temp is RectTransform) || temp.parent == null))
+                    selection.isSelected = false;
+                else if (selection.isHold && 
+                    ((selection.__flag & Flag.Update) != Flag.Update || selection._Update()) &&
+                    selection != null && selection.isSelected && 
+                    (selection.__handler == null || !selection.__handler()) &&
+                    selection != null && selection.isSelected)
+                    selection.__flag = 0;
             }
         }
 
