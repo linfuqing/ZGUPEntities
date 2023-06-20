@@ -7,8 +7,6 @@ using Unity.Collections;
 using Unity.Entities;
 using UnityEngine;
 using System.Reflection;
-using FNSDK;
-using System.Xml.Linq;
 
 namespace ZG
 {
