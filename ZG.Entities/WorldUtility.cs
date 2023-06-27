@@ -238,9 +238,9 @@ namespace ZG
             return systems;
         }
 
-        public static void Initialize(this World world, params Type[] maskSystemTypes)
+        public static void Initialize(this World world, WorldSystemFilterFlags systemFilterFlags = WorldSystemFilterFlags.Default, params Type[] maskSystemTypes)
         {
-            var systemTypes = new List<Type>(DefaultWorldInitialization.GetAllSystems(WorldSystemFilterFlags.Default));
+            var systemTypes = new List<Type>(DefaultWorldInitialization.GetAllSystems(systemFilterFlags));
 
             Dictionary<Type, List<Type>> updateInGroupTypes = null;
 
@@ -351,7 +351,11 @@ namespace ZG
 
         }
 
-        public static World GetOrCreateWorld(string name, params Type[] maskSystemTypes)
+        public static World GetOrCreateWorld(
+            string name, 
+            WorldFlags flags = WorldFlags.Simulation, 
+            WorldSystemFilterFlags systemFilterFlags = WorldSystemFilterFlags.Default, 
+            params Type[] maskSystemTypes)
         {
             World result = null;
             foreach (World world in World.All)
@@ -366,9 +370,9 @@ namespace ZG
 
             if (result == null)
             {
-                result = new World(name);
+                result = new World(name, flags);
 
-                Initialize(result, maskSystemTypes);
+                Initialize(result, systemFilterFlags, maskSystemTypes);
             }
 
             return result;
