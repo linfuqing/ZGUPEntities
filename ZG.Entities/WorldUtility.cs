@@ -148,6 +148,8 @@ namespace ZG
                 type == typeof(ManagedSystemGroup);
         }
 
+        private static Dictionary<string, World> __worlds;
+
         public static Type UpdateInGroup(this Type systemType, Type groupType)
         {
             UpdateInGroupAttribute updateInGroupAttribute = systemType.GetCustomAttribute<UpdateInGroupAttribute>();
@@ -351,7 +353,26 @@ namespace ZG
 
         }
 
-        public static World GetOrCreateWorld(
+        public static World Create(
+            string name,
+            string worldName, 
+            WorldFlags worldFlags = WorldFlags.Simulation,
+            WorldSystemFilterFlags worldSystemFilterFlags = WorldSystemFilterFlags.Default,
+            params Type[] maskSystemTypes)
+        {
+            var world = new World(worldName, worldFlags);
+
+            Initialize(world, worldSystemFilterFlags, maskSystemTypes);
+
+            if (__worlds == null)
+                __worlds = new Dictionary<string, World>();
+
+            __worlds.Add(name, world);
+
+            return world;
+        }
+
+        /*public static World GetOrCreateWorld(
             string name, 
             WorldFlags flags = WorldFlags.Simulation, 
             WorldSystemFilterFlags systemFilterFlags = WorldSystemFilterFlags.Default, 
@@ -376,11 +397,12 @@ namespace ZG
             }
 
             return result;
-        }
+        }*/
 
         public static World GetWorld(string name)
         {
-            World result = null;
+            return __worlds == null || !__worlds.TryGetValue(name, out var world) ? null : world;
+            /*World result = null;
             foreach (World world in World.All)
             {
                 if (world.Name == name)
@@ -391,7 +413,7 @@ namespace ZG
                 }
             }
             
-            return result;
+            return result;*/
         }
 
         public static ref T GetExistingSystemUnmanaged<T>(in this WorldUnmanaged world) where T : unmanaged, ISystem

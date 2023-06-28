@@ -16,7 +16,7 @@ namespace ZG
 
         protected void Awake()
         {
-            __obstacleSystem = WorldUtility.GetOrCreateWorld(_worldName).GetExistingSystemManaged<GrassObstacleSystem>();
+            __obstacleSystem = WorldUtility.GetWorld(_worldName).GetExistingSystemManaged<GrassObstacleSystem>();
         }
 
         protected void Update()

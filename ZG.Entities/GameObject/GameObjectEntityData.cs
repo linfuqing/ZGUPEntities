@@ -149,7 +149,11 @@ namespace ZG
                     }
                 }
                 else
-                    world = WorldUtility.GetOrCreateWorld(name);
+                {
+                    world = WorldUtility.GetWorld(name);
+                    if (world == null)
+                        world = WorldUtility.Create(name, name);
+                }
 
                 UnityEngine.Assertions.Assert.IsNotNull(world);
 

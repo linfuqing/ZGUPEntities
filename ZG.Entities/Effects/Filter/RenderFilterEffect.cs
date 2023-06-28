@@ -275,7 +275,7 @@ namespace ZG
             get
             {
                 if (__world == null)
-                    __world = WorldUtility.GetOrCreateWorld(worldName);
+                    __world = WorldUtility.GetWorld(worldName);
 
                 return __world;
             }
