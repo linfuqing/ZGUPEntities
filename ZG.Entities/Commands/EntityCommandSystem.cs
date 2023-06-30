@@ -6,6 +6,9 @@ using Unity.Burst;
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Profiling;
+using ZG;
+
+[assembly: RegisterGenericJobType(typeof(ClearHashMap<ComponentType, JobHandle>))]
 
 namespace ZG
 {

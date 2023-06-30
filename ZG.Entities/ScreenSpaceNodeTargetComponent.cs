@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityEngine.Jobs;
 using ZG;
 
+[assembly: RegisterGenericJobType(typeof(ClearHashMap<Entity, float3>))]
 [assembly: RegisterGenericJobType(typeof(CopyNativeArrayToComponentData<ScreenSpaceNodeVisible>))]
 [assembly: ZG.RegisterEntityObject(typeof(ScreenSpaceNodeTargetComponentBase))]
 

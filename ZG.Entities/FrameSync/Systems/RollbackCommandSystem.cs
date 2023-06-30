@@ -818,6 +818,13 @@ namespace ZG
 
         private struct CommanderPool
         {
+            private interface ICommanderManagerWrapper
+            {
+                EntityCommander this[int commandIndex] { get; }
+
+                EntityCommander Alloc(out int commanderIndex);
+            }
+
             private struct FrameCommander : IComparable<FrameCommander>
             {
                 public int index;
@@ -827,6 +834,276 @@ namespace ZG
                 public int CompareTo(FrameCommander other)
                 {
                     return order.CompareTo(other.order);
+                }
+            }
+
+            private struct CommanderManager
+            {
+                private int __usedCount;
+                private UnsafeList<int> __indicesToAlloc;
+                private UnsafeList<int> __indicesToFree;
+
+                public unsafe int length
+                {
+                    get
+                    {
+                        return __indicesToAlloc.Length + __indicesToFree.Length;
+                    }
+
+                    set
+                    {
+                        /*int length = __indicesToFree.Length;
+                        for (int i = 0; i < length; ++i)
+                            __commanders[__indicesToFree[i]].Clear();*/
+
+                        __indicesToAlloc.AddRange(__indicesToFree.Ptr, __indicesToFree.Length);
+
+                        __indicesToFree.Clear();
+
+                        int commanderLength = __usedCount + __indicesToAlloc.Length;
+                        for (int i = __indicesToAlloc.Length; i < length; ++i)
+                        {
+                            __indicesToAlloc.Add(commanderLength++);
+
+                            //__commanders.Add(new EntityCommander(Allocator.Persistent));
+                        }
+
+                    }
+                }
+
+                public NativeArray<int> indicesToFree => __indicesToFree.AsArray();
+
+                public CommanderManager(in AllocatorManager.AllocatorHandle allocator)
+                {
+                    __usedCount = 0;
+                    __indicesToAlloc = new UnsafeList<int>(0, allocator, NativeArrayOptions.UninitializedMemory);
+                    __indicesToFree = new UnsafeList<int>(0, allocator, NativeArrayOptions.UninitializedMemory);
+                }
+
+                public void Dispose()
+                {
+                    __usedCount = 0;
+                    __indicesToAlloc.Dispose();
+                    __indicesToFree.Dispose();
+                }
+
+
+                public int Alloc()
+                {
+                    int index;
+                    int length = __indicesToAlloc.Length;
+                    UnityEngine.Assertions.Assert.IsTrue(length > 0);
+                    //if (length > 0)
+                    {
+                        index = __indicesToAlloc[--length];
+
+                        //commander.writer.Clear();
+
+                        __indicesToAlloc.Resize(length, NativeArrayOptions.UninitializedMemory);
+                    }
+                    /*else
+                        commander = new EntityCommander(Allocator.Persistent);*/
+
+                    ++__usedCount;
+
+                    return index;
+                }
+
+                public void Free(int index)
+                {
+                    --__usedCount;
+                    //commander.writer.Clear();
+
+                    __indicesToFree.Add(index);
+                }
+
+            }
+
+            private struct FrameManager
+            {
+                //private NativeHashMap<uint, Frame> __frames;
+                private UnsafeHashMap<uint, int> __frameIndices;
+                private UnsafeParallelMultiHashMap<uint, FrameCommander> __frameCommanders;
+
+                public FrameManager(in AllocatorManager.AllocatorHandle allocator)
+                {
+                    __frameIndices = new UnsafeHashMap<uint, int>(1, allocator);
+
+                    __frameCommanders = new UnsafeParallelMultiHashMap<uint, FrameCommander>(1, allocator);
+                }
+
+                public void Dispose()
+                {
+                    __frameIndices.Dispose();
+                    __frameCommanders.Dispose();
+                }
+
+                public void Clear(ref CommanderManager commanderManager)
+                {
+                    /*var enumerator = __frameCommanders.GetEnumerator();
+                    while (enumerator.MoveNext())
+                    {
+                        Free(enumerator.Current.Value.index);
+
+                        //Free(frame.initCommander);
+                    }*/
+
+                    foreach (var frameIndex in __frameIndices)
+                        commanderManager.Free(frameIndex.Value);
+
+                    __frameIndices.Clear();
+
+                    __frameCommanders.Clear();
+                }
+
+                public void Clear(uint frameIndex, ref CommanderManager commanderManager)
+                {
+                    /*if (__frameCommanders.TryGetFirstValue(frameIndex, out var frameCommander, out var iterator))
+                    {
+                        do
+                        {
+                            Free(frameCommander.index);
+                            //Free(frame.initCommander);
+
+                        } while (__frameCommanders.TryGetNextValue(out frameCommander, ref iterator));
+
+                        __frameCommanders.Remove(frameIndex);
+
+                        return true;
+                    }*/
+
+                    if (__frameIndices.TryGetValue(frameIndex, out int index))
+                    {
+                        commanderManager.Free(index);
+
+                        __frameIndices.Remove(frameIndex);
+                    }
+
+                    __frameCommanders.Remove(frameIndex);
+                }
+
+                public void Clear(uint frameStartIndex, uint frameCount, ref CommanderManager commanderManager)
+                {
+                    for (uint i = 0; i < frameCount; ++i)
+                        Clear(i + frameStartIndex, ref commanderManager);
+                }
+
+                public void Append(uint frameIndex, int index)
+                {
+                    FrameCommander frameCommander;
+                    frameCommander.index = index;
+                    frameCommander.order = __frameCommanders.CountValuesForKey(frameIndex);
+                    __frameCommanders.Add(frameIndex, frameCommander);
+                }
+
+                public bool Apply<T>(
+                    bool isInitOnly, 
+                    uint frameIndex, 
+                    ref SystemState systemState, 
+                    ref T commanderManager) where T : ICommanderManagerWrapper
+                {
+                    EntityCommander commander;
+                    if (__frameIndices.TryGetValue(frameIndex, out int commanderIndex))
+                        commander = commanderManager[commanderIndex];
+                    else if (!__frameCommanders.ContainsKey(frameIndex))
+                        return false;
+                    else
+                    {
+                        commander = commanderManager.Alloc(out commanderIndex);
+
+                        var frameCommanders = new NativeList<FrameCommander>(systemState.WorldUpdateAllocator);
+                        foreach (var frameCommander in __frameCommanders.GetValuesForKey(frameIndex))
+                            frameCommanders.Add(frameCommander);
+
+                        frameCommanders.Sort();
+
+                        foreach (var frameCommander in frameCommanders)
+                        {
+                            UnityEngine.Assertions.Assert.AreNotEqual(commanderIndex, frameCommander.index);
+
+                            commanderManager[frameCommander.index].AsReadOnly().AppendTo(ref commander);
+                        }
+
+                        //frameCommanders.Dispose();
+
+                        __frameIndices[frameIndex] = commanderIndex;
+                    }
+
+                    return commander.Apply(ref systemState);
+                }
+
+            }
+
+            private struct Data : ICommanderManagerWrapper
+            {
+                private UnsafeList<EntityCommander> __commanders;
+                private CommanderManager __commanderManagerr;
+                private FrameManager __frameManager;
+
+                public EntityCommander this[int commandIndex] => __commanders[commandIndex];
+
+                public EntityCommander Alloc(out int commanderIndex)
+                {
+                    __Flush(1);
+
+                    commanderIndex = __commanderManagerr.Alloc();
+
+                    return __commanders[commanderIndex];
+                }
+
+                public void Free(int commanderIndex)
+                {
+                    __commanders[commanderIndex].Clear();
+
+                    __commanderManagerr.Free(commanderIndex);
+                }
+
+                public void Dispose()
+                {
+                    foreach (var commander in __commanders)
+                        commander.Dispose();
+                    //frame.initCommander.Dispose();
+
+                    __commanders.Dispose();
+
+                    __commanderManagerr.Dispose();
+
+                    __frameManager.Dispose();
+                }
+
+                public void Clear()
+                {
+                    __frameManager.Clear(ref __commanderManagerr);
+                }
+
+                /*public Writer AsWriter(int capacity)
+                {
+                    __Flush(capacity);
+
+                    return new Writer(ref this);
+                }*/
+
+                public bool Apply(bool isInitOnly, uint frameIndex, ref SystemState systemState)
+                {
+                    return __frameManager.Apply(isInitOnly, frameIndex, ref systemState, ref this);
+                }
+
+                private void __Flush(int capacity)
+                {
+                    var indicesToFree = __commanderManagerr.indicesToFree;
+                    foreach(int indexToFree in indicesToFree)
+                        __commanders[indexToFree].Clear();
+
+                    int length = __commanderManagerr.length;
+                    if (length < capacity)
+                    {
+                        for (int i = length; i < capacity; ++i)
+                            __commanders.Add(new EntityCommander(Allocator.Persistent));
+
+                        __commanderManagerr.length = capacity;
+                    }
+                    else
+                        __commanderManagerr.length = length;
                 }
             }
 
@@ -987,6 +1264,8 @@ namespace ZG
                 foreach(var frameIndex in __frameIndices)
                     Free(frameIndex.Value);
 
+                __frameIndices.Clear();
+
                 __frameCommanders.Clear();
             }
 
@@ -1028,7 +1307,11 @@ namespace ZG
                     frameCommanders.Sort();
 
                     foreach (var frameCommander in frameCommanders)
+                    {
+                        UnityEngine.Assertions.Assert.AreNotEqual(commanderIndex, frameCommander.index);
+
                         __commanders[frameCommander.index].AsReadOnly().AppendTo(ref commander);
+                    }
 
                     //frameCommanders.Dispose();
 

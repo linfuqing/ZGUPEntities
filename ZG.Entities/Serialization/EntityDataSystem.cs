@@ -8,6 +8,9 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
+using ZG;
+
+[assembly: RegisterGenericJobType(typeof(ClearHashMap<Hash128, int>))]
 
 namespace ZG
 {
