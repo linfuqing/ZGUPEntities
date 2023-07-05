@@ -7,6 +7,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using ZG.Unsafe;
 using static ZG.EntityComponentAssigner;
+using System.Diagnostics;
 
 namespace ZG
 {
@@ -861,7 +862,7 @@ namespace ZG
                         __indicesToFree.Clear();
 
                         int commanderLength = __usedCount + __indicesToAlloc.Length;
-                        for (int i = __indicesToAlloc.Length; i < length; ++i)
+                        for (int i = __indicesToAlloc.Length; i < value; ++i)
                         {
                             __indicesToAlloc.Add(commanderLength++);
 
@@ -1037,16 +1038,25 @@ namespace ZG
             private struct Data : ICommanderManagerWrapper
             {
                 private UnsafeList<EntityCommander> __commanders;
-                private CommanderManager __commanderManagerr;
-                private FrameManager __frameManager;
+                internal CommanderManager _commanderManager;
+                internal FrameManager _frameManager;
+
+                public AllocatorManager.AllocatorHandle allocator => __commanders.Allocator;
 
                 public EntityCommander this[int commandIndex] => __commanders[commandIndex];
 
+                public Data(in AllocatorManager.AllocatorHandle allocator)
+                {
+                    __commanders = new UnsafeList<EntityCommander>(0, allocator);
+                    _commanderManager = new CommanderManager(allocator);
+                    _frameManager = new FrameManager(allocator);
+                }
+
                 public EntityCommander Alloc(out int commanderIndex)
                 {
-                    __Flush(1);
+                    Flush(1);
 
-                    commanderIndex = __commanderManagerr.Alloc();
+                    commanderIndex = _commanderManager.Alloc();
 
                     return __commanders[commanderIndex];
                 }
@@ -1055,7 +1065,7 @@ namespace ZG
                 {
                     __commanders[commanderIndex].Clear();
 
-                    __commanderManagerr.Free(commanderIndex);
+                    _commanderManager.Free(commanderIndex);
                 }
 
                 public void Dispose()
@@ -1066,14 +1076,14 @@ namespace ZG
 
                     __commanders.Dispose();
 
-                    __commanderManagerr.Dispose();
+                    _commanderManager.Dispose();
 
-                    __frameManager.Dispose();
+                    _frameManager.Dispose();
                 }
 
                 public void Clear()
                 {
-                    __frameManager.Clear(ref __commanderManagerr);
+                    _frameManager.Clear(ref _commanderManager);
                 }
 
                 /*public Writer AsWriter(int capacity)
@@ -1085,85 +1095,105 @@ namespace ZG
 
                 public bool Apply(bool isInitOnly, uint frameIndex, ref SystemState systemState)
                 {
-                    return __frameManager.Apply(isInitOnly, frameIndex, ref systemState, ref this);
+                    return _frameManager.Apply(isInitOnly, frameIndex, ref systemState, ref this);
                 }
 
-                private void __Flush(int capacity)
+                public void Flush(int capacity)
                 {
-                    var indicesToFree = __commanderManagerr.indicesToFree;
+                    var indicesToFree = _commanderManager.indicesToFree;
                     foreach(int indexToFree in indicesToFree)
                         __commanders[indexToFree].Clear();
 
-                    int length = __commanderManagerr.length;
+                    int length = _commanderManager.length;
                     if (length < capacity)
                     {
                         for (int i = length; i < capacity; ++i)
                             __commanders.Add(new EntityCommander(Allocator.Persistent));
 
-                        __commanderManagerr.length = capacity;
+                        _commanderManager.length = capacity;
                     }
                     else
-                        __commanderManagerr.length = length;
+                        _commanderManager.length = length;
                 }
             }
 
+            [NativeContainer]
             public struct Writer
             {
-                private NativeList<int> __indicesToAlloc;
+                [NativeDisableUnsafePtrRestriction]
+                private unsafe CommanderManager* __commanderManager;
+                [NativeDisableUnsafePtrRestriction]
+                private unsafe FrameManager* __frameManager;
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                internal AtomicSafetyHandle m_Safety;
+
+                internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<Writer>();
+#endif
+
+                /*private NativeList<int> __indicesToAlloc;
                 private NativeList<int> __indicesToFree;
                 //private NativeHashMap<uint, Frame> __frames;
                 private NativeHashMap<uint, int> __frameIndices;
-                private NativeParallelMultiHashMap<uint, FrameCommander> __frameCommanders;
+                private NativeParallelMultiHashMap<uint, FrameCommander> __frameCommanders;*/
 
-                public Writer(ref CommanderPool commanderPool)
+
+                public unsafe Writer(ref CommanderPool commanderPool)
                 {
-                    __indicesToAlloc = commanderPool.__indicesToAlloc;
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                    m_Safety = commanderPool.m_Safety;
+
+                    CollectionHelper.SetStaticSafetyId<Writer>(ref m_Safety, ref StaticSafetyID.Data);
+#endif
+
+                    __commanderManager = (CommanderManager*)UnsafeUtility.AddressOf(ref commanderPool.__data->_commanderManager);
+                    __frameManager = (FrameManager*)UnsafeUtility.AddressOf(ref commanderPool.__data->_frameManager);
+
+                    /*__indicesToAlloc = commanderPool.__indicesToAlloc;
                     __indicesToFree = commanderPool.__indicesToFree;
                     __frameIndices = commanderPool.__frameIndices;
-                    __frameCommanders = commanderPool.__frameCommanders;
+                    __frameCommanders = commanderPool.__frameCommanders;*/
                 }
 
-                public void Clear(uint frameIndex)
+                public unsafe void Clear(uint frameIndex)
                 {
-                    /*if (__frameCommanders.TryGetFirstValue(frameIndex, out var frameCommander, out var iterator))
-                    {
-                        do
-                        {
-                            Free(frameCommander.index);
-                            //Free(frame.initCommander);
+                    __CheckWrite();
 
-                        } while (__frameCommanders.TryGetNextValue(out frameCommander, ref iterator));
-
-                        __frameCommanders.Remove(frameIndex);
-
-                        return true;
-                    }*/
-
-                    if (__frameIndices.TryGetValue(frameIndex, out int index))
+                    __frameManager->Clear(frameIndex, ref UnsafeUtility.AsRef<CommanderManager>(__commanderManager));
+                    /*if (__frameIndices.TryGetValue(frameIndex, out int index))
                     {
                         Free(index);
 
                         __frameIndices.Remove(frameIndex);
                     }
 
-                    __frameCommanders.Remove(frameIndex);
+                    __frameCommanders.Remove(frameIndex);*/
                 }
 
-                public void Clear(uint frameStartIndex, uint frameCount)
+                public unsafe void Clear(uint frameStartIndex, uint frameCount)
                 {
-                    for (uint i = 0; i < frameCount; ++i)
-                        Clear(i + frameStartIndex);
+                    /*for (uint i = 0; i < frameCount; ++i)
+                        Clear(i + frameStartIndex);*/
+
+                    __CheckWrite();
+
+                    __frameManager->Clear(frameStartIndex, frameCount, ref UnsafeUtility.AsRef<CommanderManager>(__commanderManager));
                 }
 
-                public void Append(uint frameIndex, int index)
+                public unsafe void Append(uint frameIndex, int index)
                 {
-                    FrameCommander frameCommander;
+                    __CheckWrite();
+
+                    __frameManager->Append(frameIndex, index);
+
+                    /*FrameCommander frameCommander;
                     frameCommander.index = index;
                     frameCommander.order = __frameCommanders.CountValuesForKey(frameIndex);
-                    __frameCommanders.Add(frameIndex, frameCommander);
+                    __frameCommanders.Add(frameIndex, frameCommander);*/
                 }
 
-                public int Alloc()
+                /*public int Alloc()
                 {
                     int index;
                     int length = __indicesToAlloc.Length;
@@ -1176,67 +1206,96 @@ namespace ZG
 
                         __indicesToAlloc.ResizeUninitialized(length);
                     }
-                    /*else
-                        commander = new EntityCommander(Allocator.Persistent);*/
 
                     return index;
-                }
-
-                /*public Frame Alloc(uint frameIndex)
-                {
-                    if (!__frames.TryGetValue(frameIndex, out var frame))
-                    {
-                        frame.commander = Alloc();
-                        //frame.initCommander = Alloc();
-
-                        __frames[frameIndex] = frame;
-                    }
-
-                    return frame;
                 }*/
 
-                public void Free(int index)
+                public unsafe void Free(int index)
                 {
-                    //commander.writer.Clear();
+                    __CheckWrite();
 
-                    __indicesToFree.Add(index);
+                    __commanderManager->Free(index);
+
+                    //__indicesToFree.Add(index);
+                }
+
+
+                [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+                void __CheckWrite()
+                {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                    AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
+#endif
                 }
             }
 
-            private NativeList<EntityCommander> __commanders;
+            /*private NativeList<EntityCommander> __commanders;
             private NativeList<int> __indicesToAlloc;
             private NativeList<int> __indicesToFree;
             private NativeHashMap<uint, int> __frameIndices;
-            private NativeParallelMultiHashMap<uint, FrameCommander> __frameCommanders;
+            private NativeParallelMultiHashMap<uint, FrameCommander> __frameCommanders;*/
 
-            public CommanderPool(in AllocatorManager.AllocatorHandle allocator)
+            private unsafe Data* __data;
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            internal AtomicSafetyHandle m_Safety;
+#endif
+
+            public unsafe CommanderPool(in AllocatorManager.AllocatorHandle allocator)
             {
-                __commanders = new NativeList<EntityCommander>(allocator);
+                /*__commanders = new NativeList<EntityCommander>(allocator);
                 __indicesToAlloc = new NativeList<int>(allocator);
                 __indicesToFree = new NativeList<int>(allocator);
 
                 __frameIndices = new NativeHashMap<uint, int>(1, allocator);
 
-                __frameCommanders = new NativeParallelMultiHashMap<uint, FrameCommander>(1, allocator);
+                __frameCommanders = new NativeParallelMultiHashMap<uint, FrameCommander>(1, allocator);*/
+
+                __data = AllocatorManager.Allocate<Data>(allocator);
+                *__data = new Data(allocator);
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                m_Safety = CollectionHelper.CreateSafetyHandle(allocator);
+#endif
             }
 
-            public EntityCommander Alloc(out int commanderIndex)
+            public unsafe EntityCommander Alloc(out int commanderIndex)
             {
-                commanderIndex = AsWriter(1).Alloc();
+                /*commanderIndex = AsWriter(1).Alloc();
 
-                return __commanders[commanderIndex];
+                return __commanders[commanderIndex];*/
+
+                __CheckWrite();
+
+                return __data->Alloc(out commanderIndex);
             }
 
-            public void Free(int commanderIndex)
+            public unsafe void Free(int commanderIndex)
             {
-                __commanders[commanderIndex].Clear();
+                /*__commanders[commanderIndex].Clear();
 
-                __indicesToAlloc.Add(commanderIndex);
+                __indicesToAlloc.Add(commanderIndex);*/
+
+                __CheckWrite();
+
+                __data->Free(commanderIndex);
             }
 
-            public void Dispose()
+            public unsafe void Dispose()
             {
-                foreach(var commander in __commanders)
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                CollectionHelper.DisposeSafetyHandle(ref m_Safety);
+#endif
+
+                var allocator = __data->allocator;
+
+                __data->Dispose();
+
+                AllocatorManager.Free(allocator, __data);
+
+                __data = null;
+
+                /*foreach(var commander in __commanders)
                     commander.Dispose();
                 //frame.initCommander.Dispose();
 
@@ -1248,30 +1307,28 @@ namespace ZG
 
                 __frameIndices.Dispose();
 
-                __frameCommanders.Dispose();
+                __frameCommanders.Dispose();*/
             }
 
-            public void Clear()
+            public unsafe void Clear()
             {
-                /*var enumerator = __frameCommanders.GetEnumerator();
-                while (enumerator.MoveNext())
-                {
-                    Free(enumerator.Current.Value.index);
+                __CheckWrite();
 
-                    //Free(frame.initCommander);
-                }*/
+                __data->Clear();
 
-                foreach(var frameIndex in __frameIndices)
+                /*foreach(var frameIndex in __frameIndices)
                     Free(frameIndex.Value);
 
                 __frameIndices.Clear();
 
-                __frameCommanders.Clear();
+                __frameCommanders.Clear();*/
             }
 
-            public Writer AsWriter(int capacity)
+            public unsafe Writer AsWriter(int capacity)
             {
-                int length = __indicesToFree.Length;
+                __CheckWrite();
+
+                /*int length = __indicesToFree.Length;
                 for (int i = 0; i < length; ++i)
                     __commanders[__indicesToFree[i]].Clear();
 
@@ -1284,14 +1341,19 @@ namespace ZG
                     __indicesToAlloc.Add(__commanders.Length);
 
                     __commanders.Add(new EntityCommander(Allocator.Persistent));
-                }
+                }*/
+
+                __data->Flush(capacity);
 
                 return new Writer(ref this);
             }
 
-            public bool Apply(bool isInitOnly, uint frameIndex, ref SystemState systemState)
+            public unsafe bool Apply(bool isInitOnly, uint frameIndex, ref SystemState systemState)
             {
-                EntityCommander commander;
+                __CheckWrite();
+
+                return __data->Apply(isInitOnly, frameIndex, ref systemState);
+                /*EntityCommander commander;
                 if (__frameIndices.TryGetValue(frameIndex, out int commanderIndex))
                     commander = __commanders[commanderIndex];
                 else if (!__frameCommanders.ContainsKey(frameIndex))
@@ -1318,7 +1380,15 @@ namespace ZG
                     __frameIndices[frameIndex] = commanderIndex;
                 }
 
-                return commander.Apply(ref systemState);
+                return commander.Apply(ref systemState);*/
+            }
+
+            [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+            void __CheckWrite()
+            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                AtomicSafetyHandle.CheckWriteAndBumpSecondaryVersion(m_Safety);
+#endif
             }
         }
 
