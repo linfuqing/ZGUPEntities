@@ -3,6 +3,9 @@ using System.Reflection;
 using System.Collections.Generic;
 using Unity.Entities;
 using Unity.Collections;
+using System.Runtime.InteropServices;
+using Unity.Burst;
+using Unity.Collections.LowLevel.Unsafe;
 
 [assembly: ZG.CollectSystems(typeof(ZG.EntityObjects), "CollectSystemTypes")]
 
@@ -93,58 +96,26 @@ namespace ZG
         }
     }
 
-    [Serializable]
-    public struct EntityObject<T> : ICleanupComponentData, IEntityObject, IEquatable<EntityObject<T>>
+    public struct EntityObject<T> : ICleanupComponentData, IEntityObject, IDisposable, IEquatable<EntityObject<T>>
     {
         private struct Instance
         {
-            public int count;
-            public int version;
+            public static readonly SharedStatic<long> Size = SharedStatic<long>.GetOrCreate<Instance>();
+
             public T value;
-            public Action<T> onDispose;
         }
 
-        [UpdateInGroup(typeof(EntityObjectSystemGroup))]
+        [UpdateInGroup(typeof(EntityObjectSystemGroup)), RequireMatchingQueriesForUpdate, AlwaysSynchronizeSystem]
         private class System : EntityObjects.System
         {
-            /*private struct Remove
-            {
-                public NativeArray<EntityObject<T>> instances;
-
-                public void Execute(int index)
-                {
-                    EntityObject<T> source = instances[index];
-                    if (source.__version < 1)
-                        return;
-
-                    source.Release();
-                }
-            }
-
-            private struct RemoveEx : IJobChunk
-            {
-                [ReadOnly]
-                public ComponentTypeHandle<EntityObject<T>> instanceType;
-
-                public void Execute(ArchetypeChunk chunk, int chunkIndex, int firstEntityIndex)
-                {
-                    Remove remove;
-                    remove.instances = chunk.GetNativeArray(instanceType);
-                    int count = chunk.Count;
-                    for (int i = 0; i < count; ++i)
-                        remove.Execute(i);
-                }
-            }*/
-
             private EntityQuery __group;
 
             public override void SetObject(in Entity entity, EntityComponentAssigner assigner, object value)
             {
                 var target = new EntityObject<T>((T)value);
-                target.Retain();
+                //target.Retain();
 
                 assigner.SetComponentData(entity, target);
-                //new EntityObject<T>((T)value).SetTo(entity, EntityManager);
             }
 
             protected override void OnCreate()
@@ -164,29 +135,20 @@ namespace ZG
                 using(var instances = __group.ToComponentDataArray<EntityObject<T>>(Allocator.TempJob))
                 {
                     foreach(var instance in instances)
-                    {
-                        if (instance.__version < 1)
-                            continue;
-
-                        instance.Release();
-                    }
+                        instance.Dispose();
                 }
-
-                /*var iterator = __group.GetArchetypeChunkIterator();
-                RemoveEx remove;
-                remove.instanceType = GetComponentTypeHandle<EntityObject<T>>(true);
-                remove.RunWithoutJobs(ref iterator);*/
 
                 EntityManager.RemoveComponent<EntityObject<T>>(__group);
             }
         }
 
-        private static Pool<Instance> __instances;
-
         public static readonly EntityObject<T> Null = default;
 
-        private int __index;
-        private int __version;
+        private unsafe void* __ptr;
+
+        private ulong __gcHandle;
+
+        private int __hashCode;
 
         internal static Type systemType
         {
@@ -196,97 +158,61 @@ namespace ZG
             }
         }
 
-        public bool isCreated
+        public unsafe bool isCreated
         {
-            get => __version > 0;
+            get => __ptr != null;
         }
 
-        public T value
+        public unsafe T value
         {
             get
             {
-                if (__instances != null && __instances.TryGetValue(__index, out var instance) && instance.version == __version)
-                    return instance.value;
-
-                return default;
+                return UnsafeUtility.AsRef<Instance>(__ptr).value;
             }
         }
 
-        public EntityObject(T value)
+        public unsafe EntityObject(T value)
         {
             UnityEngine.Assertions.Assert.AreNotEqual(default, value);
 
-            if (__instances == null)
-                __instances = new Pool<Instance>();
+            Instance.Size.Data = UnsafeUtility.SizeOf<Instance>();
 
-            __index = __instances.nextIndex;
-
-            bool result = __instances.TryGetValue(__index, out var instance);
-            UnityEngine.Assertions.Assert.IsFalse(result);
-
-            instance.count = 0;
-
-            __version = ++instance.version;
-
-            UnityEngine.Profiling.Profiler.BeginSample("EntityObject.Insert");
-
+            Instance instance;
             instance.value = value;
-            instance.onDispose = null;
-            __instances.Insert(__index, instance);
 
-            UnityEngine.Profiling.Profiler.EndSample();
+            __ptr = (byte*)UnsafeUtility.PinGCObjectAndGetAddress(instance, out __gcHandle) + TypeManager.ObjectOffset;
+
+            __hashCode = value.GetHashCode();
         }
 
-        public int Retain()
+        public void Dispose()
         {
-            var instance = __instances[__index];
-            UnityEngine.Assertions.Assert.AreEqual(instance.version, __version);
-            ++instance.count;
-            __instances[__index] = instance;
-
-            return instance.count;
-        }
-
-        public int Release()
-        {
-            var instance = __instances[__index];
-            UnityEngine.Assertions.Assert.AreEqual(instance.version, __version);
-            if (--instance.count > 0)
-                __instances[__index] = instance;
-            else
-            {
-                if (instance.onDispose != null)
-                    instance.onDispose(instance.value);
-
-                __instances.RemoveAt(__index);
-            }
-
-            return instance.count;
+            UnsafeUtility.ReleaseGCObject(__gcHandle);
         }
 
         public void SetTo(Entity entity, EntityManager entityManager)
         {
-            UnityEngine.Profiling.Profiler.BeginSample("EntityObject.Retain");
+            //UnityEngine.Profiling.Profiler.BeginSample("EntityObject.Retain");
 
-            Retain();
+            //Retain();
 
-            UnityEngine.Profiling.Profiler.EndSample();
+            //UnityEngine.Profiling.Profiler.EndSample();
 
-            UnityEngine.Profiling.Profiler.BeginSample("EntityObject.SetComponentData");
+            //UnityEngine.Profiling.Profiler.BeginSample("EntityObject.SetComponentData");
 
             entityManager.SetComponentData(entity, this);
 
-            UnityEngine.Profiling.Profiler.EndSample();
+            //UnityEngine.Profiling.Profiler.EndSample();
         }
 
-        public bool Equals(EntityObject<T> other)
+        public unsafe bool Equals(EntityObject<T> other)
         {
-            return __index == other.__index && __version == other.__version;
+            return UnsafeUtility.MemCmp(__ptr, other.__ptr, Instance.Size.Data) == 0;
         }
 
         public override int GetHashCode()
         {
-            return __index ^ __version;
+            return __hashCode;
         }
     }
 

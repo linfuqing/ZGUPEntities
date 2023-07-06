@@ -201,7 +201,7 @@ namespace ZG
                             continue;
 
                         transform = new EntityObject<Transform>(temp);
-                        transform.Retain();
+                        //transform.Retain();
 
                         __transforms.Add(transform);
 
