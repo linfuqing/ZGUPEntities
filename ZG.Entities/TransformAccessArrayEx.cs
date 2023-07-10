@@ -60,12 +60,14 @@ namespace ZG
                 using(var sources = __group.ToComponentDataArray<EntityObject<Transform>>(Allocator.Temp))
                 {
                     int length = sources.Length;
+                    EntityObject<Transform> transform;
                     var destinations = new Transform[length];
                     for (int i = 0; i < length; ++i)
                     {
+                        transform = sources[i];
                         //UnityEngine.Assertions.Assert.AreNotEqual(null, (object)sources[i].value);
 
-                        destinations[i] = sources[i].value;
+                        destinations[i] = transform.isCreated ? transform.value : null;
                     }
 
                     if (isCreated)

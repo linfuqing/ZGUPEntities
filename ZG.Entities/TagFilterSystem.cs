@@ -37,14 +37,15 @@ namespace ZG
         public FixedString32Bytes value;
     }
 
-    public partial class TagFilterSystem : SystemBase
+    [BurstCompile, RequireMatchingQueriesForUpdate]
+    public partial struct TagFilterSystem : ISystem
     {
         [BurstCompile]
         private struct Create : IJob
         {
             [ReadOnly]
             public NativeArray<TagFilterData> instances;
-            public NativeParallelHashMap<FixedString32Bytes, int> counters;
+            public NativeHashMap<FixedString32Bytes, int> counters;
 
             public NativeList<FixedString32Bytes> tags;
 
@@ -76,7 +77,7 @@ namespace ZG
         {
             [ReadOnly, DeallocateOnJobCompletion]
             public NativeArray<TagFilterInfo> infos;
-            public NativeParallelHashMap<FixedString32Bytes, int> counters;
+            public NativeHashMap<FixedString32Bytes, int> counters;
 
             public NativeList<FixedString32Bytes> tags;
 
@@ -127,82 +128,64 @@ namespace ZG
         private NativeList<FixedString32Bytes> __valuesToEnable;
         private NativeList<FixedString32Bytes> __valuesToDisable;
 
-        private NativeParallelHashMap<FixedString32Bytes, int> __counters;
+        private NativeHashMap<FixedString32Bytes, int> __counters;
 
-        protected override void OnCreate()
+        [BurstCompile]
+        public void OnCreate(ref SystemState state)
         {
-            base.OnCreate();
+            using(var builder = new EntityQueryBuilder(Allocator.Temp))
+                __filtersToCreate = builder
+                    .WithAll<TagFilterData>()
+                    .WithNone<TagFilterInfo>()
+                    .Build(ref state);
 
-            __filtersToCreate = GetEntityQuery(ComponentType.ReadOnly<TagFilterData>(), ComponentType.Exclude<TagFilterInfo>());
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __filtersToDestroy = builder
+                    .WithAll<TagFilterInfo>()
+                    .WithNone<TagFilterData>()
+                    .AddAdditionalQuery()
+                    .WithAll<TagFilterInfo, Disabled>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
 
-            __filtersToDestroy = GetEntityQuery(new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<TagFilterInfo>(), 
-                }, 
-                None = new ComponentType[]
-                {
-                    typeof(TagFilterData)
-                }, 
-            },
-            new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<TagFilterInfo>(),
-                    ComponentType.ReadOnly<Disabled>(),
-                },
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __tagsToInit = builder
+                    .WithAll<TagData>()
+                    .WithNone<Tag>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
 
-            __tagsToInit = GetEntityQuery(new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<TagData>()
-                },
-                None = new ComponentType[]
-                {
-                    typeof(Tag)
-                },
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __tagsToEnable = builder
+                    .WithAll<Tag, Disabled>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
 
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-
-            __tagsToEnable = GetEntityQuery(new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<Tag>(),
-                    ComponentType.ReadOnly<Disabled>()
-                },
-
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
-
-            __tagsToDisable = GetEntityQuery(ComponentType.ReadOnly<Tag>());
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __tagsToDisable = builder
+                    .WithAll<Tag>()
+                    .Build(ref state);
 
             __valuesToEnable = new NativeList<FixedString32Bytes>(Allocator.Persistent);
             __valuesToDisable = new NativeList<FixedString32Bytes>(Allocator.Persistent);
-            __counters = new NativeParallelHashMap<FixedString32Bytes, int>(1, Allocator.Persistent);
+            __counters = new NativeHashMap<FixedString32Bytes, int>(1, Allocator.Persistent);
         }
 
-        protected override void OnDestroy()
+        //[BurstCompile]
+        public void OnDestroy(ref SystemState state)
         {
             __valuesToEnable.Dispose();
             __valuesToDisable.Dispose();
             __counters.Dispose();
-
-            base.OnDestroy();
         }
 
-        protected override void OnUpdate()
+        [BurstCompile]
+        public void OnUpdate(ref SystemState state)
         {
             //TODO: 
-            CompleteDependency();
+            state.CompleteDependency();
 
-            var entityManager = EntityManager;
+            var entityManager = state.EntityManager;
             var instances = __filtersToCreate.ToComponentDataArray<TagFilterData>(Allocator.TempJob);
             {
                 Create create;
@@ -218,7 +201,7 @@ namespace ZG
                     SetValues setValues;
                     setValues.entityArray = entityArray;
                     setValues.instances = instances;
-                    setValues.infos = GetComponentLookup<TagFilterInfo>();
+                    setValues.infos = state.GetComponentLookup<TagFilterInfo>();
                     setValues.Run(entityArray.Length);
                 }
             }
@@ -246,7 +229,7 @@ namespace ZG
                         entity = entityArray[i];
 
                         tag.value = entityManager.GetComponentData<TagData>(entity).value;
-                        entityManager.AddSharedComponentManaged(entity, tag);
+                        entityManager.AddSharedComponent(entity, tag);
                     }
 
                     entityManager.RemoveComponent<TagData>(entityArray);
