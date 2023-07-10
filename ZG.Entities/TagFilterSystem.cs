@@ -3,7 +3,6 @@ using Unity.Collections;
 using Unity.Burst;
 using Unity.Jobs;
 using System;
-using System.Linq;
 
 namespace ZG
 {
@@ -218,7 +217,7 @@ namespace ZG
             }
 
             Tag tag;
-            if (__counters.Count() > 0)
+            if (__counters.Count > 0)
             {
                 using (var entityArray = __tagsToInit.ToEntityArray(Allocator.TempJob))
                 {
