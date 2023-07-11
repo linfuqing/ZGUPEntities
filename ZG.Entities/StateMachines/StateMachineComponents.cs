@@ -2,25 +2,22 @@ using Unity.Entities;
 
 namespace ZG
 {
-    public interface IStateMachine : IBufferElementData
+    //[Serializable, InternalBufferCapacity(1)]
+    public struct StateMachine : IBufferElementData
     {
-        int executorIndex
-        {
-            get;
-
-            set;
-        }
+        public SystemHandle systemHandle;
+        public SystemHandle executorSystemHandle;
     }
 
     public struct StateMachineInfo : IComponentData
     {
         public int count;
-        public int systemIndex;
+        public SystemHandle systemHandle;
     }
 
     public struct StateMachineStatus : IComponentData
     {
         public int value;
-        public int systemIndex;
+        public SystemHandle systemHandle;
     }
 }

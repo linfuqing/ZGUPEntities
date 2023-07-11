@@ -10,6 +10,7 @@ using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using ZG;
 
+[assembly: RegisterGenericJobType(typeof(ClearList<Hash128>))]
 [assembly: RegisterGenericJobType(typeof(ClearHashMap<Hash128, int>))]
 
 namespace ZG

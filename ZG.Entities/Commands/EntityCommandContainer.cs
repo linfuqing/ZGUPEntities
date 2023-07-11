@@ -1,13 +1,10 @@
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using Unity.Jobs;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
-using ZG.Unsafe;
+using ZG;
 
 namespace ZG
 {

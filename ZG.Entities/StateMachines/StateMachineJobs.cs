@@ -5,6 +5,7 @@ using Unity.Entities;
 using Unity.Collections;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
+using UnityEngine.UIElements;
 
 namespace ZG
 {
@@ -12,20 +13,19 @@ namespace ZG
     {
         bool Execute(
             int runningStatus,
-            int runningSystemIndex,
-            int nextSystemIndex,
-            int currentSystemIndex,
-            int index,
-            in Entity entity);
+            in SystemHandle runningSystemHandle,
+            in SystemHandle nextSystemHandle,
+            in SystemHandle currentSystemHandle,
+            int index);
     }
 
     public interface IStateMachineEscaper
     {
         bool Execute(
             int runningStatus,
-            int runningSystemIndex,
-            int nextSystemIndex,
-            int currentSystemIndex,
+            in SystemHandle runningSystemHandle,
+            in SystemHandle nextSystemHandle,
+            in SystemHandle currentSystemHandle,
             int index);
     }
 
@@ -36,16 +36,14 @@ namespace ZG
 
     public interface IStateMachineFactory<T> where T : struct
     {
-        bool Create(int index, in ArchetypeChunk chunk, out T scheduler);
+        T Create(int index, in ArchetypeChunk chunk);
     }
 
     public struct StateMachineFactory<T> : IStateMachineFactory<T> where T : struct
     {
-        public bool Create(int index, in ArchetypeChunk chunk, out T scheduler)
+        public T Create(int index, in ArchetypeChunk chunk)
         {
-            scheduler = default;
-
-            return true;
+            return default;
         }
     }
 
@@ -53,11 +51,10 @@ namespace ZG
     {
         public bool Execute(
             int runningStatus,
-            int runningSystemIndex,
-            int nextSystemIndex,
-            int currentSystemIndex,
-            int index,
-            in Entity entity)
+            in SystemHandle runningSystemHandle,
+            in SystemHandle nextSystemHandle,
+            in SystemHandle currentSystemHandle,
+            int index)
         {
             return true;
         }
@@ -67,9 +64,9 @@ namespace ZG
     {
         public bool Execute(
             int runningStatus,
-            int runningSystemIndex,
-            int nextSystemIndex,
-            int currentSystemIndex,
+            in SystemHandle runningSystemHandle,
+            in SystemHandle nextSystemHandle,
+            in SystemHandle currentSystemHandle,
             int index)
         {
             return true;
@@ -77,167 +74,153 @@ namespace ZG
     }
 
     [BurstCompile]
-    public struct StateMachineExit<TStateMachine, TScheduler, TFactory> : IJobChunk, IEntityCommandProducerJob
-        where TStateMachine : unmanaged, IStateMachine
-        where TScheduler : struct, IStateMachineScheduler
-        where TFactory : struct, IStateMachineFactory<TScheduler>
+    public struct StateMachineSchedulerJob<TSchedulerExit, TFactoryExit, TSchedulerEntry, TFactoryEntry> : IJobChunk
+        where TSchedulerExit : struct, IStateMachineScheduler
+        where TFactoryExit : struct, IStateMachineFactory<TSchedulerExit>
+        where TSchedulerEntry : struct, IStateMachineScheduler
+        where TFactoryEntry : struct, IStateMachineFactory<TSchedulerEntry>
     {
-        public int systemIndex;
-        public TFactory factory;
+        public SystemHandle systemHandle;
 
-        [ReadOnly]
-        public EntityTypeHandle entityType;
+        public TFactoryExit factoryExit;
+        public TFactoryEntry factoryEntry;
+
         [ReadOnly]
         public ComponentTypeHandle<StateMachineStatus> statusType;
         public ComponentTypeHandle<StateMachineInfo> infoType;
-        [ReadOnly]
-        public BufferTypeHandle<TStateMachine> stateMachineType;
-        public EntityCommandQueue<Entity>.ParallelWriter entityManager;
+        public BufferTypeHandle<StateMachine> instanceType;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
-            if (!factory.Create(unfilteredChunkIndex, chunk, out var scheduler))
-                return;
+            TSchedulerExit schedulerExit = default;
+            TSchedulerEntry schedulerEntry = default;
 
-            var entities = chunk.GetNativeArray(entityType);
             var states = chunk.GetNativeArray(ref statusType);
             var infos = chunk.GetNativeArray(ref infoType);
-
-            var stateMachines = chunk.GetBufferAccessor(ref stateMachineType);
+            var instanceAccessor = chunk.GetBufferAccessor(ref instanceType);
+            DynamicBuffer<StateMachine> instances;
+            StateMachine instance;
             StateMachineStatus status;
             StateMachineInfo info;
-            Entity entity;
-            var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
-            while(iterator.NextEntityIndex(out int i))
-            {
-                if (stateMachines[i].Length > 0)
-                    continue;
-
-                info = infos[i];
-
-                if (info.systemIndex == systemIndex)
-                    continue;
-
-                entity = entities[i];
-
-                status = states[i];
-                if (!scheduler.Execute(
-                    status.value,
-                    status.systemIndex,
-                    info.systemIndex,
-                    systemIndex,
-                    i,
-                    entity))
-                    continue;
-
-                --info.count;
-
-                infos[i] = info;
-
-                entityManager.Enqueue(entity);
-            }
-        }
-    }
-
-    [BurstCompile]
-    public struct StateMachineEntry<TScheduler, TFactory> : IJobChunk, IEntityCommandProducerJob
-        where TScheduler : struct, IStateMachineScheduler
-        where TFactory : struct, IStateMachineFactory<TScheduler>
-    {
-        public int systemIndex;
-        public TFactory factory;
-
-        [ReadOnly]
-        public EntityTypeHandle entityType;
-        [ReadOnly]
-        public ComponentTypeHandle<StateMachineStatus> statusType;
-        public ComponentTypeHandle<StateMachineInfo> infoType;
-        public EntityCommandQueue<Entity>.ParallelWriter entityManager;
-
-        public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
-        {
-            if (!factory.Create(unfilteredChunkIndex, chunk, out var scheduler))
-                return;
-
-            var entities = chunk.GetNativeArray(entityType);
-            var states = chunk.GetNativeArray(ref statusType);
-            var infos = chunk.GetNativeArray(ref infoType);
-
-            StateMachineStatus status;
-            StateMachineInfo info;
-            Entity entity;
+            int length, j;
+            bool isExit = false, isEntry = false;
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
             {
-                status = states[i];
                 info = infos[i];
-                if (status.systemIndex < 0 && info.systemIndex >= 0 && info.systemIndex != systemIndex)
-                    continue;
 
-                entity = entities[i];
+                instances = instanceAccessor[i];
+                length = instances.Length;
+                for (j = 0; j < length; ++j)
+                {
+                    if (instances.ElementAt(j).systemHandle == systemHandle)
+                        break;
+                }
 
-                if (!scheduler.Execute(
-                    status.value,
-                    status.systemIndex,
-                    info.systemIndex,
-                    systemIndex,
-                    i,
-                    entity))
-                    continue;
+                if (j < length)
+                {
+                    if (info.systemHandle == systemHandle)
+                        continue;
 
-                ++info.count;
+                    status = states[i];
 
-                info.systemIndex = systemIndex;
-                infos[i] = info;
+                    if(!isExit)
+                    {
+                        isExit = true;
 
-                entityManager.Enqueue(entity);
+                        schedulerExit = factoryExit.Create(unfilteredChunkIndex, chunk);
+                    }
+
+                    if (!schedulerExit.Execute(
+                        status.value,
+                        status.systemHandle,
+                        info.systemHandle,
+                        systemHandle,
+                        i))
+                        continue;
+
+                    --info.count;
+
+                    infos[i] = info;
+
+                    instances.RemoveAtSwapBack(j);
+                }
+                else
+                {
+                    status = states[i];
+                    if (status.systemHandle == SystemHandle.Null && info.systemHandle != SystemHandle.Null && info.systemHandle != systemHandle)
+                        continue;
+
+                    if (!isEntry)
+                    {
+                        isEntry = true;
+
+                        schedulerEntry = factoryEntry.Create(unfilteredChunkIndex, chunk);
+                    }
+
+                    if (!schedulerEntry.Execute(
+                        status.value,
+                        status.systemHandle,
+                        info.systemHandle,
+                        systemHandle,
+                        i))
+                        continue;
+
+                    ++info.count;
+
+                    info.systemHandle = systemHandle;
+                    infos[i] = info;
+
+                    instance.systemHandle = systemHandle;
+                    instance.executorSystemHandle = SystemHandle.Null;
+                    instances.Add(instance);
+                }
             }
         }
     }
 
 
     [BurstCompile]
-    public struct StateMachineEscaper<TStateMachine, TEscaper, TFactory> : IJobChunk
-        where TStateMachine : unmanaged, IStateMachine
+    public struct StateMachineEscaperJob<TEscaper, TFactory> : IJobChunk
         where TEscaper : struct, IStateMachineEscaper
         where TFactory : struct, IStateMachineFactory<TEscaper>
     {
-        public int systemIndex;
+        public SystemHandle systemHandle;
 
-        public int executorIndex;
+        public SystemHandle executorSystemHandle;
 
         public TFactory factory;
 
         [ReadOnly]
         public ComponentTypeHandle<StateMachineInfo> infoType;
         public ComponentTypeHandle<StateMachineStatus> statusType;
-        public BufferTypeHandle<TStateMachine> stateMachineType;
+        public BufferTypeHandle<StateMachine> instanceType;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
-            if (!factory.Create(unfilteredChunkIndex, chunk, out var escaper))
-                return;
+            TEscaper escaper = default;
 
             var states = chunk.GetNativeArray(ref statusType);
             var infos = chunk.GetNativeArray(ref infoType);
 
-            var stateMachineAccessor = chunk.GetBufferAccessor(ref stateMachineType);
-            DynamicBuffer<TStateMachine> stateMachines;
+            var instanceAccessor = chunk.GetBufferAccessor(ref instanceType);
+            DynamicBuffer<StateMachine> instances;
             StateMachineStatus status;
             StateMachineInfo info;
             int length, i, j;
+            bool isCreated = false;
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out i))
             {
                 info = infos[i];
-                if (info.systemIndex == systemIndex)
+                if (info.systemHandle == systemHandle)
                     continue;
 
-                stateMachines = stateMachineAccessor[i];
-                length = stateMachines.Length;
+                instances = instanceAccessor[i];
+                length = instances.Length;
                 for (j = 0; j < length; ++j)
                 {
-                    if (stateMachines[j].executorIndex == executorIndex)
+                    if (instances.ElementAt(j).executorSystemHandle == executorSystemHandle)
                         break;
                 }
 
@@ -245,19 +228,27 @@ namespace ZG
                 {
                     status = states[i];
 
+                    if(!isCreated)
+                    {
+                        isCreated = true;
+
+                        escaper = factory.Create(unfilteredChunkIndex, chunk);
+                    }
+
                     if (escaper.Execute(
                         status.value,
-                        status.systemIndex,
-                        info.systemIndex,
-                        systemIndex,
+                        status.systemHandle,
+                        info.systemHandle,
+                        systemHandle,
                         i))
                     {
-                        stateMachines.RemoveAt(j);
+                        //instances.RemoveAt(j);
+                        instances.ElementAt(j).executorSystemHandle = SystemHandle.Null;
 
-                        if (length < 2 && status.systemIndex == systemIndex)
+                        if (length < 2 && status.systemHandle == systemHandle)
                         {
                             status.value = 0;
-                            status.systemIndex = -1;
+                            status.systemHandle = SystemHandle.Null;
 
                             states[i] = status;
                         }
@@ -268,66 +259,84 @@ namespace ZG
     }
 
     [BurstCompile]
-    public struct StateMachineExecutor<TStateMachine, TExecutor, TFactory> : IJobChunk
-        where TStateMachine : unmanaged, IStateMachine
+    public struct StateMachineExecutorJob<TExecutor, TFactory> : IJobChunk
         where TExecutor : struct, IStateMachineExecutor
         where TFactory : struct, IStateMachineFactory<TExecutor>
     {
-        public int systemIndex;
+        public SystemHandle systemHandle;
 
-        public int executorIndex;
+        public SystemHandle executorSystemHandle;
 
         public TFactory factory;
 
         [ReadOnly]
         public ComponentTypeHandle<StateMachineInfo> infoType;
         public ComponentTypeHandle<StateMachineStatus> statusType;
-        public BufferTypeHandle<TStateMachine> stateMachineType;
+        public BufferTypeHandle<StateMachine> instanceType;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
-            if (!factory.Create(unfilteredChunkIndex, chunk, out var executor))
-                return;
+            TExecutor executor = default;
 
             var states = chunk.GetNativeArray(ref statusType);
             var infos = chunk.GetNativeArray(ref infoType);
 
-            var stateMachineAccessor = chunk.GetBufferAccessor(ref stateMachineType);
-            DynamicBuffer<TStateMachine> stateMachines;
-            TStateMachine stateMachine = default;
+            var instanceAccessor = chunk.GetBufferAccessor(ref instanceType);
+            DynamicBuffer<StateMachine> instances;
+            StateMachine instance;
             StateMachineStatus status;
             StateMachineInfo info;
             int length, i, j;
+            bool isCreated = false;
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out i))
             {
                 info = infos[i];
-                if (info.systemIndex != systemIndex)
+                if (info.systemHandle != systemHandle)
                     continue;
 
                 status = states[i];
-                if (status.systemIndex != systemIndex)
+                if (status.systemHandle != systemHandle)
                 {
                     if (info.count < 2)
-                        status.systemIndex = systemIndex;
+                        status.systemHandle = systemHandle;
                     else
                         continue;
                 }
 
-                stateMachines = stateMachineAccessor[i];
-                length = stateMachines.Length;
+                instances = instanceAccessor[i];
+                length = instances.Length;
                 for (j = 0; j < length; ++j)
                 {
-                    if (stateMachines[j].executorIndex == executorIndex)
+                    if (instances.ElementAt(j).executorSystemHandle == executorSystemHandle)
                         break;
+                }
+
+                if (!isCreated)
+                {
+                    isCreated = true;
+
+                    executor = factory.Create(unfilteredChunkIndex, chunk);
                 }
 
                 if (j < length)
                     status.value = executor.Execute(false, i);
                 else
                 {
-                    stateMachine.executorIndex = executorIndex;
-                    stateMachines.Add(stateMachine);
+                    for (j = 0; j < length; ++j)
+                    {
+                        if (instances.ElementAt(j).systemHandle == systemHandle)
+                            break;
+                    }
+
+                    if (j < length)
+                        instances.ElementAt(j).executorSystemHandle = executorSystemHandle;
+                    else
+                    {
+                        instance.systemHandle = systemHandle;
+                        instance.executorSystemHandle = executorSystemHandle;
+                        instances.Add(instance);
+                    }
 
                     status.value = executor.Execute(true, i);
                 }

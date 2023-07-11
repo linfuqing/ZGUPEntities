@@ -4,6 +4,7 @@ using Unity.Jobs;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Collections;
+using Google.JarResolver;
 
 namespace ZG
 {
@@ -19,8 +20,7 @@ namespace ZG
 
     }
 
-
-    public abstract partial class StateMachineSystemBase : SystemBase
+    /*public abstract partial class StateMachineSystemBase : SystemBase
     {
         private static Pool<StateMachineSystemBase> __systems;
 
@@ -53,136 +53,25 @@ namespace ZG
 
             base.OnDestroy();
         }
-    }
+    }*/
 
     [UpdateInGroup(typeof(StateMachineSchedulerGroup))]
-    public abstract partial class StateMachineSchedulerSystem<TSchedulerExit, TSchedulerEntry, TFactoryExit, TFactoryEntry, TSystem> : StateMachineSystemBase
-        where TSchedulerExit : struct, IStateMachineScheduler
-        where TSchedulerEntry : struct, IStateMachineScheduler
-        where TFactoryExit : struct, IStateMachineFactory<TSchedulerExit>
-        where TFactoryEntry : struct, IStateMachineFactory<TSchedulerEntry>
-        where TSystem : StateMachineSchedulerSystem<TSchedulerExit, TSchedulerEntry, TFactoryExit, TFactoryEntry, TSystem>
+    public struct StateMachineSchedulerSystemCore// : StateMachineSystemBase
+        //where TSystem : StateMachineSchedulerSystem<TSchedulerExit, TSchedulerEntry, TFactoryExit, TFactoryEntry, TSystem>
     {
-        [Serializable, InternalBufferCapacity(1)]
-        public struct StateMachine : IStateMachine
+
+        //[Serializable, InternalBufferCapacity(1)]
+        /*public struct StateMachine : IStateMachine
         {
-            public int executorIndex
+            public SystemHandle executor
             {
                 get;
 
                 set;
             }
-        }
+        }*/
 
-        [UpdateInGroup(typeof(StateMachineExecutorGroup))]
-        public abstract partial class StateMachineExecutorSystem<TEscaper, TExecutor, TEscaperFactory, TExecutorFactory> : StateMachineSystemBase
-            where TEscaper : struct, IStateMachineEscaper
-            where TExecutor : struct, IStateMachineExecutor
-            where TEscaperFactory : struct, IStateMachineFactory<TEscaper>
-            where TExecutorFactory : struct, IStateMachineFactory<TExecutor>
-        {
-            private TSystem __system;
-
-            public EntityQuery exitGroup
-            {
-                get;
-
-                private set;
-            }
-
-            public EntityQuery runGroup
-            {
-                get;
-
-                private set;
-            }
-
-            public abstract IEnumerable<EntityQueryDesc> runEntityArchetypeQueries
-            {
-                get;
-            }
-
-            protected override void OnCreate()
-            {
-                base.OnCreate();
-
-                exitGroup = GetEntityQuery(
-                    ComponentType.ReadOnly<StateMachine>(),
-                    ComponentType.ReadOnly<StateMachineInfo>(),
-                    ComponentType.ReadWrite<StateMachineStatus>());
-
-                IEnumerable<EntityQueryDesc> runEntityArchetypeQueries = this.runEntityArchetypeQueries;
-                if (runEntityArchetypeQueries != null)
-                {
-                    List<ComponentType> componentTypes = new List<ComponentType>();
-                    List<EntityQueryDesc> entityArchetypeQueries = null;
-                    EntityQueryDesc destination;
-                    foreach (EntityQueryDesc source in runEntityArchetypeQueries)
-                    {
-                        if (source == null)
-                            continue;
-
-                        destination = new EntityQueryDesc();
-
-                        componentTypes.Clear();
-                        componentTypes.Add(ComponentType.ReadOnly<StateMachineInfo>());
-                        componentTypes.Add(ComponentType.ReadWrite<StateMachineStatus>());
-                        componentTypes.Add(ComponentType.ReadWrite<StateMachine>());
-                        if (source.All != null)
-                            componentTypes.AddRange(source.All);
-
-                        destination.All = componentTypes.ToArray();
-                        destination.Any = source.Any;
-                        destination.None = source.None;
-                        destination.Options = source.Options;
-
-                        if (entityArchetypeQueries == null)
-                            entityArchetypeQueries = new List<EntityQueryDesc>();
-
-                        entityArchetypeQueries.Add(destination);
-                    }
-
-                    if (entityArchetypeQueries != null)
-                        runGroup = GetEntityQuery(entityArchetypeQueries.ToArray());
-                }
-
-                __system = World.GetOrCreateSystemManaged<TSystem>();
-            }
-
-            protected override void OnUpdate()
-            {
-                int systemIndex = __system.systemIndex, executorIndex = base.systemIndex;
-                var inputDeps = Dependency;
-                var infoType = GetComponentTypeHandle<StateMachineInfo>(true);
-                var statusType = GetComponentTypeHandle<StateMachineStatus>();
-                var stateMachineType = GetBufferTypeHandle<StateMachine>();
-
-                StateMachineEscaper<StateMachine, TEscaper, TEscaperFactory> escaper;
-                escaper.systemIndex = systemIndex;
-                escaper.executorIndex = executorIndex;
-                escaper.factory = _GetExit(ref inputDeps);
-                escaper.infoType = infoType;
-                escaper.statusType = statusType;
-                escaper.stateMachineType = stateMachineType;
-                inputDeps = escaper.ScheduleParallel(exitGroup, inputDeps);
-
-                StateMachineExecutor<StateMachine, TExecutor, TExecutorFactory> executor;
-                executor.systemIndex = systemIndex;
-                executor.executorIndex = executorIndex;
-                executor.factory = _GetRun(ref inputDeps);
-                executor.infoType = infoType;
-                executor.statusType = statusType;
-                executor.stateMachineType = stateMachineType;
-
-                Dependency = executor.ScheduleParallel(runGroup, inputDeps);
-            }
-
-            protected abstract TExecutorFactory _GetRun(ref JobHandle inputDeps);
-
-            protected abstract TEscaperFactory _GetExit(ref JobHandle inputDeps);
-        }
-
-        public abstract partial class StateMachineExecutorSystem<TExecutor, TExecutorFactory> : StateMachineExecutorSystem<StateMachineEscaper, TExecutor, StateMachineFactory<StateMachineEscaper>, TExecutorFactory>
+        /*public abstract partial class StateMachineExecutorSystem<TExecutor, TExecutorFactory> : StateMachineExecutorSystem<StateMachineEscaper, TExecutor, StateMachineFactory<StateMachineEscaper>, TExecutorFactory>
             where TExecutor : struct, IStateMachineExecutor
             where TExecutorFactory : struct, IStateMachineFactory<TExecutor>
         {
@@ -190,127 +79,128 @@ namespace ZG
             {
                 return default;
             }
-        }
+        }*/
 
-        private EntityQuery __exitGroup;
-        private EntityQuery __entryGroup;
-        private EntityCommandPool<Entity> __addComponentCommander;
-        private EntityCommandPool<Entity> __removeComponentCommander;
+        private ComponentTypeHandle<StateMachineStatus> __statusType;
+        private ComponentTypeHandle<StateMachineInfo> __infoType;
+        private BufferTypeHandle<StateMachine> __instanceType;
 
-        public abstract IEnumerable<EntityQueryDesc> entryEntityArchetypeQueries
+        public EntityQuery group
         {
             get;
         }
 
-        protected override void OnCreate()
+        public StateMachineSchedulerSystemCore(ref SystemState state, EntityQueryBuilder entryBuilder)
         {
-            base.OnCreate();
+            group = entryBuilder
+                .WithAll<StateMachineStatus>()
+                .WithAllRW<StateMachineInfo, StateMachine>()
+                //.WithNone<StateMachine>()
+                .Build(ref state);
 
-            __exitGroup = GetEntityQuery(
-                ComponentType.ReadOnly<StateMachine>(),
-                ComponentType.ReadOnly<StateMachineStatus>(),
-                ComponentType.ReadWrite<StateMachineInfo>());
-
-            IEnumerable<EntityQueryDesc> entryEntityArchetypeQueries = this.entryEntityArchetypeQueries;
-            if (entryEntityArchetypeQueries != null)
-            {
-                List<ComponentType> componentTypes = new List<ComponentType>();
-                List<EntityQueryDesc> entityArchetypeQueries = null;
-                EntityQueryDesc destination;
-                foreach (EntityQueryDesc source in entryEntityArchetypeQueries)
-                {
-                    if (source == null)
-                        continue;
-
-                    destination = new EntityQueryDesc();
-
-                    componentTypes.Clear();
-                    componentTypes.Add(ComponentType.ReadOnly<StateMachineStatus>());
-                    componentTypes.Add(ComponentType.ReadWrite<StateMachineInfo>());
-                    if (source.All != null)
-                        componentTypes.AddRange(source.All);
-
-                    destination.All = componentTypes.ToArray();
-                    destination.Any = source.Any;
-
-                    componentTypes.Clear();
-                    componentTypes.Add(typeof(StateMachine));
-                    if (source.None != null)
-                        componentTypes.AddRange(source.None);
-
-                    destination.None = componentTypes.ToArray();
-                    destination.Options = source.Options;
-
-                    if (entityArchetypeQueries == null)
-                        entityArchetypeQueries = new List<EntityQueryDesc>();
-
-                    entityArchetypeQueries.Add(destination);
-                }
-
-                if (entityArchetypeQueries != null)
-                    __entryGroup = GetEntityQuery(entityArchetypeQueries.ToArray());
-            }
-
-            var endFrameBarrier = World.GetOrCreateSystemManaged<EndTimeSystemGroupEntityCommandSystem>();
-
-            __removeComponentCommander = endFrameBarrier.CreateRemoveComponentCommander<StateMachine>();
-            __addComponentCommander = endFrameBarrier.CreateAddComponentCommander<StateMachine>();
-
-#if DEBUG
-            EntityCommandUtility.RegisterProducerJobType<StateMachineExit<StateMachine, TSchedulerExit, TFactoryExit>>();
-            EntityCommandUtility.RegisterProducerJobType<StateMachineEntry<TSchedulerEntry, TFactoryEntry>>();
-#endif
+            __statusType = state.GetComponentTypeHandle<StateMachineStatus>(true);
+            __infoType = state.GetComponentTypeHandle<StateMachineInfo>();
+            __instanceType = state.GetBufferTypeHandle<StateMachine>();
         }
 
-        protected override void OnUpdate()
+        public void Update<TSchedulerExit, TSchedulerEntry, TFactoryExit, TFactoryEntry>(
+            ref SystemState state, 
+            ref TFactoryEntry factoryEntry, 
+            ref TFactoryExit factoryExit)
+            where TSchedulerExit : struct, IStateMachineScheduler
+            where TSchedulerEntry : struct, IStateMachineScheduler
+            where TFactoryExit : struct, IStateMachineFactory<TSchedulerExit>
+            where TFactoryEntry : struct, IStateMachineFactory<TSchedulerEntry>
         {
-            var inputDeps = Dependency;
-            var entityType = GetEntityTypeHandle();
-            var statusType = GetComponentTypeHandle<StateMachineStatus>(true);
-            var infoType = GetComponentTypeHandle<StateMachineInfo>();
-
-            if (!__exitGroup.IsEmptyIgnoreFilter)
-            {
-                var removeComponentCommander = __removeComponentCommander.Create();
-
-                StateMachineExit<StateMachine, TSchedulerExit, TFactoryExit> exit;
-                exit.systemIndex = systemIndex;
-                exit.factory = _GetExit(ref inputDeps);
-                exit.entityType = entityType;
-                exit.statusType = statusType;
-                exit.infoType = infoType;
-                exit.stateMachineType = GetBufferTypeHandle<StateMachine>();
-                exit.entityManager = removeComponentCommander.parallelWriter;
-                inputDeps = exit.ScheduleParallel(__exitGroup, inputDeps);
-
-                removeComponentCommander.AddJobHandleForProducer<StateMachineExit<StateMachine, TSchedulerExit, TFactoryExit>>(inputDeps);
-            }
-
-            if (!__entryGroup.IsEmptyIgnoreFilter)
-            {
-                var addComponentCommander = __addComponentCommander.Create();
-
-                StateMachineEntry<TSchedulerEntry, TFactoryEntry> entry;
-                entry.systemIndex = systemIndex;
-                entry.factory = _GetEntry(ref inputDeps);
-                entry.entityType = entityType;
-                entry.statusType = statusType;
-                entry.infoType = infoType;
-                entry.entityManager = addComponentCommander.parallelWriter;
-                inputDeps = entry.ScheduleParallel(__entryGroup, inputDeps);
-
-                addComponentCommander.AddJobHandleForProducer<StateMachineEntry<TSchedulerEntry, TFactoryEntry>>(inputDeps);
-            }
-
-            Dependency = inputDeps;
+            StateMachineSchedulerJob<TSchedulerExit, TFactoryExit, TSchedulerEntry, TFactoryEntry> job;
+            job.systemHandle = state.SystemHandle;
+            job.factoryExit = factoryExit;
+            job.factoryEntry = factoryEntry;
+            job.statusType = __statusType.UpdateAsRef(ref state);
+            job.infoType = __infoType.UpdateAsRef(ref state);
+            job.instanceType = __instanceType.UpdateAsRef(ref state);
+            state.Dependency = job.ScheduleParallelByRef(group, state.Dependency);
         }
-
-        protected abstract TFactoryEntry _GetEntry(ref JobHandle inputDeps);
-
-        protected abstract TFactoryExit _GetExit(ref JobHandle inputDeps);
     }
 
-    public abstract partial class StateMachineSchedulerSystem<TSchedulerEntry, TFactoryEntry, TSystem> : StateMachineSchedulerSystem<StateMachineScheduler, TSchedulerEntry, StateMachineFactory<StateMachineScheduler>, TFactoryEntry, TSystem>
+    [UpdateInGroup(typeof(StateMachineExecutorGroup))]
+    public struct StateMachineExecutorSystemCore
+    {
+        private SystemHandle __schedulerSystemHandle;
+        private ComponentTypeHandle<StateMachineInfo> __infoType;
+        private ComponentTypeHandle<StateMachineStatus> __statusType;
+        private BufferTypeHandle<StateMachine> __instanceType;
+
+        public EntityQuery exitGroup
+        {
+            get;
+
+            private set;
+        }
+
+        public EntityQuery runGroup
+        {
+            get;
+
+            private set;
+        }
+
+        public StateMachineExecutorSystemCore(ref SystemState state, EntityQueryBuilder runBuilder, in SystemHandle schedulerSystemHandle)
+        {
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                exitGroup = builder
+                        .WithAll<StateMachine, StateMachineInfo>()
+                        .WithAllRW<StateMachineStatus>()
+                        .Build(ref state);
+
+            runGroup = runBuilder
+                .WithAll<StateMachineInfo>()
+                .WithAllRW<StateMachineStatus, StateMachine>()
+                .Build(ref state);
+
+            __infoType = state.GetComponentTypeHandle<StateMachineInfo>(true);
+            __statusType = state.GetComponentTypeHandle<StateMachineStatus>();
+            __instanceType = state.GetBufferTypeHandle<StateMachine>();
+
+            __schedulerSystemHandle = schedulerSystemHandle;
+        }
+
+        public void Update<TEscaper, TExecutor, TEscaperFactory, TExecutorFactory>(
+            ref SystemState state, 
+            ref TExecutorFactory executorFactory, 
+            ref TEscaperFactory escaperFactory)
+            where TEscaper : struct, IStateMachineEscaper
+            where TExecutor : struct, IStateMachineExecutor
+            where TEscaperFactory : struct, IStateMachineFactory<TEscaper>
+            where TExecutorFactory : struct, IStateMachineFactory<TExecutor>
+        {
+            SystemHandle executorSystemHandle = state.SystemHandle;
+            var infoType = __infoType.UpdateAsRef(ref state);
+            var statusType = __statusType.UpdateAsRef(ref state);
+            var instanceType = __instanceType.UpdateAsRef(ref state);
+
+            StateMachineEscaperJob<TEscaper, TEscaperFactory> escaper;
+            escaper.systemHandle = __schedulerSystemHandle;
+            escaper.executorSystemHandle = executorSystemHandle;
+            escaper.factory = escaperFactory;
+            escaper.infoType = infoType;
+            escaper.statusType = statusType;
+            escaper.instanceType = instanceType;
+            var jobHandle = escaper.ScheduleParallelByRef(exitGroup, state.Dependency);
+
+            StateMachineExecutorJob<TExecutor, TExecutorFactory> executor;
+            executor.systemHandle = __schedulerSystemHandle;
+            executor.executorSystemHandle = executorSystemHandle;
+            executor.factory = executorFactory;
+            executor.infoType = infoType;
+            executor.statusType = statusType;
+            executor.instanceType = instanceType;
+
+            state.Dependency = executor.ScheduleParallelByRef(runGroup, jobHandle);
+        }
+    }
+
+    /*public abstract partial class StateMachineSchedulerSystemCore<TSchedulerEntry, TFactoryEntry, TSystem> : StateMachineSchedulerSystem<StateMachineScheduler, TSchedulerEntry, StateMachineFactory<StateMachineScheduler>, TFactoryEntry, TSystem>
         where TSchedulerEntry : struct, IStateMachineScheduler
         where TFactoryEntry : struct, IStateMachineFactory<TSchedulerEntry>
         where TSystem : StateMachineSchedulerSystem<TSchedulerEntry, TFactoryEntry, TSystem>
@@ -319,5 +209,5 @@ namespace ZG
         {
             return default;
         }
-    }
+    }*/
 }
