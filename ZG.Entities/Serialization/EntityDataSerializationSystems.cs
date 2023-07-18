@@ -417,6 +417,9 @@ namespace ZG
 
         private ComponentTypeHandle<EntityDataIdentity> __identityType;
 
+        private EntityQuery __streamGroup;
+        private EntityQuery __commonGroup;
+
         public EntityQuery group
         {
             get;
@@ -461,6 +464,18 @@ namespace ZG
                         .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                         .Build(ref state);
 
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __streamGroup = builder
+                        .WithAllRW<EntityDataSerializationStream>()
+                        .WithOptions(EntityQueryOptions.IncludeSystems)
+                        .Build(ref state);
+
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __commonGroup = builder
+                        .WithAll<EntityDataCommon>()
+                        .WithOptions(EntityQueryOptions.IncludeSystems)
+                        .Build(ref state);
+
             __identityType = state.GetComponentTypeHandle<EntityDataIdentity>(true);
 
             bufferManager = new EntityDataSerializationBufferManager(Allocator.Persistent);
@@ -487,8 +502,8 @@ namespace ZG
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            ref var stream = ref SystemAPI.GetSingletonRW<EntityDataSerializationStream>().ValueRW;
-            var types = SystemAPI.GetSingleton<EntityDataCommon>().typesGUIDs;
+            ref var stream = ref __streamGroup.GetSingletonRW<EntityDataSerializationStream>().ValueRW;
+            var types = __commonGroup.GetSingleton<EntityDataCommon>().typesGUIDs;
 
             var group = this.group;
 
