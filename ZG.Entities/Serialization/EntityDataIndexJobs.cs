@@ -14,34 +14,34 @@ namespace ZG
         private struct Executor
         {
             [ReadOnly]
-            public NativeArray<Hash128> inputs;
+            public NativeArray<Hash128>.ReadOnly inputs;
 
             [ReadOnly]
             public NativeArray<TValue> instances;
 
-            public NativeParallelHashMap<int, int> indices;
+            public SharedHashMap<int, int>.Writer guidIndices;
 
-            public NativeList<Hash128> outputs;
+            public SharedList<Hash128>.Writer outputs;
 
             public TWrapper wrapper;
 
             public void Execute(int index)
             {
                 var instance = this.instances[index];
-                if (wrapper.TryGet(instance, out int temp) && indices.TryAdd(temp, outputs.Length))
+                if (wrapper.TryGet(instance, out int temp) && guidIndices.TryAdd(temp, outputs.length))
                     outputs.Add(inputs[temp]);
             }
         }
 
         [ReadOnly]
-        public NativeArray<Hash128> inputs;
+        public NativeArray<Hash128>.ReadOnly inputs;
 
         [ReadOnly]
         public ComponentTypeHandle<TValue> instanceType;
 
-        public NativeParallelHashMap<int, int> indices;
+        public SharedHashMap<int, int>.Writer guidIndices;
 
-        public NativeList<Hash128> outputs;
+        public SharedList<Hash128>.Writer outputs;
 
         public TWrapper wrapper;
 
@@ -50,7 +50,7 @@ namespace ZG
             Executor executor;
             executor.inputs = inputs;
             executor.instances = chunk.GetNativeArray(ref instanceType);
-            executor.indices = indices;
+            executor.guidIndices = guidIndices;
             executor.outputs = outputs;
             executor.wrapper = wrapper;
 
@@ -68,14 +68,14 @@ namespace ZG
         private struct Executor
         {
             [ReadOnly]
-            public NativeArray<Hash128> inputs;
+            public NativeArray<Hash128>.ReadOnly inputs;
 
             [ReadOnly]
             public BufferAccessor<TValue> instances;
 
-            public NativeParallelHashMap<int, int> indices;
+            public SharedHashMap<int, int>.Writer guidIndices;
 
-            public NativeList<Hash128> outputs;
+            public SharedList<Hash128>.Writer outputs;
 
             public TWrapper wrapper;
 
@@ -85,21 +85,21 @@ namespace ZG
                 int numInstances = instances.Length, temp;
                 for (int i = 0; i < numInstances; ++i)
                 {
-                    if (wrapper.TryGet(instances[i], out temp) && indices.TryAdd(temp, outputs.Length))
+                    if (wrapper.TryGet(instances[i], out temp) && guidIndices.TryAdd(temp, outputs.length))
                         outputs.Add(inputs[temp]);
                 }
             }
         }
 
         [ReadOnly]
-        public NativeArray<Hash128> inputs;
+        public NativeArray<Hash128>.ReadOnly inputs;
 
         [ReadOnly]
         public BufferTypeHandle<TValue> instanceType;
 
-        public NativeParallelHashMap<int, int> indices;
+        public SharedHashMap<int, int>.Writer guidIndices;
 
-        public NativeList<Hash128> outputs;
+        public SharedList<Hash128>.Writer outputs;
 
         public TWrapper wrapper;
 
@@ -108,7 +108,7 @@ namespace ZG
             Executor executor;
             executor.inputs = inputs;
             executor.instances = chunk.GetBufferAccessor(ref instanceType);
-            executor.indices = indices;
+            executor.guidIndices = guidIndices;
             executor.outputs = outputs;
             executor.wrapper = wrapper;
 
@@ -125,43 +125,43 @@ namespace ZG
     {
         public static JobHandle Schedule(
             in EntityQuery group,
-            in NativeArray<Hash128> inputs,
+            in NativeArray<Hash128>.ReadOnly inputs,
             in ComponentTypeHandle<TValue> instanceType,
-            ref NativeParallelHashMap<int, int> indices,
-            ref NativeList<Hash128> outputs,
+            ref SharedHashMap<int, int>.Writer guidIndices,
+            ref SharedList<Hash128>.Writer outputs,
             ref TWrapper wrapper,
             in JobHandle inputDeps)
         {
             EntityDataIndexComponentInit<TValue, TWrapper> init;
             init.inputs = inputs;
             init.instanceType = instanceType;
-            init.indices = indices;
+            init.guidIndices = guidIndices;
             init.outputs = outputs;
             init.wrapper = wrapper;
-            return init.Schedule(group, inputDeps);
+            return init.ScheduleByRef(group, inputDeps);
         }
     }
 
     public static class EntityDataIndexBufferUtility<TValue, TWrapper>
         where TValue : unmanaged, IBufferElementData
         where TWrapper : struct, IEntityDataIndexReadOnlyWrapper<TValue>
-    {
+    { 
         public static JobHandle Schedule(
-           in EntityQuery group,
-           in NativeArray<Hash128> inputs,
-           in BufferTypeHandle<TValue> instanceType,
-           ref NativeParallelHashMap<int, int> indices,
-           ref NativeList<Hash128> outputs,
-           ref TWrapper wrapper,
-           in JobHandle inputDeps)
+            in EntityQuery group,
+            in NativeArray<Hash128>.ReadOnly inputs,
+            in BufferTypeHandle<TValue> instanceType,
+            ref SharedHashMap<int, int>.Writer guidIndices,
+            ref SharedList<Hash128>.Writer outputs,
+            ref TWrapper wrapper,
+            in JobHandle inputDeps)
         {
             EntityDataIndexBufferInit<TValue, TWrapper> init;
             init.inputs = inputs;
             init.instanceType = instanceType;
-            init.indices = indices;
+            init.guidIndices = guidIndices;
             init.outputs = outputs;
             init.wrapper = wrapper;
-            return init.Schedule(group, inputDeps);
+            return init.ScheduleByRef(group, inputDeps);
         }
     }
 }

@@ -12,14 +12,7 @@ namespace ZG
         bool TryGet(in T data, out int index);
     }
 
-    public interface IEntityDataIndexReadWriteWrapper<T> : IEntityDataIndexReadOnlyWrapper<T>
-    {
-        void Invail(ref T data);
-
-        void Set(ref T data, int index);
-    }
-
-    public abstract partial class EntityDataIndexContainerSerializationSystemBase : EntityDataSerializationContainerSystem<EntityDataIndexContainerSerializationSystemBase.Serializer>, IReadOnlyLookupJobManager
+    /*public abstract partial class EntityDataIndexContainerSerializationSystemBase : EntityDataSerializationContainerSystem<EntityDataIndexContainerSerializationSystemBase.Serializer>, IReadOnlyLookupJobManager
     {
         public struct Serializer : IEntityDataContainerSerializer
         {
@@ -384,6 +377,54 @@ namespace ZG
         protected abstract TWrapper _GetWrapper();
 
         protected abstract EntityDataIndexContainerSerializationSystem _GetOrCreateContainerSystem();
+    }*/
+    public interface IEntityDataIndexReadWriteWrapper<T> : IEntityDataIndexSerializationWrapper<T>, IEntityDataIndexDeserializationWrapper<T>
+    {
+        void Invail(ref T data);
+
+        void Set(ref T data, int index);
+    }
+
+    public static class EntityDataIndexReadWriteWrapperUtility
+    {
+        public static void Serialize<TValue, TWrapper>(
+            ref this TWrapper wrapper, 
+            ref EntityDataWriter writer, 
+            in TValue data, 
+            int guidIndex) 
+            where TValue : struct
+            where TWrapper : struct, IEntityDataIndexReadWriteWrapper<TValue>
+        {
+            var instance = data;
+            if (guidIndex == -1)
+                wrapper.Invail(ref instance);
+            else
+                wrapper.Set(ref instance, guidIndex);
+
+            writer.Write(instance);
+        }
+
+        public static TValue Deserialize<TValue, TWrapper>(
+            ref this TWrapper wrapper, 
+            ref EntityDataReader reader, 
+            in NativeArray<int>.ReadOnly indices)
+            where TValue : struct
+            where TWrapper : struct, IEntityDataIndexReadWriteWrapper<TValue>
+        {
+            var instance = reader.Read<TValue>();
+
+            if (wrapper.TryGet(instance, out int guidIndex))
+                wrapper.Set(ref instance, guidIndex);
+            else
+                wrapper.Invail(ref instance);
+
+            return instance;
+        }
+    }
+
+    public interface IEntityDataIndexDeserializationWrapper<T>
+    {
+        T Deserialize(ref EntityDataReader reader, in NativeArray<int>.ReadOnly indices);
     }
 
     public abstract partial class EntityDataIndexContainerDeserializationSystem : EntityDataDeserializationContainerSystem<EntityDataIndexContainerDeserializationSystem.Deserializer>, IReadOnlyLookupJobManager
@@ -395,7 +436,7 @@ namespace ZG
 #endif
 
             [ReadOnly]
-            public NativeArray<Hash128> guids;
+            public NativeArray<Hash128>.ReadOnly guids;
             public NativeList<int> indices;
 
             public void Deserialize(in UnsafeBlock block)
@@ -466,7 +507,7 @@ namespace ZG
             return deserializer;
         }
 
-        protected abstract NativeArray<Hash128> _GetGuids();
+        protected abstract NativeArray<Hash128>.ReadOnly _GetGuids();
     }
 
     public abstract partial class EntityDataIndexComponentDeserializationSystem<TValue, TWrapper> : EntityDataDeserializationComponentSystem<
@@ -474,7 +515,7 @@ namespace ZG
         EntityDataIndexComponentDeserializationSystem<TValue, TWrapper>.Deserializer,
         EntityDataIndexComponentDeserializationSystem<TValue, TWrapper>.DeserializerFactory>
         where TValue : unmanaged, IComponentData
-        where TWrapper : unmanaged, IEntityDataIndexReadWriteWrapper<TValue>
+        where TWrapper : unmanaged, IEntityDataIndexDeserializationWrapper<TValue>
     {
         public struct Deserializer : IEntityDataDeserializer
         {
@@ -487,12 +528,12 @@ namespace ZG
 
             public void Deserialize(int index, ref EntityDataReader reader)
             {
-                TValue instance = reader.Read<TValue>();
+                var instance = wrapper.Deserialize(ref reader, indices.AsReadOnly());/*reader.Read<TValue>();
 
                 if (wrapper.TryGet(instance, out int temp))
                     wrapper.Set(ref instance, indices[temp]);
                 else
-                    wrapper.Invail(ref instance);
+                    wrapper.Invail(ref instance);*/
 
                 instances[index] = instance;
             }
@@ -557,7 +598,7 @@ namespace ZG
         EntityDataIndexBufferDeserializationSystem<TValue, TWrapper>.Deserializer,
         EntityDataIndexBufferDeserializationSystem<TValue, TWrapper>.DeserializerFactory>
         where TValue : unmanaged, IBufferElementData
-        where TWrapper : unmanaged, IEntityDataIndexReadWriteWrapper<TValue>
+        where TWrapper : unmanaged, IEntityDataIndexDeserializationWrapper<TValue>
     {
         public struct Deserializer : IEntityDataDeserializer
         {
@@ -571,22 +612,25 @@ namespace ZG
             public void Deserialize(int index, ref EntityDataReader reader)
             {
                 int length = reader.Read<int>();
-                var sources = reader.ReadArray<TValue>(length);
+                /*var sources = reader.ReadArray<TValue>(length);
                 var destinations = instances[index];
-                destinations.CopyFrom(sources);
+                destinations.CopyFrom(sources);*/
+                var instances = this.instances[index];
+                instances.ResizeUninitialized(length);
 
-                TValue instance;
-                int temp;
+                //TValue instance;
+                //int temp;
                 for (int i = 0; i < length; ++i)
                 {
-                    instance = destinations[i];
+                    instances[i] = wrapper.Deserialize(ref reader, indices.AsReadOnly());
+                    /*instance = destinations[i];
 
                     if (wrapper.TryGet(instance, out temp))
                         wrapper.Set(ref instance, indices[temp]);
                     else
                         wrapper.Invail(ref instance);
 
-                    destinations[i] = instance;
+                    destinations[i] = instance;*/
                 }
             }
         }

@@ -197,6 +197,15 @@ namespace ZG
             __data = null;
         }
 
+        public NativeList<SystemHandle> GetAllSystems(Allocator allocator = Allocator.Temp)
+        {
+            var ret = new NativeList<SystemHandle>(__data->systemsToUpdate.Length, allocator);
+            for (int i = 0; i < __data->systemsToUpdate.Length; i++)
+                ret.Add(__data->systemsToUpdate[i]);
+
+            return ret;
+        }
+
         public void SetActive(bool value, in WorldUnmanaged world)
         {
             if (value == __data->isRunning)

@@ -18,6 +18,11 @@ namespace ZG
             return ref *componentSystem.CheckedState();
         }
 
+        public unsafe static int GetSystemTypeIndex(this ref SystemState systemState)
+        {
+            return systemState.m_SystemTypeIndex;
+        }
+
         public unsafe static int GetSystemID(this ref SystemState systemState)
         {
             return systemState.m_SystemID;

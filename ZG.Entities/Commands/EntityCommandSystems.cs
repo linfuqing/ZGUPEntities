@@ -16,12 +16,11 @@ namespace ZG
     {
         /*private struct Assigner : EntityCommandStructChangeManager.IAssigner
         {
-            public EntityQuery group;
             public EntityComponentAssigner instance;
 
             public void Playback(ref SystemState systemState)
             {
-                instance.Playback(ref systemState, group);
+                instance.Playback(ref systemState);
             }
         }*/
 
@@ -34,13 +33,16 @@ namespace ZG
             private set;
         }
 
-        /*public EntityComponentAssigner assigner
+        public EntityComponentAssigner assigner
         {
             get;
 
             private set;
-        }*/
+        }
 
+        public EntityAddDataPool addDataPool => new EntityAddDataPool(manager.addComponentPool, assigner);
+
+        [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
             /*__group = state.GetEntityQuery(
@@ -55,26 +57,25 @@ namespace ZG
 
             manager = new EntityCommandStructChangeManager(Allocator.Persistent);
 
-            //assigner = new EntityComponentAssigner(Allocator.Persistent);
+            assigner = new EntityComponentAssigner(Allocator.Persistent);
         }
 
+        [BurstCompile]
         public void OnDestroy(ref SystemState state)
         {
             manager.Dispose();
 
-            //assigner.Dispose();
+            assigner.Dispose();
         }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
             /*Assigner assigner;
-            assigner.group = __group;
-            assigner.instance = this.assigner;
-            manager.Playback(ref state, ref assigner);*/
+            assigner.instance = this.assigner;*/
+            manager.Playback(ref state/*, ref assigner*/);
 
-            //TODO:
-            manager.Playback(ref state);
+            assigner.Playback(ref state);
         }
     }
 

@@ -17,7 +17,7 @@ namespace Unity.Entities
         /// type handle safe to use.
         /// </summary>
         /// <param name="state">The SystemState of the system on which this type handle is cached.</param>
-        public static unsafe ref ComponentTypeHandle<T> UpdateAsRef<T>(this ref ComponentTypeHandle<T> value,  ref SystemState state) where T : unmanaged, IComponentData
+        public static ref ComponentTypeHandle<T> UpdateAsRef<T>(this ref ComponentTypeHandle<T> value,  ref SystemState state) where T : unmanaged, IComponentData
         {
             value.Update(ref state);
 
@@ -54,33 +54,39 @@ namespace Unity.Entities
         /// type handle safe to use.
         /// </summary>
         /// <param name="state">The SystemState of the system on which this type handle is cached.</param>
-        public static unsafe ref BufferTypeHandle<T> UpdateAsRef<T>(this ref BufferTypeHandle<T> value, ref SystemState state) where T : unmanaged, IBufferElementData
+        public static ref BufferTypeHandle<T> UpdateAsRef<T>(this ref BufferTypeHandle<T> value, ref SystemState state) where T : unmanaged, IBufferElementData
         {
             value.Update(ref state);
 
             return ref value;
         }
 
-        public static unsafe ref ComponentLookup<T> UpdateAsRef<T>(this ref ComponentLookup<T> value, ref SystemState state) where T : unmanaged, IComponentData
+        public static ref ComponentLookup<T> UpdateAsRef<T>(this ref ComponentLookup<T> value, ref SystemState state) where T : unmanaged, IComponentData
         {
             value.Update(ref state);
 
             return ref value;
         }
 
-        public static unsafe ref BufferLookup<T> UpdateAsRef<T>(this ref BufferLookup<T> value, ref SystemState state) where T : unmanaged, IBufferElementData
+        public static ref BufferLookup<T> UpdateAsRef<T>(this ref BufferLookup<T> value, ref SystemState state) where T : unmanaged, IBufferElementData
         {
             value.Update(ref state);
 
             return ref value;
         }
 
-        public static unsafe ref EntityStorageInfoLookup UpdateAsRef(this ref EntityStorageInfoLookup value, ref SystemState state)
+        public static ref EntityStorageInfoLookup UpdateAsRef(this ref EntityStorageInfoLookup value, ref SystemState state)
         {
             value.Update(ref state);
 
             return ref value;
         }
 
+        public static ref DynamicComponentTypeHandle UpdateAsRef(this ref DynamicComponentTypeHandle value, ref SystemState state)
+        {
+            value.Update(ref state);
+
+            return ref value;
+        }
     }
 }

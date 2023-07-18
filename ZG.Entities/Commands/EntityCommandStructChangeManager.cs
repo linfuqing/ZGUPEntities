@@ -12,6 +12,14 @@ namespace ZG
         public Entity entity;
         public ComponentType componentType;
 
+        public static EntityCommandStructChange Create<T>(in Entity entity)
+        {
+            EntityCommandStructChange result;
+            result.entity = entity;
+            result.componentType = ComponentType.ReadOnly<T>();
+            return result;
+        }
+
         public int CompareTo(EntityCommandStructChange other)
         {
             return componentType.GetHashCode() - other.componentType.GetHashCode();
@@ -167,7 +175,7 @@ namespace ZG
 
     public struct EntityCommandStructChangeManager
     {
-        public interface IAssigner
+        /*public interface IAssigner
         {
             void Playback(ref SystemState systemState);
         }
@@ -188,7 +196,7 @@ namespace ZG
             {
                 instance.Playback(ref systemState);
             }
-        }
+        }*/
 
 #if ENABLE_PROFILER
         private ProfilerMarker __addComponentProfilerMarker;
@@ -228,7 +236,7 @@ namespace ZG
             __destoyEntityCommander.Dispose();
         }
 
-        public void Playback<T>(ref SystemState systemState, ref T assigner) where T : IAssigner
+        public void Playback(ref SystemState systemState/*, ref T assigner*/)// where T : IAssigner
         {
             if (!__addComponentCommander.isEmpty)
             {
@@ -243,11 +251,6 @@ namespace ZG
                     }
                 }
             }
-
-#if ENABLE_PROFILER
-            using (__assignProfilerMarker.Auto())
-#endif
-                assigner.Playback(ref systemState);
 
             if (!__removeComponentCommander.isEmpty)
             {
@@ -276,9 +279,15 @@ namespace ZG
                     }
                 }
             }
+
+/*#if ENABLE_PROFILER
+            using (__assignProfilerMarker.Auto())
+#endif
+                assigner.Playback(ref systemState);*/
+
         }
 
-        public void Playback(ref SystemState systemState)
+        /*public void Playback(ref SystemState systemState)
         {
             Assigner assigner;
             Playback(ref systemState, ref assigner);
@@ -289,6 +298,6 @@ namespace ZG
             ComponentAssigner componentAssigner;
             componentAssigner.instance = assigner;
             Playback(ref systemState, ref componentAssigner);
-        }
+        }*/
     }
 }

@@ -4,6 +4,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
+using Unity.Entities.LowLevel.Unsafe;
 
 namespace ZG
 {
@@ -20,7 +21,7 @@ namespace ZG
 
     public interface IEntityDataSerializer
     {
-        void Serialize(int index, in NativeParallelHashMap<Hash128, int> entityIndices, ref EntityDataWriter writer);
+        void Serialize(int index, in SharedHashMap<Hash128, int>.Reader entityIndices, ref EntityDataWriter writer);
     }
 
     [BurstCompile]
@@ -52,10 +53,10 @@ namespace ZG
         public ComponentTypeHandle<EntityDataIdentity> identityType;
 
         [ReadOnly]
-        public NativeParallelHashMap<Hash128, int> entityIndices;
+        public SharedHashMap<Hash128, int>.Reader entityIndices;
 
         [NativeDisableParallelForRestriction]
-        public NativeSlice<UnsafeBuffer> buffers;
+        public EntityDataSerializationBufferManager bufferManager;
 
         public TSerializerFactory factory;
 
@@ -66,7 +67,7 @@ namespace ZG
             var identities = chunk.GetNativeArray(ref identityType);
             UnsafeBlock<int> block;
             EntityDataWriter writer;
-            UnsafeBuffer buffer;
+            EntityDataSerializationBufferManager.Buffer buffer;
             int index, position;
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while(iterator.NextEntityIndex(out int i))
@@ -74,8 +75,9 @@ namespace ZG
                 if (!entityIndices.TryGetValue(identities[i].guid, out index))
                     continue;
 
-                buffer = buffers[index];
-                writer = new EntityDataWriter(ref buffer);
+                buffer = bufferManager.BeginWrite(index);
+
+                writer = buffer.AsWriter();//new EntityDataWriter(ref buffer);
                 writer.Write(typeHandle);
 
                 block = writer.WriteBlock(0);
@@ -83,10 +85,12 @@ namespace ZG
                 serializer.Serialize(i, entityIndices, ref writer);
                 block.value = writer.position - position;
 
-                buffers[index] = buffer;
+                bufferManager.EndWrite(buffer);
+                //buffers[index] = buffer;
             }
         }
     }
+
     #endregion
 
     #region Deserialization
