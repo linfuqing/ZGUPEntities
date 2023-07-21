@@ -35,6 +35,15 @@ namespace ZG
     public struct EntityDataCommon : IComponentData
     {
         public NativeArray<Hash128>.ReadOnly typesGUIDs;
+
+        public static EntityQuery GetEntityQuery(ref SystemState state)
+        {
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                return builder
+                        .WithAll<EntityDataCommon>()
+                        .WithOptions(EntityQueryOptions.IncludeSystems)
+                        .Build(ref state);
+        }
     }
 
     [AttributeUsage(AttributeTargets.Struct, AllowMultiple = true)]
@@ -240,7 +249,7 @@ namespace ZG
 
         public NativeBuffer.Reader reader => __buffer.reader;
 
-        public abstract NativeArray<Hash128> types { get; }
+        public abstract NativeArray<Hash128>.ReadOnly types { get; }
 
         public EntityDataDeserializationInitializationSystem initializationSystem
         {
@@ -541,7 +550,7 @@ namespace ZG
             public Unity.Mathematics.Random random;
 
             [ReadOnly]
-            public NativeArray<Hash128> typeInputs;
+            public NativeArray<Hash128>.ReadOnly typeInputs;
 
             public NativeList<Hash128> typeOutputs;
 

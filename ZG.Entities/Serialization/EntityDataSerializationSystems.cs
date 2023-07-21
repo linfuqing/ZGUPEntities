@@ -470,11 +470,7 @@ namespace ZG
                         .WithOptions(EntityQueryOptions.IncludeSystems)
                         .Build(ref state);
 
-            using (var builder = new EntityQueryBuilder(Allocator.Temp))
-                __commonGroup = builder
-                        .WithAll<EntityDataCommon>()
-                        .WithOptions(EntityQueryOptions.IncludeSystems)
-                        .Build(ref state);
+            __commonGroup = EntityDataCommon.GetEntityQuery(ref state);
 
             __identityType = state.GetComponentTypeHandle<EntityDataIdentity>(true);
 
