@@ -378,7 +378,7 @@ namespace ZG
 
         protected abstract EntityDataIndexContainerSerializationSystem _GetOrCreateContainerSystem();
     }*/
-    public interface IEntityDataIndexReadWriteWrapper<T> : IEntityDataIndexSerializationWrapper<T>, IEntityDataIndexDeserializationWrapper<T>
+    public interface IEntityDataIndexReadWriteWrapper<T> : IEntityDataIndexReadOnlyWrapper<T>, IEntityDataIndexSerializationWrapper<T>, IEntityDataIndexDeserializationWrapper<T>
     {
         void Invail(ref T data);
 
@@ -390,16 +390,16 @@ namespace ZG
         public static void Serialize<TValue, TWrapper>(
             ref this TWrapper wrapper, 
             ref EntityDataWriter writer, 
-            in TValue data, 
-            int guidIndex) 
+            in TValue data,
+            in SharedHashMap<int, int>.Reader guidIndices) 
             where TValue : struct
             where TWrapper : struct, IEntityDataIndexReadWriteWrapper<TValue>
         {
             var instance = data;
-            if (guidIndex == -1)
-                wrapper.Invail(ref instance);
-            else
+            if (wrapper.TryGet(data, out int index) && guidIndices.TryGetValue(index, out int guidIndex))
                 wrapper.Set(ref instance, guidIndex);
+            else
+                wrapper.Invail(ref instance);
 
             writer.Write(instance);
         }
@@ -414,7 +414,7 @@ namespace ZG
             var instance = reader.Read<TValue>();
 
             if (wrapper.TryGet(instance, out int guidIndex))
-                wrapper.Set(ref instance, guidIndex);
+                wrapper.Set(ref instance, indices[guidIndex]);
             else
                 wrapper.Invail(ref instance);
 

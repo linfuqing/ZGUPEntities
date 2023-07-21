@@ -8,9 +8,9 @@ using ZG;
 
 namespace ZG
 {
-    public interface IEntityDataIndexSerializationWrapper<T> : IEntityDataIndexReadOnlyWrapper<T>
+    public interface IEntityDataIndexSerializationWrapper<T>// : IEntityDataIndexReadOnlyWrapper<T>
     {
-        void Serialize(ref EntityDataWriter writer, in T data, int guidIndex);
+        void Serialize(ref EntityDataWriter writer, in T data, in SharedHashMap<int, int>.Reader guidIndices/*int guidIndex*/);
     }
 
     public interface IEntityDataSerializationIndexContainerSystem
@@ -228,7 +228,7 @@ namespace ZG
 
                 writer.Write(instance);*/
 
-                wrapper.Serialize(ref writer, instance, wrapper.TryGet(instance, out int guidIndex) ? guidIndices[guidIndex] : -1);
+                wrapper.Serialize(ref writer, instance, guidIndices);// wrapper.TryGet(instance, out int guidIndex) ? guidIndices[guidIndex] : -1);
             }
         }
 
@@ -319,7 +319,7 @@ namespace ZG
 
                     instances[i] = instance;*/
 
-                    wrapper.Serialize(ref writer, instance, wrapper.TryGet(instance, out int guidIndex) ? guidIndices[guidIndex] : -1);
+                    wrapper.Serialize(ref writer, instance, guidIndices);// wrapper.TryGet(instance, out int guidIndex) ? guidIndices[guidIndex] : -1);
                 }
 
                 //writer.Write(length);
