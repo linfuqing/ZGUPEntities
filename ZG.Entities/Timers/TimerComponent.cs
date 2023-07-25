@@ -21,38 +21,38 @@ namespace ZG
         public bool isRepeat;
         public float time;
 
-        public string worldName = "Client";
-
         public LayerMask layerMask;
 
         [UnityEngine.Serialization.FormerlySerializedAs("_timeEvents")]
         public TimeEvent[] timeEvents;
-        private TimeEventSystem __timeEventSystem;
+
+        [SerializeField]
+        internal string _worldName = "Client";
+
+        private World __world;
+
+        private SharedTimeManager __timeManager;
         private TimeEventHandle __timeEventHandle;
 
-        public TimeEventSystem timeEventSystem
+        public SharedTimeManager timeManager
         {
             get
             {
-                if (__timeEventSystem == null)
+                if (!__timeManager.isCreated)
                 {
-                    var world = WorldUtility.GetWorld(worldName);
-                    __timeEventSystem = world.GetExistingSystemManaged<TimeEventSystem>();
+                    __world = WorldUtility.GetWorld(_worldName);
+                    __timeManager = __world.GetExistingSystemUnmanaged<TimeEventSystem>().manager;
                 }
 
-                return __timeEventSystem;
+                return __timeManager;
             }
         }
 
         public void Stop()
         {
-            World world = __timeEventSystem == null ? null : __timeEventSystem.World;
-            if (world == null || !world.IsCreated)
-                return;
-
             if (__timeEventHandle.isVail)
             {
-                __timeEventSystem.Cannel(__timeEventHandle);
+                __timeManager.Cannel(__timeEventHandle);
 
                 __timeEventHandle = TimeEventHandle.Null;
             }
@@ -61,7 +61,7 @@ namespace ZG
         public void Play()
         {
             if(__timeEventHandle.isVail)
-                __timeEventSystem.Cannel(__timeEventHandle);
+                __timeManager.Cannel(__timeEventHandle);
 
             __Play(isDelay);
         }
@@ -85,9 +85,9 @@ namespace ZG
                 }
             }
 
-            var timeEventSystem = this.timeEventSystem;
-            if(timeEventSystem != null)
-                __timeEventHandle = isDelay || isRepeat ? timeEventSystem.Call(__Play, time) : TimeEventHandle.Null;
+            var timeManager = this.timeManager;
+            if(timeManager.isCreated)
+                __timeEventHandle = isDelay || isRepeat ? timeManager.Invoke(__Play, __world.Time.ElapsedTime + time) : TimeEventHandle.Null;
         }
         
         private void __Play()

@@ -4,7 +4,6 @@ using Unity.Burst;
 using Unity.Entities;
 using Unity.Collections;
 
-[assembly: RegisterGenericJobType(typeof(ZG.TimeManager<ZG.CallbackHandle>.Clear))]
 [assembly: RegisterGenericJobType(typeof(ZG.TimeManager<ZG.CallbackHandle>.UpdateEvents))]
 
 namespace ZG
@@ -14,26 +13,33 @@ namespace ZG
         internal NativeRBTreeNode<TimeEvent<T>> _node;
 
         public bool isVail => _node.isVail;
+
+        public bool Equals(TimeEventHandle<T> other)
+        {
+            return _node.Equals(other._node);
+        }
     }
 
     public struct TimeEventHandle : IEquatable<TimeEventHandle>
     {
-        internal CallbackHandle _callbackHandle;
-        internal NativeRBTreeNode<TimeEvent<CallbackHandle>> _node;
+        //internal CallbackHandle _callbackHandle;
+        internal TimeEventHandle<CallbackHandle> _value;
 
-        public static readonly TimeEventHandle Null = new TimeEventHandle { _callbackHandle = CallbackHandle.Null, _node = default };
+        public static readonly TimeEventHandle Null = default;//new TimeEventHandle { _callbackHandle = CallbackHandle.Null, _value = default };
 
-        public bool isVail => _node.isVail;
+        public bool isVail => _value.isVail;
 
-        public CallbackHandle Cannel(ref NativeRBTree<TimeEvent<CallbackHandle>> timeEvents)
+        public CallbackHandle callbackHandle => isVail ? _value._node.valueReadOnly.value : CallbackHandle.Null;
+
+        public CallbackHandle Cannel(ref TimeManager<CallbackHandle>.Writer timeManager)
         {
-            CallbackHandle callbackHandle = isVail ? _node.valueReadOnly.value : CallbackHandle.Null;
-            return timeEvents.Remove(_node) ? callbackHandle : CallbackHandle.Null;
+            var callbackHandle = this.callbackHandle;
+            return timeManager.Cannel(_value) ? callbackHandle : CallbackHandle.Null;
         }
 
         public bool Equals(TimeEventHandle other)
         {
-            return _callbackHandle.Equals(other._callbackHandle) && _node.Equals(other._node);
+            return /*_callbackHandle.Equals(other._callbackHandle) &&*/ _value.Equals(other._value);
         }
     }
 
@@ -50,8 +56,8 @@ namespace ZG
         }
 
         public static void UpdateTo(
-            NativeRBTree<TimeEvent<T>> timeEvents,
-            NativeList<T> results,
+            ref NativeRBTree<TimeEvent<T>> timeEvents,
+            ref NativeList<T> results,
             double time)
         {
             var node = timeEvents.tail;
@@ -74,17 +80,6 @@ namespace ZG
     public struct TimeManager<T> where T : unmanaged
     {
         [BurstCompile]
-        public struct Clear : IJob
-        {
-            public NativeList<T> values;
-
-            public void Execute()
-            {
-                values.Clear();
-            }
-        }
-
-        [BurstCompile]
         public struct UpdateEvents : IJob
         {
             public double time;
@@ -93,7 +88,7 @@ namespace ZG
 
             public void Execute()
             {
-                TimeEvent<T>.UpdateTo(timeEvents, values, time);
+                TimeEvent<T>.UpdateTo(ref timeEvents, ref values, time);
             }
         }
 
@@ -123,29 +118,28 @@ namespace ZG
             }
         }
 
-        private NativeList<T> __values;
+        //private NativeList<T> __values;
         private NativeRBTree<TimeEvent<T>> __events;
 
-        public NativeArray<T> values => __values.AsDeferredJobArray();
+        //public NativeArray<T> values => __values.AsDeferredJobArray();
+
+        public AllocatorManager.AllocatorHandle allocator => __events.allocator;
 
         public Writer writer => new Writer(__events);
 
-        public TimeManager(Allocator allocator)
+        public TimeManager(in AllocatorManager.AllocatorHandle allocator)
         {
-            BurstUtility.InitializeJob<Clear>();
-            BurstUtility.InitializeJob<UpdateEvents>();
-
-            __values = new NativeList<T>(allocator);
+            //__values = new NativeList<T>(allocator);
             __events = new NativeRBTree<TimeEvent<T>>(allocator);
         }
 
         public void Dispose()
         {
-            __values.Dispose();
+            //__values.Dispose();
             __events.Dispose();
         }
 
-        public void Flush()
+        /*public void Flush()
         {
             __values.Clear();
         }
@@ -155,67 +149,78 @@ namespace ZG
             Clear clear;
             clear.values = __values;
             return clear.Schedule(inputDeps);
-        }
+        }*/
 
-        public JobHandle Schedule(double time, in JobHandle inputDeps)
+        public JobHandle Schedule(double time, ref NativeList<T> values, in JobHandle inputDeps)
         {
             UpdateEvents updateEvents;
             updateEvents.time = time;
-            updateEvents.values = __values;
+            updateEvents.values = values;
             updateEvents.timeEvents = __events;
 
             return updateEvents.ScheduleByRef(inputDeps);
         }
 
-        public JobHandle ScheduleParallel<U>(ref U job, int innerloopBatchCount, in JobHandle inputDeps) where U : struct, IJobParallelForDefer
+        /*public JobHandle ScheduleParallel<U>(ref U job, int innerloopBatchCount, in JobHandle inputDeps) where U : struct, IJobParallelForDefer
         {
             return job.ScheduleByRef(__values, innerloopBatchCount, inputDeps);
-        }
+        }*/
     }
 
-    public struct SharedTimeManager
+    public struct SharedTimeManager : IComponentData
     {
-        public readonly AllocatorManager.AllocatorHandle Allocator;
-
         private unsafe LookupJobManager* __lookupJobManager;
-        private TimeManager<CallbackHandle> __instance;
+
+        public unsafe bool isCreated => __lookupJobManager != null;
 
         public unsafe ref LookupJobManager lookupJobManager => ref *__lookupJobManager;
 
-        public unsafe SharedTimeManager(Allocator allocator)
+        public TimeManager<CallbackHandle> value
         {
-            Allocator = allocator;
+            get;
 
-            __lookupJobManager = AllocatorManager.Allocate<LookupJobManager>(Allocator);
+            private set;
+        }
+
+        public unsafe SharedTimeManager(in AllocatorManager.AllocatorHandle allocator)
+        {
+            __lookupJobManager = AllocatorManager.Allocate<LookupJobManager>(allocator);
             *__lookupJobManager = new LookupJobManager();
 
-            __instance = new TimeManager<CallbackHandle>(allocator);
+            value = new TimeManager<CallbackHandle>(allocator);
         }
 
         public unsafe void Dispose()
         {
-            AllocatorManager.Free(Allocator, __lookupJobManager);
+            AllocatorManager.Free(value.allocator, __lookupJobManager);
+
+            __lookupJobManager = null;
+
+            value.Dispose();
         }
 
-        public TimeEventHandle<CallbackHandle> Invoke(Action handler, double time)
+        public TimeEventHandle Invoke(Action handler, double time)
         {
             var callbackHandle = handler.Register();
 
             lookupJobManager.CompleteReadWriteDependency();
 
-            return __instance.writer.Invoke(time, callbackHandle);
+            TimeEventHandle result;
+            result._value = value.writer.Invoke(time, callbackHandle);
+
+            return result;
         }
 
-        public bool Cannel(TimeEventHandle<CallbackHandle> handle)
+        public bool Cannel(in TimeEventHandle handle)
         {
             lookupJobManager.CompleteReadWriteDependency();
 
-            var callbackHandle = handle._node.isVail ? handle._node.valueReadOnly.value : CallbackHandle.Null;
+            var callbackHandle = handle.callbackHandle;
 
-            return __instance.writer.Cannel(handle) && callbackHandle.Unregister();
+            return value.writer.Cannel(handle._value) && callbackHandle.Unregister();
         }
 
-        public void Execute()
+        /*public void Playback()
         {
             lookupJobManager.CompleteReadWriteDependency();
 
@@ -224,13 +229,11 @@ namespace ZG
                 value.InvokeAndUnregister();
 
             __instance.Flush();
-        }
+        }*/
 
-        public JobHandle Update(double time, in JobHandle inputDeps)
+        public JobHandle Update(double time, ref NativeList<CallbackHandle> values, in JobHandle inputDeps)
         {
-            lookupJobManager.CompleteReadWriteDependency();
-
-            var jobHandle = __instance.Schedule(time, inputDeps);
+            var jobHandle = value.Schedule(time, ref values, JobHandle.CombineDependencies(lookupJobManager.readWriteJobHandle, inputDeps));
 
             lookupJobManager.readWriteJobHandle = jobHandle;
 
@@ -238,158 +241,47 @@ namespace ZG
         }
     }
 
-    public abstract partial class TimeSystem<T> : SystemBase 
-        where T : unmanaged
+    [BurstCompile, CreateAfter(typeof(CallbackSystem))]//[UpdateInGroup(typeof(PresentationSystemGroup))]
+    public partial struct TimeEventSystem : ISystem
     {
-        [BurstCompile]
-        private struct UpdateEvents : IJob
-        {
-            public double time;
-            public NativeList<T> values;
-            public NativeRBTree<TimeEvent<T>> timeEvents;
+        private SharedList<CallbackHandle> __callbackHandles;
 
-            public void Execute()
-            {
-                TimeEvent<T>.UpdateTo(timeEvents, values, time);
-            }
-        }
-        
-        protected NativeList<T> _values;
-        protected NativeRBTree<TimeEvent<T>> _events;
-        
-        public abstract double now { get; }
-        
-        protected override void OnCreate()
-        {
-            base.OnCreate();
-
-            _values = new NativeList<T>(Allocator.Persistent);
-
-            _events = new NativeRBTree<TimeEvent<T>>(Allocator.Persistent);
-        }
-
-        protected override void OnDestroy()
-        {
-            _values.Dispose();
-
-            _events.Dispose();
-
-            base.OnDestroy();
-        }
-
-        protected override void OnUpdate()
-        {
-            UpdateEvents updateEvents;
-            updateEvents.time = now;
-            updateEvents.values = _values;
-            updateEvents.timeEvents = _events;
-
-            Dependency = updateEvents.Schedule(Dependency);
-        }
-    }
-
-    //[UpdateInGroup(typeof(PresentationSystemGroup))]
-    public partial class TimeEventSystem : TimeSystem<CallbackHandle>
-    {
-        private double __now;
-        
-        //public float delta => __timeSystemGroup.delta;
-
-        public override double now => __now;
-
-        public JobHandle jobHandle
+        public SharedTimeManager manager
         {
             get;
 
-            protected set;
+            private set;
         }
 
-        public NativeList<CallbackHandle> values => _values;
-
-        public NativeRBTree<TimeEvent<CallbackHandle>> events => _events;
-
-        public void AddDependency(JobHandle jobHandle)
+        [BurstCompile]
+        public void OnCreate(ref SystemState state)
         {
-            this.jobHandle = JobHandle.CombineDependencies(this.jobHandle, jobHandle);
+            __callbackHandles = state.WorldUnmanaged.GetExistingSystemUnmanaged<CallbackSystem>().handlesToInvokeAndUnregister;
+            manager = new SharedTimeManager(Allocator.Persistent);
         }
 
-        public TimeEventHandle Call(Action handler, double time)
+        [BurstCompile]
+        public void OnDestroy(ref SystemState state)
         {
-            if (!_events.isCreated)
-                return TimeEventHandle.Null;
-
-            jobHandle.Complete();
-
-            var callbackHandle = handler.Register();
-
-            TimeEvent<CallbackHandle> timeEvent;
-            timeEvent.time = time;
-            timeEvent.value = callbackHandle;
-            TimeEventHandle handle;
-            handle._callbackHandle = callbackHandle;
-            handle._node = _events.Add(timeEvent, true);
-            
-            return handle;
+            manager.Dispose();
         }
 
-        public TimeEventHandle Call(Action handler, float time)
+        [BurstCompile]
+        public void OnUpdate(ref SystemState state)
         {
-            return Call(handler, now + time);
-        }
+            ref var lookupJobManager = ref __callbackHandles.lookupJobManager;
+            NativeList<CallbackHandle> values = __callbackHandles.writer;
+            var jobHandle = manager.Update(
+                state.WorldUnmanaged.Time.ElapsedTime, 
+                ref values, 
+                JobHandle.CombineDependencies(lookupJobManager.readWriteJobHandle, state.Dependency));
 
-        public bool Cannel(TimeEventHandle handle)
-        {
-            if (!_events.isCreated)
-                return false;
+            lookupJobManager.readWriteJobHandle = jobHandle;
 
-            jobHandle.Complete();
-            
-            return _events.Remove(handle._node) && handle._callbackHandle.Unregister();
-        }
-
-        protected override void OnCreate()
-        {
-            base.OnCreate();
-        }
-
-        protected override void OnUpdate()
-        {
-            //__now = __timeSystemGroup.now + __timeSystemGroup.delta;
-            __now += UnityEngine.Time.deltaTime;
-
-            Dependency = JobHandle.CombineDependencies(Dependency, jobHandle);
-
-            base.OnUpdate();
-
-            jobHandle = Dependency;
+            state.Dependency = jobHandle;
         }
     }
 
-    //[UpdateInGroup(typeof(InitializationSystemGroup))]
-    [UpdateInGroup(typeof(PresentationSystemGroup))]
-    public partial class TimeCallbackSystem : SystemBase
-    {
-        private TimeEventSystem __eventSystem;
-
-        protected override void OnCreate()
-        {
-            base.OnCreate();
-
-            __eventSystem = World.GetOrCreateSystemManaged<TimeEventSystem>();
-        }
-
-        protected override void OnUpdate()
-        {
-            __eventSystem.jobHandle.Complete();
-
-            NativeList<CallbackHandle> values = __eventSystem.values;
-            foreach (var value in values)
-                CallbackManager.InvokeAndUnregister(value);
-
-            values.Clear();
-        }
-    }
-    
     /*public static class Time
     {
         private static TimeEventSystem __timeEventSystem;

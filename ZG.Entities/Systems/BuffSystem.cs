@@ -1,10 +1,8 @@
-﻿using System;
-using Unity.Jobs;
+﻿using Unity.Jobs;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Collections;
 using UnityEngine.Jobs;
-using ZG;
 
 namespace ZG
 {
@@ -107,6 +105,7 @@ namespace ZG
         private NativeArray<JobHandle> __jobHandle;
 
         private NativeList<Buff<EntityData<T>>> __buffs;
+        private NativeList<EntityData<T>> __results;
         private TimeManager<EntityData<T>> __timeManager;
 
         public bool isCreated => __jobHandle.IsCreated;
@@ -125,6 +124,7 @@ namespace ZG
 
             __jobHandle = new NativeArray<JobHandle>(1, allocator, NativeArrayOptions.ClearMemory);
             __buffs = new NativeList<Buff<EntityData<T>>>(allocator);
+            __results = new NativeList<EntityData<T>>(allocator);
             __timeManager = new TimeManager<EntityData<T>>(allocator);
         }
 
@@ -132,6 +132,7 @@ namespace ZG
         {
             __jobHandle.Dispose();
             __buffs.Dispose();
+            __results.Dispose();
             __timeManager.Dispose();
         }
 
@@ -152,7 +153,7 @@ namespace ZG
             var instances = systemState.GetComponentLookup<U>();
 
             BuffAdd<T, U> add;
-            add.time = systemState.WorldUnmanaged.Time.ElapsedTime;
+            add.time = time;
             add.inputs = __buffs;
             add.instances = instances;
             add.outputs = __timeManager.writer;
@@ -160,12 +161,12 @@ namespace ZG
 
             this.jobHandle = jobHandle;
 
-            __timeManager.Flush();
+            __results.Clear();
 
-            jobHandle = __timeManager.Schedule(time, jobHandle);
+            jobHandle = __timeManager.Schedule(time, ref __results, jobHandle);
 
             BuffSubtract<T, U> subtract;
-            subtract.buffs = __timeManager.values;
+            subtract.buffs = __results.AsDeferredJobArray();
             subtract.instances = instances;
 
             systemState.Dependency = subtract.Schedule(jobHandle);
