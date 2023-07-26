@@ -413,7 +413,7 @@ namespace ZG
         {
             var instance = reader.Read<TValue>();
 
-            if (wrapper.TryGet(instance, out int guidIndex))
+            if (wrapper.TryGet(instance, out int guidIndex) && guidIndex != -1)
                 wrapper.Set(ref instance, indices[guidIndex]);
             else
                 wrapper.Invail(ref instance);
