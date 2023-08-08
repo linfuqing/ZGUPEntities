@@ -4,7 +4,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
-using Unity.Entities.LowLevel.Unsafe;
+using ZG;
 
 namespace ZG
 {
@@ -101,20 +101,29 @@ namespace ZG
 
     public interface IEntityDataDeserializer
     {
+        bool Fallback(int index);
+
         void Deserialize(int index, ref EntityDataReader reader);
     }
 
     [BurstCompile]
     public struct EntityDataContainerDeserialize<T> : IJob where T : struct, IEntityDataContainerDeserializer
     {
-        public int typeIndex;
+        public int typeHandle;
+
         [ReadOnly]
-        public NativeParallelHashMap<int, UnsafeBlock> blocks;
+        public EntityDataDeserializationStatusQuery.Container status;
+
+        [ReadOnly]
+        public SharedHashMap<int, UnsafeBlock>.Reader blocks;
         public T container;
 
         public void Execute()
         {
-            if (!blocks.TryGetValue(typeIndex, out var block))
+            if (status.value != EntityDataDeserializationStatus.Value.Created)
+                return;
+
+            if (!blocks.TryGetValue(typeHandle, out var block))
                 return;
 
             container.Deserialize(block);
@@ -126,21 +135,30 @@ namespace ZG
         where TDeserializer : struct, IEntityDataDeserializer
         where TDeserializerFactory : struct, IEntityDataFactory<TDeserializer>
     {
-        public FixedString32Bytes componentTypeName;
+#if DEBUG
+        public NativeText.ReadOnly systemTypeName;
+#endif
 
-        [ReadOnly, DeallocateOnJobCompletion]
-        public NativeArray<UnsafeParallelHashMap<Hash128, UnsafeBlock>> blocks;
+        public int typeHandle;
+
+        [ReadOnly]
+        public SharedHashMap<EntityDataIdentityBlockKey, UnsafeBlock>.Reader identityBlocks;
+
+        [ReadOnly]
+        public SharedHashMap<Hash128, int>.Reader identityGUIDIndices;
 
         [ReadOnly]
         public ComponentTypeHandle<EntityDataIdentity> identityType;
+
+        [ReadOnly]
+        public ComponentTypeHandle<EntityDataDeserializable> deserializableType;
 
         public TDeserializerFactory factory;
 
         public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
         {
-            var blocks = this.blocks[0];
-            if (!blocks.IsCreated)
-                return;
+            EntityDataIdentityBlockKey key;
+            key.typeHandle = typeHandle;
 
             var deserializer = factory.Create(chunk, unfilteredChunkIndex);
 
@@ -150,9 +168,19 @@ namespace ZG
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
             {
-                if (!blocks.TryGetValue(identities[i].guid, out block))
+                if (!chunk.IsComponentEnabled(ref deserializableType, i))
+                    continue;
+
+                if (!identityGUIDIndices.TryGetValue(identities[i].guid, out key.guidIndex) || !identityBlocks.TryGetValue(key/*identities[i].guid*/, out block))
                 {
-                    //UnityEngine.Debug.LogError($"Deserialize Fail. Component : {componentTypeName}, Guid: {identities[i].guid} : ");
+                    if (!deserializer.Fallback(i))
+                    {
+#if DEBUG
+                        UnityEngine.Debug.LogError($"Deserialize Fail. SystemType : {systemTypeName}, TypeHandle : {typeHandle}, GUID: {identities[i].guid} : ");
+#else
+                        UnityEngine.Debug.LogError($"Deserialize Fail. TypeHandle : {typeHandle}, GUID: {identities[i].guid} : ");
+#endif
+                    }
 
                     continue;
                 }
@@ -165,21 +193,5 @@ namespace ZG
         }
     }
 
-    [BurstCompile]
-    public struct EntityDataDeserializationGetMap : IJob
-    {
-        public int typeIndex;
-        [ReadOnly]
-        public NativeParallelHashMap<int, UnsafeParallelHashMap<Hash128, UnsafeBlock>> input;
-        public NativeArray<UnsafeParallelHashMap<Hash128, UnsafeBlock>> output;
-
-        public void Execute()
-        {
-            if (!input.TryGetValue(typeIndex, out var result))
-                result = default;
-
-            output[0] = result;
-        }
-    }
     #endregion
 }

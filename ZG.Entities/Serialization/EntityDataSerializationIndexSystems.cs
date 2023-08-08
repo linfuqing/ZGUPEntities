@@ -8,7 +8,7 @@ using ZG;
 
 namespace ZG
 {
-    public interface IEntityDataIndexSerializationWrapper<T>// : IEntityDataIndexReadOnlyWrapper<T>
+    public interface IEntityDataSerializationIndexWrapper<T>// : IEntityDataIndexReadOnlyWrapper<T>
     {
         void Serialize(ref EntityDataWriter writer, in T data, in SharedHashMap<int, int>.Reader guidIndices/*int guidIndex*/);
     }
@@ -63,7 +63,7 @@ namespace ZG
 
         public EntityDataSerializationIndexContainerSystemCore(ref SystemState state)
         {
-            __typeHandle = EntityDataSerializationUtility.GetTypeHandle(ref state);
+            __typeHandle = new EntityDataSerializationTypeHandle(ref state);
 
             guidIndices = new SharedHashMap<int, int>(Allocator.Persistent);
 
@@ -155,7 +155,7 @@ namespace ZG
 
             Serializer serializer;
             serializer.guids = guids.reader;
-            EntityDataSerializationUtility.Update(__typeHandle, ref serializer, ref state);
+            __typeHandle.Update(ref serializer, ref state);
 
             guids.lookupJobManager.readWriteJobHandle = state.Dependency;
         }
@@ -206,7 +206,7 @@ namespace ZG
 
     public struct EntityDataSerializationIndexComponentDataSystemCore<TValue, TWrapper>
             where TValue : unmanaged, IComponentData
-            where TWrapper : struct, IEntityDataIndexSerializationWrapper<TValue>
+            where TWrapper : struct, IEntityDataSerializationIndexWrapper<TValue>
     {
         public struct Serializer : IEntityDataSerializer
         {
@@ -289,7 +289,7 @@ namespace ZG
 
     public struct EntityDataSerializationIndexBufferSystemCore<TValue, TWrapper>
             where TValue : unmanaged, IBufferElementData
-            where TWrapper : struct, IEntityDataIndexSerializationWrapper<TValue>
+            where TWrapper : struct, IEntityDataSerializationIndexWrapper<TValue>
     {
         public struct Serializer : IEntityDataSerializer
         {

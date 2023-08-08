@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Unity.Jobs;
 using Unity.Burst;
 using Unity.Entities;
@@ -7,6 +7,7 @@ using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Jobs;
 using ZG;
+using static ZG.Avatar.Database;
 
 [assembly: RegisterGenericJobType(typeof(ClearHashMap<Entity, float3>))]
 [assembly: RegisterGenericJobType(typeof(CopyNativeArrayToComponentData<ScreenSpaceNodeVisible>))]
@@ -14,308 +15,173 @@ using ZG;
 
 namespace ZG
 {
-    public struct ScreenSpaceNode : IComponentData
+    [UpdateInGroup(typeof(EndFrameEntityCommandSystemGroup))]
+    public partial class ScreenSpaceNodeStructChangeSystem : SystemBase
     {
-        public Entity entity;
-    }
-
-    public struct ScreenSpaceNodeTarget : IComponentData
-    {
-        public float3 offset;
-        public ComponentType componentType;
-    }
-    
-    public struct ScreenSpaceNodeSphere
-    {
-        public float radiusSquare;
-        public float3 center;
-        public ComponentType componentType;
-
-        public bool Check(float3 point)
+        [BurstCompile]
+        private struct SetValues : IJobParallelFor
         {
-            return math.lengthsq(point - center) < radiusSquare;
+            [ReadOnly, DeallocateOnJobCompletion]
+            public NativeArray<Entity> entityArray;
+            [ReadOnly]
+            public NativeArray<ScreenSpaceNode> nodes;
+            [ReadOnly]
+            public NativeArray<EntityObject<Transform>> transforms;
+
+            [NativeDisableParallelForRestriction]
+            public ComponentLookup<EntityObject<Transform>> transformResults;
+            [NativeDisableParallelForRestriction]
+            public ComponentLookup<ScreenSpaceNode> nodeResults;
+            [NativeDisableParallelForRestriction]
+            public ComponentLookup<ScreenSpaceNodeVisible> nodeVisibleResults;
+
+            public void Execute(int index)
+            {
+                ScreenSpaceNodeVisible nodeVisible;
+                nodeVisible.entity = entityArray[index];
+
+                var node = nodes[index];
+                nodeResults[nodeVisible.entity] = node;
+                transformResults[nodeVisible.entity] = transforms[index];
+
+                nodeVisibleResults[node.entity] = nodeVisible;
+            }
         }
 
-        public static bool Test(NativeArray<ScreenSpaceNodeSphere> spheres, ComponentType componentType, float3 point)
-        {
-            if (!spheres.IsCreated || spheres.Length < 1)
-                return true;
+        public int innerloopBatchCount = 32;
 
-            bool result = true;
-            int length = spheres.Length;
-            ScreenSpaceNodeSphere sphere;
-            for (int i = 0; i < length; ++i)
+        private ComponentLookup<EntityObject<Transform>> __transformResults;
+        private ComponentLookup<ScreenSpaceNode> __nodeResults;
+        private ComponentLookup<ScreenSpaceNodeVisible> __nodeVisibleResults;
+
+        private EntityArchetype __entityArchetype;
+
+        private EntityCommandPool<Entity>.Context __addComponentCommander;
+        private EntityCommandPool<Entity>.Context __removeComponentCommander;
+
+        public EntityCommandPool<Entity> addComponentCommander => __addComponentCommander.pool;
+
+        public EntityCommandPool<Entity> removeComponentCommander => __removeComponentCommander.pool;
+
+        protected override void OnCreate()
+        {
+            base.OnCreate();
+
+            __transformResults = GetComponentLookup<EntityObject<Transform>>();
+            __nodeResults = GetComponentLookup<ScreenSpaceNode>();
+            __nodeVisibleResults = GetComponentLookup<ScreenSpaceNodeVisible>();
+
+            __entityArchetype = EntityManager.CreateArchetype(TransformAccessArrayEx.componentType, ComponentType.ReadOnly<EntityObjects>(), ComponentType.ReadOnly<ScreenSpaceNode>());
+
+            __addComponentCommander = new EntityCommandPool<Entity>.Context(Allocator.Persistent);
+            __removeComponentCommander = new EntityCommandPool<Entity>.Context(Allocator.Persistent);
+        }
+
+        protected override void OnDestroy()
+        {
+            __addComponentCommander.Dispose();
+            __removeComponentCommander.Dispose();
+
+            base.OnDestroy();
+        }
+
+        protected override void OnUpdate()
+        {
+            var enttiyManager = EntityManager;
+            ScreenSpaceNodeTargetComponentBase screenSpaceNodeTargetComponent;
+            if (!__removeComponentCommander.isEmpty)
             {
-                sphere = spheres[i];
-                if (sphere.componentType == componentType)
+                var sources = new NativeList<Entity>(Allocator.Temp);
+                var destinations = new NativeList<Entity>(Allocator.Temp);
+
+                Entity temp;
+                while (__removeComponentCommander.TryDequeue(out Entity entity))
                 {
-                    if (sphere.Check(point))
-                        return true;
-                    
-                    result = false;
+                    if (enttiyManager.HasComponent<ScreenSpaceNodeVisible>(entity))
+                    {
+                        temp = enttiyManager.GetComponentData<ScreenSpaceNodeVisible>(entity).entity;
+
+                        screenSpaceNodeTargetComponent = enttiyManager.HasComponent<EntityObject<ScreenSpaceNodeTargetComponentBase>>(entity) ?
+                              enttiyManager.GetComponentData<EntityObject<ScreenSpaceNodeTargetComponentBase>>(entity).value : null;
+                        if (screenSpaceNodeTargetComponent != null)
+                            screenSpaceNodeTargetComponent._Destroy(enttiyManager.HasComponent<EntityObject<Transform>>(temp) ?
+                              enttiyManager.GetComponentData<EntityObject<Transform>>(temp).value : null);
+
+                        destinations.Add(temp);
+                    }
+
+                    sources.Add(entity);
+                }
+
+                if (!sources.IsEmpty)
+                {
+                    enttiyManager.RemoveComponent<ScreenSpaceNodeVisible>(sources.AsArray());
+                    enttiyManager.DestroyEntity(destinations.AsArray());
+                }
+
+                sources.Dispose();
+                destinations.Dispose();
+            }
+
+            if (!__addComponentCommander.isEmpty)
+            {
+                Transform temp;
+                EntityObject<Transform> transform;
+                ScreenSpaceNode node;
+                var nodes = new NativeList<ScreenSpaceNode>(Allocator.TempJob);
+                var transforms = new NativeList<EntityObject<Transform>>(Allocator.TempJob);
+                while (__addComponentCommander.TryDequeue(out var entity))
+                {
+                    screenSpaceNodeTargetComponent = enttiyManager.HasComponent<EntityObject<ScreenSpaceNodeTargetComponentBase>>(entity) ?
+                        enttiyManager.GetComponentData<EntityObject<ScreenSpaceNodeTargetComponentBase>>(entity).value : null;
+                    temp = screenSpaceNodeTargetComponent == null ? null : screenSpaceNodeTargetComponent._Create();
+                    if (temp == null)
+                        continue;
+
+                    transform = new EntityObject<Transform>(temp);
+                    //transform.Retain();
+
+                    transforms.Add(transform);
+
+                    node.entity = entity;
+                    nodes.Add(node);
+                }
+
+                int length = nodes.Length;
+                if (length > 0)
+                {
+                    var entities = nodes.AsArray().Reinterpret<Entity>();
+                    enttiyManager.AddComponent<ScreenSpaceNodeVisible>(entities);
+
+                    var entityArray = enttiyManager.CreateEntity(__entityArchetype, length, Allocator.TempJob);
+
+                    //entityArray.Reinterpret<ScreenSpaceNodeVisible>().MoveTo(entities, GetComponentLookup<ScreenSpaceNodeVisible>());
+                    ref var state = ref this.GetState();
+
+                    SetValues setValues;
+                    setValues.entityArray = entityArray;
+                    setValues.nodes = nodes.AsArray();
+                    setValues.transforms = transforms.AsArray();
+                    setValues.transformResults = __transformResults.UpdateAsRef(ref state);
+                    setValues.nodeResults = __nodeResults.UpdateAsRef(ref state);
+                    setValues.nodeVisibleResults = __nodeVisibleResults.UpdateAsRef(ref state);
+                    var jobHandle = setValues.ScheduleByRef(length, innerloopBatchCount, Dependency);
+                    //jobHandle = JobHandle.CombineDependencies(__nodes.Dispose(jobHandle), __transforms.Dispose(jobHandle));
+
+                    Dependency = JobHandle.CombineDependencies(nodes.Dispose(jobHandle), transforms.Dispose(jobHandle));
+                }
+                else
+                {
+                    nodes.Dispose();
+                    transforms.Dispose();
                 }
             }
-
-            return result;
-        }
-    }
-    
-    public struct ScreenSpaceNodeVisible : ICleanupComponentData
-    {
-        public Entity entity;
-    }
-
-    [EntityComponent]
-    [EntityComponent(typeof(Transform))]
-    public abstract class ScreenSpaceNodeTargetComponentBase : EntityProxyComponent
-    {
-        private float3? __offset;
-
-        public bool isVail => this.HasComponent<ScreenSpaceNodeTarget>();
-
-        public bool isSet => __offset != null;
-
-        public void Set(in float3 offset)
-        {
-            ScreenSpaceNodeTarget screenSpaceNodeTarget;
-            screenSpaceNodeTarget.offset = offset;
-            screenSpaceNodeTarget.componentType = GetType();
-            this.AddComponentData(screenSpaceNodeTarget);
-
-            __offset = offset;
-        }
-
-        public void Unset()
-        {
-            __offset = null;
-
-            this.RemoveComponent<ScreenSpaceNodeTarget>();
-        }
-
-        /*protected void Start()
-        {
-            if (__offset != null)
-            {
-                //Debug.LogError($"V {name} S");
-
-                ScreenSpaceNodeTarget screenSpaceNodeTarget;
-                screenSpaceNodeTarget.offset = __offset.Value;
-                screenSpaceNodeTarget.componentType = GetType();
-                this.AddComponentData(screenSpaceNodeTarget);
-            }
-        }*/
-
-        protected void OnDisable()
-        {
-            Unset();
-        }
-
-        protected internal abstract Transform _Create();
-
-        protected internal abstract void _Destroy(Transform node);
-    }
-
-    public class ScreenSpaceNodeTargetComponent : ScreenSpaceNodeTargetComponentBase
-    {
-        public GameObject target;
-        public GameObject root;
-
-        protected internal override Transform _Create()
-        {
-            if (root != null)
-                root.SetActive(true);
-
-            return target.transform;
-        }
-
-        protected internal override void _Destroy(Transform node)
-        {
-            if (root != null)
-                root.SetActive(false);
         }
     }
 
-    [UpdateInGroup(typeof(SimulationSystemGroup))]
+    [CreateAfter(typeof(ScreenSpaceNodeStructChangeSystem))]
     public partial class ScreenSpaceNodeSystem : SystemBase, IEntityCommandProducerJob
     {
-        private class Visible : IEntityCommander<Entity>
-        {
-            [BurstCompile]
-            private struct SetValues : IJobParallelFor
-            {
-                [ReadOnly, DeallocateOnJobCompletion]
-                public NativeArray<Entity> entityArray;
-                [ReadOnly]
-                public NativeArray<ScreenSpaceNode> nodes;
-                [ReadOnly]
-                public NativeArray<EntityObject<Transform>> transforms;
-
-                [NativeDisableParallelForRestriction]
-                public ComponentLookup<ScreenSpaceNode> nodeResults;
-                [NativeDisableParallelForRestriction]
-                public ComponentLookup<EntityObject<Transform>> transformResults;
-
-                public void Execute(int index)
-                {
-                    Entity entity = entityArray[index];
-                    nodeResults[entity] = nodes[index];
-                    transformResults[entity] = transforms[index];
-                }
-            }
-
-            public const int innerloopBatchCount = 32;
-
-            public EntityArchetype entityArchetype;
-
-            private NativeList<ScreenSpaceNode> __nodes;
-            private NativeList<EntityObject<Transform>> __transforms;
-
-            public void Execute(
-                EntityCommandPool<Entity>.Context context, 
-                EntityCommandSystem system,
-                ref NativeParallelHashMap<ComponentType, JobHandle> dependency,
-                in JobHandle inputDeps)
-            {
-                if (__nodes.IsCreated)
-                    __nodes.Clear();
-                else
-                    __nodes = new NativeList<ScreenSpaceNode>(Allocator.Persistent);
-
-                if (__transforms.IsCreated)
-                    __transforms.Clear();
-                else
-                    __transforms = new NativeList<EntityObject<Transform>>(Allocator.Persistent);
-
-                {
-                    var enttiyManager = system.EntityManager;
-                    ScreenSpaceNodeTargetComponentBase screenSpaceNodeTargetComponent;
-                    Transform temp;
-                    EntityObject<Transform> transform;
-                    ScreenSpaceNode node;
-                    while (context.TryDequeue(out var entity))
-                    {
-                        screenSpaceNodeTargetComponent = enttiyManager.HasComponent<EntityObject<ScreenSpaceNodeTargetComponentBase>>(entity) ?
-                            enttiyManager.GetComponentData<EntityObject<ScreenSpaceNodeTargetComponentBase>>(entity).value : null;
-                        temp = screenSpaceNodeTargetComponent == null ? null : screenSpaceNodeTargetComponent._Create();
-                        if (temp == null)
-                            continue;
-
-                        transform = new EntityObject<Transform>(temp);
-                        //transform.Retain();
-
-                        __transforms.Add(transform);
-
-                        node.entity = entity;
-                        __nodes.Add(node);
-                    }
-
-                    int length = __nodes.Length;
-                    if (length > 0)
-                    {
-                        dependency.CompleteAll(inputDeps);
-
-                        var entities = __nodes.AsArray().Reinterpret<Entity>();
-                        enttiyManager.AddComponent<ScreenSpaceNodeVisible>(entities);
-
-                        var entityArray = enttiyManager.CreateEntity(entityArchetype, length, Allocator.TempJob);
-
-                        entityArray.Reinterpret<ScreenSpaceNodeVisible>().MoveTo(entities, system.GetComponentLookup<ScreenSpaceNodeVisible>());
-
-                        SetValues setValues;
-                        setValues.entityArray = entityArray;
-                        setValues.nodes = __nodes.AsArray();
-                        setValues.transforms = __transforms.AsArray();
-                        setValues.nodeResults = system.GetComponentLookup<ScreenSpaceNode>();
-                        setValues.transformResults = system.GetComponentLookup<EntityObject<Transform>>();
-                        var jobHandle = setValues.Schedule(length, innerloopBatchCount, inputDeps);
-                        //jobHandle = JobHandle.CombineDependencies(__nodes.Dispose(jobHandle), __transforms.Dispose(jobHandle));
-
-                        dependency[typeof(ScreenSpaceNode)] = jobHandle;
-                        dependency[typeof(EntityObject<Transform>)] = jobHandle;
-
-                        return;
-                    }
-                }
-
-                //__nodes.Dispose();
-                //__transforms.Dispose();
-            }
-
-            public void Dispose()
-            {
-                if (__nodes.IsCreated)
-                    __nodes.Dispose();
-
-                if (__transforms.IsCreated)
-                    __transforms.Dispose();
-            }
-        }
-
-        private class Invisible : IEntityCommander<Entity>
-        {
-            private NativeList<Entity> __sources;
-            private NativeList<Entity> __destinations;
-
-            public void Execute(
-                EntityCommandPool<Entity>.Context context, 
-                EntityCommandSystem system,
-                ref NativeParallelHashMap<ComponentType, JobHandle> dependency,
-                in JobHandle inputDeps)
-            {
-                if (__sources.IsCreated)
-                    __sources.Clear();
-                else
-                    __sources = new NativeList<Entity>(Allocator.Persistent);
-
-                if (__destinations.IsCreated)
-                    __destinations.Clear();
-                else
-                    __destinations = new NativeList<Entity>(Allocator.Persistent);
-
-                {
-                    var enttiyManager = system.EntityManager;
-                    ScreenSpaceNodeTargetComponentBase screenSpaceNodeTargetComponent;
-                    Entity temp;
-                    while (context.TryDequeue(out Entity entity))
-                    {
-                        if (enttiyManager.HasComponent<ScreenSpaceNodeVisible>(entity))
-                        {
-                            dependency.CompleteAll(inputDeps);
-
-                            temp = enttiyManager.GetComponentData<ScreenSpaceNodeVisible>(entity).entity;
-
-                            screenSpaceNodeTargetComponent = enttiyManager.HasComponent<EntityObject<ScreenSpaceNodeTargetComponentBase>>(entity) ?
-                                  enttiyManager.GetComponentData<EntityObject<ScreenSpaceNodeTargetComponentBase>>(entity).value : null;
-                            if(screenSpaceNodeTargetComponent != null)
-                                screenSpaceNodeTargetComponent._Destroy(enttiyManager.HasComponent<EntityObject<Transform>>(temp) ?
-                                  enttiyManager.GetComponentData<EntityObject<Transform>>(temp).value : null);
-
-                            __destinations.Add(temp);
-                        }
-
-                        __sources.Add(entity);
-                    }
-
-                    if (!__sources.IsEmpty)
-                    {
-                        dependency.CompleteAll(inputDeps);
-
-                        enttiyManager.RemoveComponent<ScreenSpaceNodeVisible>(__sources.AsArray());
-                        enttiyManager.DestroyEntity(__destinations.AsArray());
-                    }
-                }
-            }
-
-            public void Dispose()
-            {
-                if (__sources.IsCreated)
-                    __sources.Dispose();
-
-                if (__destinations.IsCreated)
-                    __destinations.Dispose();
-            }
-        }
-
         [BurstCompile]
         private struct CreateNodes : IJobParallelForTransform, IEntityCommandProducerJob
         {
@@ -368,7 +234,7 @@ namespace ZG
             public NativeParallelHashMap<Entity, float3>.ParallelWriter positions;
 
             public EntityCommandQueue<Entity>.ParallelWriter entityManager;
-            
+
             public void Execute(int index, TransformAccess transform)
             {
                 if (!transform.isValid)
@@ -403,7 +269,7 @@ namespace ZG
             public float lerp;
             public float width;
             public float height;
-            
+
             [ReadOnly]
             public NativeList<ScreenSpaceNode> nodes;
 
@@ -436,17 +302,17 @@ namespace ZG
 
         public static bool IsOnScreen(float min, float max, float4 position)
         {
-            return position.w > min && 
-                position.w < max && 
-                position.x > -1.0f && 
-                position.x < 1.0f && 
-                position.y > -1.0f && 
+            return position.w > min &&
+                position.w < max &&
+                position.x > -1.0f &&
+                position.x < 1.0f &&
+                position.y > -1.0f &&
                 position.y < 1.0f;
         }
 
         public Camera camera;
-        
-        public event Func<ScreenSpaceNodeSphere> onUpdate; 
+
+        public event Func<ScreenSpaceNodeSphere> onUpdate;
 
         public int innerloopBatchCount = 16;
 
@@ -463,10 +329,10 @@ namespace ZG
 
         private EntityCommandPool<Entity> __addComponentCommander;
         private EntityCommandPool<Entity> __removeComponentCommander;
-        
+
         private NativeList<ScreenSpaceNodeSphere> __spheres;
         private NativeParallelHashMap<Entity, float3> __positions;
-        
+
         protected override void OnCreate()
         {
             __invisibleTargets = GetEntityQuery(ComponentType.ReadOnly<ScreenSpaceNodeTarget>(), ComponentType.Exclude<ScreenSpaceNodeVisible>(), TransformAccessArrayEx.componentType);
@@ -484,7 +350,7 @@ namespace ZG
                         typeof(ScreenSpaceNodeTarget),
                     },
                     Options = EntityQueryOptions.IncludeDisabledEntities
-                }, 
+                },
                 new EntityQueryDesc()
                 {
                     All = new ComponentType[]
@@ -503,11 +369,9 @@ namespace ZG
             __visibleTransforms = new TransformAccessArrayEx(__visibleTargets);
             __nodeTransforms = new TransformAccessArrayEx(__nodes);
 
-            var endFrameBarrier = World.GetOrCreateSystemManaged<EndFrameEntityCommandSystem>();
-            Visible visible = new Visible();
-            visible.entityArchetype = EntityManager.CreateArchetype(TransformAccessArrayEx.componentType, ComponentType.ReadOnly<EntityObjects>(), ComponentType.ReadOnly<ScreenSpaceNode>());
-            __addComponentCommander = endFrameBarrier.Create<Entity, Visible>(EntityCommandManager.QUEUE_ADD, visible);
-            __removeComponentCommander = endFrameBarrier.GetOrCreate<Entity, Invisible>(EntityCommandManager.QUEUE_REMOVE);
+            var endFrameBarrier = World.GetExistingSystemManaged<ScreenSpaceNodeStructChangeSystem>();
+            __addComponentCommander = endFrameBarrier.addComponentCommander;
+            __removeComponentCommander = endFrameBarrier.removeComponentCommander;
 
             __positions = new NativeParallelHashMap<Entity, float3>(1, Allocator.Persistent);
         }
@@ -515,14 +379,14 @@ namespace ZG
         protected override void OnDestroy()
         {
             //__nodes.Dispose();
-            
+
             if (__spheres.IsCreated)
                 __spheres.Dispose();
 
             __invisibleTransforms.Dispose();
             __visibleTransforms.Dispose();
             __nodeTransforms.Dispose();
-            
+
             __positions.Dispose();
         }
 
@@ -544,7 +408,7 @@ namespace ZG
                 __spheres = new NativeList<ScreenSpaceNodeSphere>(Allocator.Persistent);
 
             Delegate[] sphereDelegates = this.onUpdate == null ? null : this.onUpdate.GetInvocationList();
-            if(sphereDelegates != null)
+            if (sphereDelegates != null)
             {
                 Func<ScreenSpaceNodeSphere> onUpdate;
                 foreach (Delegate sphereDelegate in sphereDelegates)
@@ -656,7 +520,7 @@ namespace ZG
             transformNodes.height = camera.pixelHeight;
             transformNodes.nodes = __nodes.ToComponentDataListAsync<ScreenSpaceNode>(worldUpdateAllocator, out var nodeJobHandle);
             transformNodes.positions = __positions;
-            
+
             var result = transformNodes.Schedule(transformAccessArray, JobHandle.CombineDependencies(nodeJobHandle, positionJobHandle));
 
             if (copyEntityJobHandle != null)

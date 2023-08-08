@@ -123,6 +123,8 @@ namespace ZG
 
         //public NativeArray<T> values => __values.AsDeferredJobArray();
 
+        public bool isCreated => __events.isCreated;
+
         public AllocatorManager.AllocatorHandle allocator => __events.allocator;
 
         public Writer writer => new Writer(__events);

@@ -50,7 +50,7 @@ namespace ZG
 
         public void Stop()
         {
-            if (__timeEventHandle.isVail)
+            if (__world != null && __world.IsCreated && __timeEventHandle.isVail)
             {
                 __timeManager.Cannel(__timeEventHandle);
 

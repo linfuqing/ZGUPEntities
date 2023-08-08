@@ -238,12 +238,6 @@ namespace ZG
         }
     }
 
-    [UpdateInGroup(typeof(EntityObjectSystemGroup), OrderLast = true)]
-    public partial class EndEntityObjectSystemGroupEntityCommandSystem : EntityCommandSystem
-    {
-
-    }
-
     public static class EntityManangerUtility
     {
         private static object[] __parameters = null;

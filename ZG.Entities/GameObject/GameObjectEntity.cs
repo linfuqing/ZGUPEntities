@@ -287,8 +287,10 @@ namespace ZG
             return true;
         }
 
-        public static void CreateAllDeserializedEntities()
+        public static bool CreateAllDeserializedEntities()
         {
+            //Debug.Log($"DeserializedEntities {Time.frameCount}");
+
             var type = DeserializedType.Normal;
             while (__CreateDeserializedEntity(ref type)) ;
             /*bool isSceneLoading = true;
@@ -332,6 +334,44 @@ namespace ZG
 
                 __deserializedEntities.Clear();
             }*/
+
+            return __deserializedEntities == null;
+        }
+
+        public static bool IsAllEntitiesDeserialized(DeserializedType type)
+        {
+            bool isSceneLoading = false;
+            if (type == DeserializedType.Normal)
+            {
+                int sceneCount = SceneManager.sceneCount;
+                for (int i = 0; i < sceneCount; ++i)
+                {
+                    if (!SceneManager.GetSceneAt(i).isLoaded)
+                    {
+                        isSceneLoading = true;
+
+                        break;
+                    }
+                }
+            }
+
+            for (var deserializedEntity = __deserializedEntities; (object)deserializedEntity != null; deserializedEntity = deserializedEntity.__next)
+            {
+                if (deserializedEntity.isInstance)
+                {
+                    //Debug.LogError($"{deserializedEntity.name} : {Time.frameCount}", deserializedEntity);
+
+                    return false;
+                }
+
+                if (type != DeserializedType.InstanceOnly)
+                {
+                    if (!isSceneLoading || deserializedEntity != null && !deserializedEntity.gameObject.scene.IsValid())
+                        return false;
+                }
+            }
+
+            return true;
         }
 
         /*public static void DisposeAllDestoriedEntities()
@@ -802,6 +842,9 @@ namespace ZG
 
         private void __Deserialize()
         {
+            /*if (isInstance)
+                Debug.Log("Deserialize", this);*/
+
             UnityEngine.Assertions.Assert.IsNull(__next);
             do
             {
@@ -858,6 +901,7 @@ namespace ZG
                 return;
 #endif
 
+            //Debug.Log($"Deserialized {name}", this);
             //_parent = null;
 
             __BuildArchetypeIfNeed(!gameObject.scene.IsValid());

@@ -44,6 +44,33 @@ namespace ZG
         public EntityQuery streamGroup;
 
         public ref EntityDataSerializationStream stream => ref streamGroup.GetSingletonRW<EntityDataSerializationStream>().ValueRW;
+
+        public EntityDataSerializationTypeHandle(ref SystemState state)
+        {
+            var typeHandles = state.WorldUnmanaged.GetExistingSystemUnmanaged<EntityDataSerializationSystemGroup>().typeHandles;
+            value = typeHandles[state.GetSystemTypeIndex()];
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                streamGroup = builder
+                    .WithAllRW<EntityDataSerializationStream>()
+                    .WithOptions(EntityQueryOptions.IncludeSystems)
+                    .Build(ref state);
+        }
+
+        public void Update<T>(ref T container, ref SystemState state) where T : struct, IEntityDataContainerSerializer
+        {
+            ref var stream = ref this.stream;
+
+            EntityDataContainerSerialize<T> serialize;
+            serialize.typeHandle = value;
+            serialize.writer = stream.writer;
+            serialize.container = container;
+
+            var jobHandle = serialize.ScheduleByRef(JobHandle.CombineDependencies(state.Dependency, stream.jobHandle));
+
+            stream.jobHandle = jobHandle;
+
+            state.Dependency = jobHandle;
+        }
     }
 
     public struct EntityDataSerializable : IComponentData
@@ -54,7 +81,7 @@ namespace ZG
     {
         public NativeBuffer.Writer writer;
 
-        public LookupJobManager lookupJobManager;
+        public JobHandle jobHandle;
     }
 
     public struct EntityDataSerializationBufferManager : IComponentData
@@ -264,7 +291,7 @@ namespace ZG
 
         public byte[] ToBytes()
         {
-            SystemAPI.GetSingletonRW<EntityDataSerializationStream>().ValueRW.lookupJobManager.CompleteReadOnlyDependency();
+            SystemAPI.GetSingletonRW<EntityDataSerializationStream>().ValueRW.jobHandle.Complete();
 
             return __buffer.ToBytes();
         }
@@ -310,7 +337,7 @@ namespace ZG
 
             EntityDataSerializationStream stream;
             stream.writer = writer;
-            stream.lookupJobManager = default;
+            stream.jobHandle = default;
 
             state.EntityManager.AddComponentData(state.SystemHandle, stream);
         }
@@ -326,7 +353,7 @@ namespace ZG
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            state.EntityManager.GetComponentDataRW<EntityDataSerializationStream>(state.SystemHandle).ValueRW.lookupJobManager.CompleteReadWriteDependency();
+            state.EntityManager.GetComponentDataRW<EntityDataSerializationStream>(state.SystemHandle).ValueRW.jobHandle.Complete();
 
             __buffer.length = __bufferHeaderLength;
 
@@ -518,7 +545,7 @@ namespace ZG
             jobHandle = initBuffer.ScheduleByRef(JobHandle.CombineDependencies(
                 jobHandle, 
                 entityIndices.lookupJobManager.readWriteJobHandle, 
-                stream.lookupJobManager.readWriteJobHandle));
+                stream.jobHandle));
 
             var typeGUIDs = this.typeGUIDs;
             typeGUIDs.lookupJobManager.CompleteReadWriteDependency();
@@ -552,7 +579,7 @@ namespace ZG
 
             entityIndices.lookupJobManager.readWriteJobHandle = jobHandle;
 
-            stream.lookupJobManager.readWriteJobHandle = jobHandle;
+            stream.jobHandle = jobHandle;
 
             state.Dependency = jobHandle;
         }
@@ -604,11 +631,11 @@ namespace ZG
             var jobHandle = initTypes.ScheduleByRef(JobHandle.CombineDependencies(
                 state.Dependency,
                 __typeGUIDs.lookupJobManager.readOnlyJobHandle, 
-                stream.lookupJobManager.readWriteJobHandle));
+                stream.jobHandle));
 
             __typeGUIDs.lookupJobManager.AddReadOnlyDependency(jobHandle);
 
-            stream.lookupJobManager.readWriteJobHandle = jobHandle;
+            stream.jobHandle = jobHandle;
 
             state.Dependency = jobHandle;
         }
@@ -665,9 +692,9 @@ namespace ZG
             Combine combine;
             combine.writer = stream.writer;
             combine.bufferManager = __bufferManager;
-            var jobHandle = combine.ScheduleByRef(JobHandle.CombineDependencies(state.Dependency, stream.lookupJobManager.readWriteJobHandle));
+            var jobHandle = combine.ScheduleByRef(JobHandle.CombineDependencies(state.Dependency, stream.jobHandle));
 
-            stream.lookupJobManager.readWriteJobHandle = jobHandle;
+            stream.jobHandle = jobHandle;
 
             state.Dependency = jobHandle;
         }
@@ -712,7 +739,7 @@ namespace ZG
 
             public unsafe void Serialize(int index, in SharedHashMap<Hash128, int>.Reader entityIndices, ref EntityDataWriter writer)
             {
-                var values = this.values.GetUnsafePtrAndLength(index, out int length);
+                var values = this.values.GetUnsafeReadOnlyPtrAndLength(index, out int length);
                 writer.Write(length);
                 writer.Write(values, this.values.ElementSize * length);
             }
@@ -732,20 +759,19 @@ namespace ZG
             }
         }
 
-        private EntityDataSerializationTypeHandle __typeHandle;
         private EntityQuery __group;
 
         private ComponentTypeHandle<EntityDataIdentity> __identityType;
 
+        private SharedHashMap<Hash128, int> __entityIndices;
+
         private EntityDataSerializationBufferManager __bufferManager;
 
-        private SharedHashMap<Hash128, int> __entityIndices;
+        private EntityDataSerializationTypeHandle __typeHandle;
 
         public static EntityDataSerializationSystemCore Create<T>(ref SystemState state) where T : struct
         {
             EntityDataSerializationSystemCore result;
-            result.__typeHandle = EntityDataSerializationUtility.GetTypeHandle(ref state);
-
             using (var builder = new EntityQueryBuilder(Allocator.Temp))
                 result.__group = builder
                     .WithAll<EntityDataIdentity, EntityDataSerializable, T>()
@@ -755,8 +781,10 @@ namespace ZG
             result.__identityType = state.GetComponentTypeHandle<EntityDataIdentity>(true);
 
             ref var system = ref state.WorldUnmanaged.GetExistingSystemUnmanaged<EntityDataSerializationInitializationSystem>();
-            result.__bufferManager = system.bufferManager;
             result.__entityIndices = system.entityIndices;
+            result.__bufferManager = system.bufferManager;
+
+            result.__typeHandle = new EntityDataSerializationTypeHandle(ref state);
 
             return result;
         }
@@ -782,13 +810,13 @@ namespace ZG
             ref var entityIndicesJobManager = ref __entityIndices.lookupJobManager;
             ref var stream = ref __typeHandle.stream;
             var joHandle = serialize.ScheduleParallelByRef(__group, JobHandle.CombineDependencies(
-                stream.lookupJobManager.readWriteJobHandle,
+                stream.jobHandle,
                 entityIndicesJobManager.readOnlyJobHandle, 
                 state.Dependency));
 
             entityIndicesJobManager.AddReadOnlyDependency(joHandle);
 
-            stream.lookupJobManager.readWriteJobHandle = joHandle;
+            stream.jobHandle = joHandle;
 
             state.Dependency = joHandle;
         }
@@ -825,10 +853,11 @@ namespace ZG
         {
             EntityDataSerializationSystemCoreEx result;
 
-            result.__expectedTypeSize = TypeManager.GetTypeIndex<T>().IsBuffer ? 0 : TypeManager.GetTypeInfo<T>().ElementSize;
+            var type = ComponentType.ReadOnly<T>();
+            result.__expectedTypeSize = type.IsBuffer ? 0 : TypeManager.GetTypeInfo<T>().ElementSize;
             result.__core = EntityDataSerializationSystemCore.Create<T>(ref state);
 
-            result.__type = state.GetDynamicComponentTypeHandle(ComponentType.ReadOnly<T>());
+            result.__type = state.GetDynamicComponentTypeHandle(type);
 
             return result;
         }
@@ -841,39 +870,6 @@ namespace ZG
         public void Update(ref SystemState state)
         {
             __core.Update(ref state, __type.UpdateAsRef(ref state), __expectedTypeSize);
-        }
-    }
-
-    public static class EntityDataSerializationUtility
-    {
-        public static EntityDataSerializationTypeHandle GetTypeHandle(ref SystemState state)
-        {
-            EntityDataSerializationTypeHandle result;
-            var typeHandles = state.WorldUnmanaged.GetExistingSystemUnmanaged<EntityDataSerializationSystemGroup>().typeHandles;
-            result.value = typeHandles[state.GetSystemTypeIndex()];
-            using (var builder = new EntityQueryBuilder(Allocator.Temp))
-                result.streamGroup = builder
-                    .WithAllRW<EntityDataSerializationStream>()
-                    .WithOptions(EntityQueryOptions.IncludeSystems)
-                    .Build(ref state);
-
-            return result;
-        }
-
-        public static void Update<T>(in EntityDataSerializationTypeHandle typeHandle, ref T container, ref SystemState state) where T : struct, IEntityDataContainerSerializer
-        {
-            ref var stream = ref typeHandle.stream;
-
-            EntityDataContainerSerialize<T> serialize;
-            serialize.typeHandle = typeHandle.value;
-            serialize.writer = stream.writer;
-            serialize.container = container;
-
-            var jobHandle = serialize.ScheduleByRef(JobHandle.CombineDependencies(state.Dependency, stream.lookupJobManager.readWriteJobHandle));
-
-            stream.lookupJobManager.readWriteJobHandle = jobHandle;
-
-            state.Dependency = jobHandle;
         }
     }
 }

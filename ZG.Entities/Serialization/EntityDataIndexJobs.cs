@@ -3,6 +3,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
+using ZG.Unsafe;
 
 namespace ZG
 {
@@ -117,7 +118,6 @@ namespace ZG
                 executor.Execute(i);
         }
     }
-
 
     public static class EntityDataIndexComponentUtility<TValue, TWrapper>
         where TValue : unmanaged, IComponentData

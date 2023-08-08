@@ -1,10 +1,6 @@
 ﻿using System;
-using System.Reflection;
-using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using Unity.Entities;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
@@ -20,6 +16,23 @@ namespace ZG
         void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity;
     }
 
+    public struct EntityDataInitializer : IEntityDataInitializer
+    {
+        private EntityDataIdentity __identity;
+
+        public Hash128 guid => __identity.guid;
+
+        public EntityDataInitializer(in EntityDataIdentity identity)
+        {
+            __identity = identity;
+        }
+
+        public void Invoke<T>(ref T gameObjectEntity) where T : IGameObjectEntity
+        {
+            gameObjectEntity.AddComponentData(__identity);
+        }
+    }
+
     public struct EntityDataIdentity : IComponentData
     {
         public int type;
@@ -28,7 +41,7 @@ namespace ZG
 
         public override string ToString()
         {
-            return $"{type} : {guid}";
+            return $"EntityDataIdentity({type} : {guid})";
         }
     }
 
@@ -57,7 +70,183 @@ namespace ZG
         }
     }
 
-    public abstract class EntityDataCommander : IEntityCommander<EntityDataIdentity>
+    [BurstCompile, RequireMatchingQueriesForUpdate, UpdateInGroup(typeof(PresentationSystemGroup))/*, UpdateBefore(typeof(EndFrameEntityCommandSystemGroup))*/, UpdateAfter(typeof(CallbackSystem))]
+    public partial struct EntityDataSystem : ISystem
+    {
+        [BurstCompile]
+        private struct DidChange : IJobChunk
+        {
+            public uint lastSystemVersion;
+
+            [NativeDisableParallelForRestriction]
+            public NativeArray<int> result;
+
+            [ReadOnly]
+            public ComponentTypeHandle<EntityDataIdentity> identityType;
+
+            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+            {
+                if (!chunk.DidChange(ref identityType, lastSystemVersion))
+                    return;
+
+                result[0] = 1;
+            }
+        }
+
+        [BurstCompile]
+        private struct Clear : IJob
+        {
+            public int entityCount;
+
+            [ReadOnly]
+            public NativeArray<int> result;
+
+            public SharedHashMap<Hash128, Entity>.Writer guidEntities;
+
+            public void Execute()
+            {
+                if (result[0] == 0)
+                    return;
+
+                guidEntities.Clear();
+
+                guidEntities.capacity = Unity.Mathematics.math.max(guidEntities.capacity, entityCount);
+            }
+        }
+
+        private struct Rebuild
+        {
+            [ReadOnly]
+            public NativeArray<Entity> entities;
+
+            [ReadOnly]
+            public NativeArray<EntityDataIdentity> identities;
+
+            public SharedHashMap<Hash128, Entity>.ParallelWriter guidEntities;
+
+            public void Execute(int index)
+            {
+                bool result = guidEntities.TryAdd(identities[index].guid, entities[index]);
+
+                UnityEngine.Assertions.Assert.IsTrue(result);
+            }
+        }
+
+        [BurstCompile]
+        private struct RebuildEx : IJobChunk
+        {
+            [ReadOnly, DeallocateOnJobCompletion]
+            public NativeArray<int> result;
+
+            [ReadOnly]
+            public EntityTypeHandle entityType;
+
+            [ReadOnly]
+            public ComponentTypeHandle<EntityDataIdentity> identityType;
+
+            public SharedHashMap<Hash128, Entity>.ParallelWriter guidEntities;
+
+            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+            {
+                if (result[0] == 0)
+                    return;
+
+                Rebuild rebuild;
+                rebuild.entities = chunk.GetNativeArray(entityType);
+                rebuild.identities = chunk.GetNativeArray(ref identityType);
+                rebuild.guidEntities = guidEntities;
+
+                var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+                while (iterator.NextEntityIndex(out int i))
+                    rebuild.Execute(i);
+            }
+        }
+
+        private int __entityCount;
+        private EntityQuery __group;
+        private EntityTypeHandle __entityType;
+        private ComponentTypeHandle<EntityDataIdentity> __identityType;
+
+        public SharedHashMap<Hash128, Entity> guidEntities
+        {
+            get;
+
+            private set;
+        }
+
+        [BurstCompile]
+        public void OnCreate(ref SystemState state)
+        {
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __group = builder
+                    .WithAll<EntityDataIdentity>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+
+            __entityType = state.GetEntityTypeHandle();
+
+            __identityType = state.GetComponentTypeHandle<EntityDataIdentity>(true);
+
+            guidEntities = new SharedHashMap<Hash128, Entity>(Allocator.Persistent);
+        }
+
+        [BurstCompile]
+        public void OnDestroy(ref SystemState state)
+        {
+            guidEntities.Dispose();
+        }
+
+        [BurstCompile]
+        public void OnUpdate(ref SystemState state)
+        {
+            var identityType = __identityType.UpdateAsRef(ref state);
+
+            var result = new NativeArray<int>(1, Allocator.TempJob, NativeArrayOptions.ClearMemory);
+
+            JobHandle jobHandle;
+
+            int entityCount = __group.CalculateEntityCount();
+            if (entityCount == __entityCount)
+            {
+                DidChange didChange;
+                didChange.lastSystemVersion = state.LastSystemVersion;
+                didChange.result = result;
+                didChange.identityType = identityType;
+                jobHandle = didChange.ScheduleParallelByRef(__group, state.Dependency);
+            }
+            else
+            {
+                __entityCount = entityCount;
+
+                jobHandle = state.Dependency;
+            }
+
+            var guidEntities = this.guidEntities;
+
+            Clear clear;
+            clear.entityCount = entityCount;
+            clear.result = result;
+            clear.guidEntities = guidEntities.writer;
+
+            ref var guidEntitiesJobManager = ref guidEntities.lookupJobManager;
+
+            jobHandle = clear.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, guidEntitiesJobManager.readWriteJobHandle));
+
+            RebuildEx rebuild;
+            rebuild.result = result;
+            rebuild.entityType = __entityType.UpdateAsRef(ref state);
+            rebuild.identityType = __identityType;
+            rebuild.guidEntities = guidEntities.parallelWriter;
+
+            jobHandle = rebuild.ScheduleParallelByRef(__group, jobHandle);
+
+            guidEntitiesJobManager.readWriteJobHandle = jobHandle;
+
+            state.Dependency = jobHandle;
+        }
+    }
+
+    /*public abstract class EntityDataCommander : IEntityCommander<EntityDataIdentity>
     {
         public struct Initializer : IEntityDataInitializer
         {
@@ -105,29 +294,11 @@ namespace ZG
         {
 
         }
-    }
+    }*/
 
     #region Deserialization
-    public struct EntityDataReader
-    {
-        private UnsafeBlock.Reader __value;
 
-        public EntityDataReader(in UnsafeBlock block)
-        {
-            __value = block.reader;
-        }
-
-        public T Read<T>() where T : struct => __value.Read<T>();
-
-        public NativeArray<T> ReadArray<T>(int length) where T : struct => __value.ReadArray<T>(length);
-    }
-
-    public struct EntityDataDeserializable : ICleanupComponentData
-    {
-        public Hash128 guid;
-    }
-
-    [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
+    /*[AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
     public class EntityDataDeserializeAttribute : Attribute
     {
         public Type type;
@@ -157,7 +328,7 @@ namespace ZG
             }
 
             if (!isVailType)
-                throw new InvalidCastException($"Invail Entity Data Deserialize : {type}, {systemType}!");*/
+                throw new InvalidCastException($"Invail Entity Data Deserialize : {type}, {systemType}!");/
 
             this.version = version;
             this.type = type;
@@ -219,9 +390,9 @@ namespace ZG
         {
             return Create(identity, new Initializer(new EntityDataCommander.Initializer(identity)));
         }
-    }
+    }*/
 
-    public abstract class EntityDataDeserializationSystemGroup : ComponentSystemGroup, ILookupJobManager
+    /*public abstract class EntityDataDeserializationSystemGroup : ComponentSystemGroup, ILookupJobManager
     {
         private NativeBuffer __buffer;
         private LookupJobManager __lookupJobManager;
@@ -522,7 +693,7 @@ namespace ZG
             m_systemsToUpdate.Clear();
 
             base.OnStopRunning();
-        }*/
+        }/
 
         protected override void OnUpdate()
         {
@@ -539,9 +710,9 @@ namespace ZG
         }
 
         protected abstract byte[] _GetBytes();
-    }
+    }*/
 
-    [DisableAutoCreation, UpdateInGroup(typeof(EntityDataDeserializationSystemGroup), OrderFirst = true)]
+    /*[DisableAutoCreation, UpdateInGroup(typeof(EntityDataDeserializationSystemGroup), OrderFirst = true)]
     public partial class EntityDataDeserializationInitializationSystem : EntityCommandSystem
     {
         [BurstCompile]
@@ -680,15 +851,15 @@ namespace ZG
 
             base.OnUpdate();
         }
-    }
+    }*/
 
-    [DisableAutoCreation, UpdateInGroup(typeof(EntityDataDeserializationSystemGroup), OrderFirst = true), UpdateAfter(typeof(EntityDataDeserializationInitializationSystem))]
+    /*[DisableAutoCreation, UpdateInGroup(typeof(EntityDataDeserializationSystemGroup), OrderFirst = true), UpdateAfter(typeof(EntityDataDeserializationInitializationSystem))]
     public partial class EntityDataDeserializationCommandSystem : EntityCommandSystemHybrid
     {
 
-    }
+    }*/
 
-    [DisableAutoCreation, AlwaysUpdateSystem, UpdateInGroup(typeof(EntityDataDeserializationSystemGroup), OrderFirst = true), UpdateAfter(typeof(EntityDataDeserializationCommandSystem))]
+    /*[DisableAutoCreation, AlwaysUpdateSystem, UpdateInGroup(typeof(EntityDataDeserializationSystemGroup), OrderFirst = true), UpdateAfter(typeof(EntityDataDeserializationCommandSystem))]
     public partial class EntityDataDeserializationPresentationSystem : ReadOnlyLookupSystem
     {
         private struct Build
@@ -791,9 +962,9 @@ namespace ZG
 
             Dependency = jobHandle;
         }
-    }
+    }*/
 
-    [DisableAutoCreation,
+    /*[DisableAutoCreation,
         UpdateInGroup(typeof(EntityDataDeserializationSystemGroup), OrderFirst = true),
         UpdateAfter(typeof(EntityDataDeserializationInitializationSystem))]
     public partial class EntityDataDeserializationContainerSystem : ReadOnlyLookupSystem
@@ -851,9 +1022,9 @@ namespace ZG
             _systemGroup.readWriteJobHandle = jobHandle;
             Dependency = jobHandle;
         }
-    }
+    }*/
 
-    [DisableAutoCreation,
+    /*[DisableAutoCreation,
         UpdateInGroup(typeof(EntityDataDeserializationSystemGroup), OrderFirst = true),
         UpdateBefore(typeof(EntityDataDeserializationCommandSystem)),
         UpdateAfter(typeof(EntityDataDeserializationContainerSystem))]
@@ -942,9 +1113,9 @@ namespace ZG
 
             Dependency = jobHandle;
         }
-    }
+    }*/
 
-    [DisableAutoCreation, UpdateInGroup(typeof(EntityDataDeserializationSystemGroup), OrderLast = true)]
+    /*[DisableAutoCreation, UpdateInGroup(typeof(EntityDataDeserializationSystemGroup), OrderLast = true)]
     public partial class EntityDataDeserializationClearSystem : EntityCommandSystem
     {
         internal EntityDataDeserializationSystemGroup _systemGroup;
@@ -961,9 +1132,9 @@ namespace ZG
             if(presentationSystem.entities.Count() == _systemGroup.initializationSystem.guids.Length)
                 _systemGroup.Enabled = false;
         }
-    }
+    }*/
 
-    [UpdateInGroup(typeof(EntityDataDeserializationSystemGroup))]
+    /*[UpdateInGroup(typeof(EntityDataDeserializationSystemGroup))]
     public abstract partial class EntityDataDeserializationSystem : SystemBase
     {
         public int typeIndex
@@ -979,9 +1150,9 @@ namespace ZG
 
             internal set;
         }
-    }
+    }*/
 
-    public abstract partial class EntityDataDeserializationContainerSystem<T> : EntityDataDeserializationSystem where T : struct, IEntityDataContainerDeserializer
+    /*public abstract partial class EntityDataDeserializationContainerSystem<T> : EntityDataDeserializationSystem where T : struct, IEntityDataContainerDeserializer
     {
         protected override void OnUpdate()
         {
@@ -1042,7 +1213,7 @@ namespace ZG
         {
             //不能这样，否则GameDataItem出错
             /*if (group.IsEmptyIgnoreFilter)
-                return;*/
+                return;/
 
             var componentSystem = systemGroup.componentSystem;
 
@@ -1150,6 +1321,6 @@ namespace ZG
 
             return factory;
         }
-    }
+    }*/
     #endregion
 }

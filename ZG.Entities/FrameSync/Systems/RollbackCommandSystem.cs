@@ -1720,7 +1720,7 @@ namespace ZG
             __callbackHandles.Clear();
         }
 
-        public EntityCommander Invoke(uint frameIndex, in RollbackEntry entry, Action clear = null)
+        public EntityCommander Invoke(uint frameIndex, in RollbackEntry entry, in CallbackHandle clear)
         {
             __commander.Record(frameIndex, entry);
 
@@ -1730,7 +1730,7 @@ namespace ZG
             invokeCommand.rollbackEntryType = entry.type;
             invokeCommand.frameIndex = frameIndex;
             invokeCommand.key = entry.key;
-            invokeCommand.clear = clear == null ? CallbackHandle.Null : clear.Register();
+            invokeCommand.clear = clear;
 
             var frameCommander = __commanderPool.Alloc(out invokeCommand.commanderIndex);
 
@@ -1744,6 +1744,16 @@ namespace ZG
             __frameCallbacks.Add(frameIndex, callback);*/
 
             return frameCommander;
+        }
+
+        public EntityCommander Invoke(uint frameIndex, in RollbackEntry entry)
+        {
+            return Invoke(frameIndex, entry, CallbackHandle.Null);
+        }
+
+        public EntityCommander Invoke(uint frameIndex, in RollbackEntry entry, Action clear)
+        {
+            return Invoke(frameIndex, entry, clear == null ? CallbackHandle.Null : clear.Register());
         }
 
         public void Move(long key, uint fromFrameIndex, uint toFrameIndex)

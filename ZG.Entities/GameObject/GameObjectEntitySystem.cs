@@ -619,6 +619,8 @@ namespace ZG
             {
                 GameObjectEntity.DestroiedEntity.DisposeAllDestoriedEntities();
                 GameObjectEntity.CreateAllDeserializedEntities();
+
+                //Debug.Log($"Deserialized End {UnityEngine.Time.frameCount}");
             }
             catch(Exception e)
             {

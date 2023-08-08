@@ -533,6 +533,8 @@ namespace ZG
         {
             get
             {
+                UnityEngine.Assertions.Assert.IsTrue(isCreated);
+
                 Writer writer;
 
                 writer._commands = __instance.commands;
@@ -548,6 +550,8 @@ namespace ZG
         {
             get
             {
+                UnityEngine.Assertions.Assert.IsTrue(isCreated);
+
                 ParallelWriter parallelWriter;
 
                 parallelWriter._commands = __instance.commands.parallelWriter;
@@ -595,7 +599,7 @@ namespace ZG
                 private set;
             }
 
-            public Context(Allocator allocator)
+            public Context(in AllocatorManager.AllocatorHandle allocator)
             {
                 this.pool = new EntityCommandPool(allocator);
             }
@@ -656,7 +660,7 @@ namespace ZG
 
         public bool isCreated => __values.isCreated;
 
-        public EntityCommandPool(Allocator allocator)
+        public EntityCommandPool(in AllocatorManager.AllocatorHandle allocator)
         {
             __values = new UnsafeListEx<EntityCommandQueue>(allocator);
             __caches = new UnsafeListEx<EntityCommandQueue>(allocator);
@@ -719,7 +723,7 @@ namespace ZG
 
             public EntityCommandPool<T> pool => new EntityCommandPool<T>(__instance.pool);
 
-            public Context(Allocator allocator)
+            public Context(in AllocatorManager.AllocatorHandle allocator)
             {
                 __instance = new EntityCommandPool.Context(allocator);
             }

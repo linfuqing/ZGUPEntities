@@ -378,7 +378,7 @@ namespace ZG
 
         protected abstract EntityDataIndexContainerSerializationSystem _GetOrCreateContainerSystem();
     }*/
-    public interface IEntityDataIndexReadWriteWrapper<T> : IEntityDataIndexReadOnlyWrapper<T>, IEntityDataIndexSerializationWrapper<T>, IEntityDataIndexDeserializationWrapper<T>
+    public interface IEntityDataIndexReadWriteWrapper<T> : IEntityDataIndexReadOnlyWrapper<T>, IEntityDataSerializationIndexWrapper<T>, IEntityDataDeserializationIndexWrapper<T>
     {
         void Invail(ref T data);
 
@@ -422,12 +422,7 @@ namespace ZG
         }
     }
 
-    public interface IEntityDataIndexDeserializationWrapper<T>
-    {
-        T Deserialize(ref EntityDataReader reader, in NativeArray<int>.ReadOnly indices);
-    }
-
-    public abstract partial class EntityDataIndexContainerDeserializationSystem : EntityDataDeserializationContainerSystem<EntityDataIndexContainerDeserializationSystem.Deserializer>, IReadOnlyLookupJobManager
+    /*public abstract partial class EntityDataIndexContainerDeserializationSystem : EntityDataDeserializationContainerSystem<EntityDataIndexContainerDeserializationSystem.Deserializer>, IReadOnlyLookupJobManager
     {
         public struct Deserializer : IEntityDataContainerDeserializer
         {
@@ -533,7 +528,7 @@ namespace ZG
                 if (wrapper.TryGet(instance, out int temp))
                     wrapper.Set(ref instance, indices[temp]);
                 else
-                    wrapper.Invail(ref instance);*/
+                    wrapper.Invail(ref instance);/
 
                 instances[index] = instance;
             }
@@ -614,7 +609,7 @@ namespace ZG
                 int length = reader.Read<int>();
                 /*var sources = reader.ReadArray<TValue>(length);
                 var destinations = instances[index];
-                destinations.CopyFrom(sources);*/
+                destinations.CopyFrom(sources);/
                 var instances = this.instances[index];
                 instances.ResizeUninitialized(length);
 
@@ -630,7 +625,7 @@ namespace ZG
                     else
                         wrapper.Invail(ref instance);
 
-                    destinations[i] = instance;*/
+                    destinations[i] = instance;/
                 }
             }
         }
@@ -688,5 +683,5 @@ namespace ZG
         protected abstract TWrapper _GetWrapper();
 
         protected abstract EntityDataIndexContainerDeserializationSystem _GetOrCreateContainerSystem();
-    }
+    }*/
 }

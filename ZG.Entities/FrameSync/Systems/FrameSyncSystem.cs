@@ -402,7 +402,7 @@ namespace ZG
         }
     }
 
-    [AlwaysSynchronizeSystem, UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true), UpdateBefore(typeof(BeginTimeSystemGroupEntityCommandSystem))]
+    [AlwaysSynchronizeSystem, UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true)/*, UpdateBefore(typeof(BeginTimeSystemGroupEntityCommandSystem))*/]
     public partial class SyncFrameEventSystem : SystemBase
     {
         public struct RollbackEntryTester : IRollbackEntryTester

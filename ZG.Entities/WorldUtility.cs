@@ -74,28 +74,21 @@ namespace ZG
         }
     }
 
-    [UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true)]
+    /*[UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true)]
     public partial class BeginTimeSystemGroupEntityCommandSystem : EntityCommandSystemHybrid
     {
         [Preserve]
         public BeginTimeSystemGroupEntityCommandSystem() { }
-    }
+    }*/
 
-    [UpdateInGroup(typeof(TimeSystemGroup), OrderLast = false)]
+    /*[UpdateInGroup(typeof(TimeSystemGroup), OrderLast = false)]
     public partial class EndTimeSystemGroupEntityCommandSystemGroup : ComponentSystemGroup
     {
         [Preserve]
         public EndTimeSystemGroupEntityCommandSystemGroup() { }
     }
 
-    [UpdateInGroup(typeof(EndTimeSystemGroupEntityCommandSystemGroup), OrderLast = false)]
-    public partial class EndTimeSystemGroupEntityCommandSystem : EntityCommandSystem
-    {
-        [Preserve]
-        public EndTimeSystemGroupEntityCommandSystem() { }
-    }
-
-    /*[DisableAutoCreation, UpdateInGroup(typeof(TimeSystemGroup))]
+    [DisableAutoCreation, UpdateInGroup(typeof(TimeSystemGroup))]
     public partial class TimeInitializationSystemGroup : ComponentSystemGroup
     {
         [Preserve]
@@ -231,7 +224,7 @@ namespace ZG
 
                 if (!isContains)
                 {
-                    systems.RemoveAtSwapBack(i--);
+                    systems.RemoveAt(i--);
 
                     --count;
                 }
