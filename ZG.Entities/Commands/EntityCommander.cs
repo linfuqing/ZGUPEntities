@@ -66,6 +66,28 @@ namespace ZG
                 __structChangeCommander.Clear();
                 __destroyEntityCommander.Clear();
             }
+
+            public void DestroyEntity(in Entity entity)
+            {
+                __destroyEntityCommander.Add(entity);
+            }
+
+            public bool RemoveComponent<T>(in Entity entity)
+            {
+                return __structChangeCommander.RemoveComponent<T>(entity);
+            }
+
+            public bool AddComponent<T>(in Entity entity)
+            {
+                return __structChangeCommander.AddComponent<T>(entity);
+            }
+
+            public void AddComponentData<T>(in Entity entity, in T value) where T : struct, IComponentData
+            {
+                AddComponent<T>(entity);
+
+                __assigner.SetComponentData(entity, value);
+            }
         }
 
         public struct ParallelWriter

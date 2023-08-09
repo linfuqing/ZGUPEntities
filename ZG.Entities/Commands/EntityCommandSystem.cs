@@ -24,7 +24,6 @@ namespace ZG
     [BurstCompile, UpdateInGroup(typeof(EntityCommandSharedSystemGroup), OrderFirst = true)]
     public partial struct EntityCommandFactorySystem : ISystem
     {
-
         public EntityCommandFactory factory
         {
             get;

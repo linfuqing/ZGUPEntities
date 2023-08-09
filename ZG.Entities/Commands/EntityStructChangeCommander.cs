@@ -40,6 +40,23 @@ namespace ZG
             {
                 __componentStates.Clear();
             }
+
+            public bool AddComponent<T>(in Entity entity)
+            {
+                ComponentEntity componentEntity;
+                componentEntity.value = entity;
+                componentEntity.componentTypeIndex = TypeManager.GetTypeIndex<T>();
+                return __componentStates.TryAdd(componentEntity, true);
+            }
+
+            public bool RemoveComponent<T>(in Entity entity)
+            {
+                ComponentEntity componentEntity;
+                componentEntity.value = entity;
+                componentEntity.componentTypeIndex = TypeManager.GetTypeIndex<T>();
+
+                return __componentStates.TryAdd(componentEntity, false);
+            }
         }
 
         public struct ParallelWriter
