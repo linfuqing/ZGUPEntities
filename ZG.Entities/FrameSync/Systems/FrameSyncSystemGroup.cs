@@ -245,36 +245,43 @@ namespace ZG
             m_systemsToUpdate = finalSystemList;
         }*/
 
-        public static readonly ComponentType[] ComponentTypes = new ComponentType[]
-        {
-            ComponentType.ReadWrite<FrameSyncFlag>(),
-            ComponentType.ReadWrite<FrameSync>(),
-            ComponentType.ReadWrite<FrameSyncReal>(),
-            ComponentType.ReadWrite<FrameSyncClear>(),
-            ComponentType.ReadWrite<RollbackFrame>(),
-            ComponentType.ReadWrite<RollbackFrameRestore>(),
-            ComponentType.ReadWrite<RollbackFrameSave>(),
-            ComponentType.ReadWrite<RollbackFrameClear>()
-        };
-
         public FrameSyncSystemGroup(ref SystemState state, uint maxFrameCount = 256)
         {
-            World world = state.World;
             var entityManager = state.EntityManager;
 
             var systemHandle = state.SystemHandle;
-            entityManager.AddComponent(systemHandle, new ComponentTypeSet(ComponentTypes));
 
-            __group = state.GetEntityQuery(new EntityQueryDesc()
+            var types = new FixedList128Bytes<ComponentType>
             {
-                All = ComponentTypes,
-                Options = EntityQueryOptions.IncludeSystems
-            });
+                ComponentType.ReadWrite<FrameSyncFlag>(),
+                ComponentType.ReadWrite<FrameSync>(),
+                ComponentType.ReadWrite<FrameSyncReal>(),
+                ComponentType.ReadWrite<FrameSyncClear>(),
+                ComponentType.ReadWrite<RollbackFrame>(),
+                ComponentType.ReadWrite<RollbackFrameRestore>(),
+                ComponentType.ReadWrite<RollbackFrameSave>(),
+                ComponentType.ReadWrite<RollbackFrameClear>()
+            };
+            entityManager.AddComponent(systemHandle, new ComponentTypeSet(types));
+
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __group = builder
+                        .WithAllRW<FrameSyncFlag>()
+                        .WithAllRW<FrameSync>()
+                        .WithAllRW<FrameSyncReal>()
+                        .WithAllRW<FrameSyncClear>()
+                        .WithAllRW<RollbackFrame>()
+                        .WithAllRW<RollbackFrameRestore>()
+                        .WithAllRW<RollbackFrameSave>()
+                        .WithAllRW<RollbackFrameClear>()
+                        .WithOptions(EntityQueryOptions.IncludeSystems)
+                        .Build(ref state);
 
             FrameSyncFlag flag;
             flag.value = FrameSyncFlag.Value.Active | FrameSyncFlag.Value.Rollback | FrameSyncFlag.Value.Clear;
             entityManager.SetComponentData(systemHandle, flag);
 
+            var world = state.World;
             __systemGroup = SystemGroupUtility.GetOrCreateSystemGroup(world, typeof(FrameSyncSystemGroup));
 
             //__rollbackSystemGroup = world.GetOrCreateSystem<RollbackSystemGroup>();
