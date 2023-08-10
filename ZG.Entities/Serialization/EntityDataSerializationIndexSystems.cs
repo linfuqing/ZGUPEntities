@@ -77,7 +77,7 @@ namespace ZG
             guids.Dispose();
         }
 
-        public JobHandle Clear(in JobHandle inputDeps)
+        public JobHandle CommandBegin(in JobHandle inputDeps)
         {
             var guidIndices = this.guidIndices;
             var guids = this.guids;
@@ -91,7 +91,7 @@ namespace ZG
             return clearGUIDs.ScheduleByRef(inputDeps);
         }
 
-        public JobHandle Update<TValue, TWrapper>(
+        public JobHandle CommandUpdate<TValue, TWrapper>(
                in EntityQuery group,
                in NativeArray<Hash128>.ReadOnly guids,
                in ComponentTypeHandle<TValue> type, 
@@ -120,7 +120,7 @@ namespace ZG
             return jobHandle;
         }
 
-        public JobHandle Update<TValue, TWrapper>(
+        public JobHandle CommandUpdate<TValue, TWrapper>(
                in EntityQuery group,
                in NativeArray<Hash128>.ReadOnly guids,
                in BufferTypeHandle<TValue> type,
@@ -149,7 +149,7 @@ namespace ZG
             return jobHandle;
         }
 
-        public void Command(ref SystemState state)
+        public void CommandEnd(ref SystemState state)
         {
             var guids = this.guids;
 
@@ -169,13 +169,13 @@ namespace ZG
             where TValue : unmanaged, IComponentData
             where TWrapper : struct, IEntityDataIndexReadOnlyWrapper<TValue>
         {
-            var jobHandle = Clear(state.Dependency);
+            var jobHandle = CommandBegin(state.Dependency);
 
-            jobHandle = Update(group, guids, type, ref wrapper, jobHandle);
+            jobHandle = CommandUpdate(group, guids, type, ref wrapper, jobHandle);
 
             state.Dependency = jobHandle;
 
-            Command(ref state);
+            CommandEnd(ref state);
             /*var guidResults = this.guids;
 
             Serializer serializer;
@@ -194,13 +194,13 @@ namespace ZG
             where TValue : unmanaged, IBufferElementData
             where TWrapper : struct, IEntityDataIndexReadOnlyWrapper<TValue>
         {
-            var jobHandle = Clear(state.Dependency);
+            var jobHandle = CommandBegin(state.Dependency);
 
-            jobHandle = Update(group, guids, type, ref wrapper, jobHandle);
+            jobHandle = CommandUpdate(group, guids, type, ref wrapper, jobHandle);
 
             state.Dependency = jobHandle;
 
-            Command(ref state);
+            CommandEnd(ref state);
         }
     }
 
