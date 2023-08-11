@@ -87,7 +87,7 @@ namespace ZG
     public struct RollbackGroup : IRollbackContainer
     {
         [BurstCompile]
-        private struct GetChunk : IJob
+        private struct LoadChunk : IJob
         {
             public uint frameIndex;
 
@@ -168,6 +168,10 @@ namespace ZG
             private set => __jobHandles[2] = value;
         }
 
+        public NativeArray<int> countAndStartIndex => __countAndStartIndex;
+
+        public NativeArray<Entity> entities => __entities.AsDeferredJobArray();
+
         public RollbackGroup(int capacity, Allocator allocator)
         {
             BurstUtility.InitializeJob<SaveChunks>();
@@ -185,7 +189,7 @@ namespace ZG
 #endif
         }
 
-        public int GetEntityCount(uint frameIndex)
+        /*public int GetEntityCount(uint frameIndex)
         {
             chunkJobHandle.Complete();
             chunkJobHandle = default;
@@ -194,6 +198,16 @@ namespace ZG
                 return chunk.count;
 
             return 0;
+        }*/
+
+        public JobHandle GetChunk(uint frameIndex, in JobHandle dependsOn)
+        {
+            LoadChunk loadChunk;
+            loadChunk.frameIndex = frameIndex;
+            loadChunk.countAndStartIndex = __countAndStartIndex;
+            loadChunk.chunks = __chunks;
+
+            return loadChunk.ScheduleByRef(JobHandle.CombineDependencies(dependsOn, chunkJobHandle));
         }
 
         public bool GetEntities(uint frameIndex, out NativeSlice<Entity> entities)
@@ -277,11 +291,7 @@ namespace ZG
             if (!__chunks.TryGetValue(frameIndex, out var chunk))
                 return dependsOn;*/
 
-            GetChunk getChunk;
-            getChunk.frameIndex = frameIndex;
-            getChunk.countAndStartIndex = __countAndStartIndex;
-            getChunk.chunks = __chunks;
-            var jobHandle = getChunk.ScheduleByRef(JobHandle.CombineDependencies(dependsOn, chunkJobHandle));
+            var jobHandle = GetChunk(frameIndex, dependsOn);
 
             RollbackRestore<T> restore;
             restore.countAndStartIndex = __countAndStartIndex;
@@ -1184,27 +1194,29 @@ namespace ZG
         [BurstCompile]
         private struct ClearHashMap : IJob
         {
-            public int capacity;
+            public NativeArray<int> count;
 
             public NativeParallelHashMap<Entity, int> value;
 
             public void Execute()
             {
-                value.Capacity = math.max(value.Capacity, capacity);
                 value.Clear();
+                value.Capacity = math.max(value.Capacity, count[0]);
             }
         }
 
         [BurstCompile]
-        private struct BuildEntityIndices : IJobParallelFor
+        private struct BuildEntityIndices : IJobParallelForDefer
         {
             [ReadOnly]
-            public NativeSlice<Entity> entities;
+            public NativeArray<int> countAndStartIndex;
+            [ReadOnly]
+            public NativeArray<Entity> entities;
             public NativeParallelHashMap<Entity, int>.ParallelWriter results;
 
             public void Execute(int index)
             {
-                results.TryAdd(entities[index], index);
+                results.TryAdd(entities[countAndStartIndex[1] + index], index);
             }
         }
 
@@ -1324,13 +1336,11 @@ namespace ZG
             }
         }
 
+        //[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public NativeArray<int> countAndStartIndex => __group.countAndStartIndex;
+
         public RollbackManager(ref SystemState systemState, Allocator allocator, int innerloopBatchCount = 1/*, uint maxFrameCount = 256*/)
         {
-            BurstUtility.InitializeJob<ClearHashMap>();
-            BurstUtility.InitializeJobParallelFor<BuildEntityIndices>();
-
-            systemState.SetAlwaysUpdateSystem(true);
-
             InnerloopBatchCount = innerloopBatchCount;
             /*MaxFrameCount = maxFrameCount;
 
@@ -1386,9 +1396,11 @@ namespace ZG
             __group.Clear();
         }
 
-        public int GetEntityCount(uint frameIndex) => __group.GetEntityCount(frameIndex);
+        //public int GetEntityCount(uint frameIndex) => __group.GetEntityCount(frameIndex);
 
-        public int IndexOf(uint frameIndex, Entity entity) => __group.IndexOf(frameIndex, entity);
+        public int IndexOf(uint frameIndex, in Entity entity) => __group.IndexOf(frameIndex, entity);
+
+        public JobHandle GetChunk(uint frameIndex, in JobHandle jobHandle) => __group.GetChunk(frameIndex, jobHandle);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public RollbackComponentRestoreFunction<T> DelegateRestore<T>(in RollbackComponent<T> instance, ref SystemState systemState) where T : unmanaged, IComponentData
@@ -1440,135 +1452,156 @@ namespace ZG
             return instance.DelegateClear();
         }
 
-        public bool AddOrRemoveComponentIfNotSaved(
+        public JobHandle AddOrRemoveComponentIfNotSaved(
 #if UNITY_EDITOR
             bool isAddOrRemove, 
 #endif
             uint frameIndex,
             in ComponentType componentType,
             in EntityQuery group,
+            in EntityTypeHandle entityType, 
             in EntityCommandPool<EntityCommandStructChange> commander,
-            ref SystemState systemState)
+            in JobHandle inputDeps)
         {
 #if ENABLE_PROFILER
             using (__addOrRemoveComponentIfNotSaved.Auto())
 #endif
 
             {
-                if (__group.GetEntities(frameIndex, out var entities))
-                {
-                    var entityIndicesParallelWriter = __entityIndices.AsParallelWriter();
+                //var jobHandle = __group.GetChunk(frameIndex, inputDeps);
 
-                    var jobHandle = systemState.Dependency;
+                //if (__group.GetEntities(frameIndex, out var entities))
+                //{
+                var entityIndicesParallelWriter = __entityIndices.AsParallelWriter();
+                var countAndStartIndex = __group.countAndStartIndex;
 
-                    ClearHashMap clearHashMap;
-                    clearHashMap.capacity = entities.Length;
-                    clearHashMap.value = __entityIndices;
-                    jobHandle = clearHashMap.Schedule(jobHandle);
+                ClearHashMap clearHashMap;
+                clearHashMap.count = countAndStartIndex;
+                clearHashMap.value = __entityIndices;
+                var jobHandle = clearHashMap.ScheduleByRef(inputDeps);
 
-                    BuildEntityIndices buildEntityIndices;
-                    buildEntityIndices.entities = entities;
-                    buildEntityIndices.results = entityIndicesParallelWriter;
-                    jobHandle = buildEntityIndices.Schedule(entities.Length, InnerloopBatchCount, jobHandle);
+                BuildEntityIndices buildEntityIndices;
+                buildEntityIndices.countAndStartIndex = countAndStartIndex;
+                buildEntityIndices.entities = __group.entities;
+                buildEntityIndices.results = entityIndicesParallelWriter;
+                jobHandle = buildEntityIndices.ScheduleUnsafeIndex0ByRef(countAndStartIndex, InnerloopBatchCount, JobHandle.CombineDependencies(jobHandle, __group.entityJobHandle));
 
-                    __group.entityJobHandle = jobHandle;
+                __group.entityJobHandle = jobHandle;
 
-                    var entityManager = commander.Create();
+                var entityManager = commander.Create();
 
-                    RestoreChunk restoreChunk;
+                RestoreChunk restoreChunk;
 #if UNITY_EDITOR
-                    restoreChunk.isAddOrRemove = isAddOrRemove;
-                    restoreChunk.frameIndex = frameIndex;
+                restoreChunk.isAddOrRemove = isAddOrRemove;
+                restoreChunk.frameIndex = frameIndex;
 #endif
-                    restoreChunk.componentType = componentType;
-                    restoreChunk.entityType = systemState.GetEntityTypeHandle();
-                    restoreChunk.entityIndices = __entityIndices;
-                    restoreChunk.entityManager = entityManager.parallelWriter;
+                restoreChunk.componentType = componentType;
+                restoreChunk.entityType = entityType;
+                restoreChunk.entityIndices = __entityIndices;
+                restoreChunk.entityManager = entityManager.parallelWriter;
 
-                    jobHandle = restoreChunk.ScheduleParallel(group, jobHandle);
+                jobHandle = restoreChunk.ScheduleParallelByRef(group, jobHandle);
 
-                    entityManager.AddJobHandleForProducer<RestoreChunk>(jobHandle);
+                entityManager.AddJobHandleForProducer<RestoreChunk>(jobHandle);
 
-                    systemState.Dependency = jobHandle;
+                return jobHandle;
+                //systemState.Dependency = jobHandle;
 
-                    return true;
-                }
+                //return true;
+                //}
 
-                return false;
+                //return false;
             }
         }
 
-        public void AddComponentIfNotSaved<T>(
+        public JobHandle AddComponentIfNotSaved<T>(
             uint frameIndex,
             in EntityQuery group,
+            in EntityTypeHandle entityType,
             in EntityCommandPool<EntityCommandStructChange> addComponentCommander,
-            ref SystemState systemState) where T : struct, IComponentData
+            in JobHandle inputDeps) where T : struct, IComponentData
         {
 #if ENABLE_PROFILER
             using (__addComponentIfNotSaved.Auto())
 #endif
             {
                 if (frameIndex < minSaveFrameIndex)
-                    UnityEngine.Debug.LogError($"Frame Index {frameIndex} Less Than Range {minSaveFrameIndex}");
-                else if (!AddOrRemoveComponentIfNotSaved(
-#if UNITY_EDITOR
-                    true, 
-#endif
-                    frameIndex,
-                    ComponentType.ReadWrite<T>(),
-                    group,
-                    addComponentCommander,
-                    ref systemState))
                 {
-#if GAME_DEBUG_DISABLE
-                    if(TypeManager.GetTypeIndex<T>() == TypeManager.GetTypeIndex<Disabled>() && !group.IsEmpty)
-                    {
-                        group.CompleteDependency();
+                    UnityEngine.Debug.LogError($"Frame Index {frameIndex} Less Than Range {minSaveFrameIndex}");
 
-                        var entityArray = group.ToEntityArrayBurstCompatible(systemState.GetEntityTypeHandle(), Allocator.TempJob);
-                        foreach(var entity in entityArray)
-                        {
-                            UnityEngine.Debug.Log($"Disable {entity.Index} In {frameIndex}");
-                        }
-                    }
+                    return inputDeps;
+                }
+                else
+                {
+                    return AddOrRemoveComponentIfNotSaved(
+#if UNITY_EDITOR
+                        true,
 #endif
-                    //jobHandle.Complete();
-                    //systemState.CompleteDependency();
+                        frameIndex,
+                        ComponentType.ReadWrite<T>(),
+                        group,
+                        entityType,
+                        addComponentCommander,
+                        inputDeps);
+                    /*{
+    #if GAME_DEBUG_DISABLE
+                        if(TypeManager.GetTypeIndex<T>() == TypeManager.GetTypeIndex<Disabled>() && !group.IsEmpty)
+                        {
+                            group.CompleteDependency();
 
-                    //jobHandle = endFrameBarrier.AddComponent<T>(group, inputDeps);
-                    systemState.EntityManager.AddComponent<T>(group);
+                            var entityArray = group.ToEntityArrayBurstCompatible(systemState.GetEntityTypeHandle(), Allocator.TempJob);
+                            foreach(var entity in entityArray)
+                            {
+                                UnityEngine.Debug.Log($"Disable {entity.Index} In {frameIndex}");
+                            }
+                        }
+    #endif
+                        //jobHandle.Complete();
+                        //systemState.CompleteDependency();
+
+                        //jobHandle = endFrameBarrier.AddComponent<T>(group, inputDeps);
+                        systemState.EntityManager.AddComponent<T>(group);*/
                 }
             }
         }
 
-        public void RemoveComponentIfNotSaved<T>(
+        public JobHandle RemoveComponentIfNotSaved<T>(
             uint frameIndex,
             in EntityQuery group,
+            in EntityTypeHandle entityType,
             in EntityCommandPool<EntityCommandStructChange> removeComponentCommander,
-            ref SystemState systemState) where T : struct, IComponentData
+            in JobHandle inputDeps) where T : struct, IComponentData
         {
 #if ENABLE_PROFILER
             using (__removeComponentIfNotSaved.Auto())
 #endif
             {
                 if (frameIndex < minSaveFrameIndex)
-                    UnityEngine.Debug.LogError($"Frame Index {frameIndex} Less Than Range {minSaveFrameIndex}");
-                else if (!AddOrRemoveComponentIfNotSaved(
-#if UNITY_EDITOR
-                    false,
-#endif
-                    frameIndex,
-                    ComponentType.ReadWrite<T>(),
-                    group,
-                    removeComponentCommander,
-                    ref systemState))
                 {
+                    UnityEngine.Debug.LogError($"Frame Index {frameIndex} Less Than Range {minSaveFrameIndex}");
+
+                    return inputDeps;
+                }
+                else
+                {
+                    return AddOrRemoveComponentIfNotSaved(
+#if UNITY_EDITOR
+                        false,
+#endif
+                        frameIndex,
+                        ComponentType.ReadWrite<T>(),
+                        group,
+                        entityType,
+                        removeComponentCommander,
+                        inputDeps);
+                }
+                /*{
                     //jobHandle.Complete();
                     //systemState.CompleteDependency();
 
                     //jobHandle = endFrameBarrier.RemoveComponent<T>(group, inputDeps);
                     systemState.EntityManager.RemoveComponent<T>(group);
-                }
+                }*/
             }
         }
 
@@ -1760,13 +1793,15 @@ namespace ZG
 
         internal RollbackManager container => __imp;
 
+        public NativeArray<int> countAndStartIndex => __imp.countAndStartIndex;
+
         public RollbackManager(ref SystemState systemState, Allocator allocator, int innerloopBatchCount = 1/*, uint maxFrameCount = 256*/)
         {
             __imp = new RollbackManager(ref systemState, allocator, innerloopBatchCount/*, maxFrameCount*/);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public int GetEntityCount(uint frameIndex) => __imp.GetEntityCount(frameIndex);
+        public JobHandle GetChunk(uint frameIndex, in JobHandle jobHandle) => __imp.GetChunk(frameIndex, jobHandle);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int IndexOf(uint frameIndex, Entity entity) => __imp.IndexOf(frameIndex, entity);
@@ -1800,20 +1835,22 @@ namespace ZG
             where U : unmanaged, IBufferElementData => __imp.DelegateClear(instance);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void AddComponentIfNotSaved<T>(
+        public JobHandle AddComponentIfNotSaved<T>(
             uint frameIndex,
             in EntityQuery group,
+            in EntityTypeHandle entityType,
             in EntityCommandPool<EntityCommandStructChange> addComponentCommander,
-            ref SystemState systemState)
-            where T : struct, IComponentData => __imp.AddComponentIfNotSaved<T>(frameIndex, group, addComponentCommander, ref systemState);
+            in JobHandle inputDeps)
+            where T : struct, IComponentData => __imp.AddComponentIfNotSaved<T>(frameIndex, group, entityType, addComponentCommander, inputDeps);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void RemoveComponentIfNotSaved<T>(
+        public JobHandle RemoveComponentIfNotSaved<T>(
             uint frameIndex,
             in EntityQuery group,
+            in EntityTypeHandle entityType,
             in EntityCommandPool<EntityCommandStructChange> removeComponentCommander,
-            ref SystemState systemState)
-            where T : struct, IComponentData => __imp.RemoveComponentIfNotSaved<T>(frameIndex, group, removeComponentCommander, ref systemState);
+            in JobHandle inputDeps)
+            where T : struct, IComponentData => __imp.RemoveComponentIfNotSaved<T>(frameIndex, group, entityType, removeComponentCommander, inputDeps);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public JobHandle ScheduleParallel(
