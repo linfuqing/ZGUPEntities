@@ -41,13 +41,13 @@ namespace ZG
     {
         [ReadOnly]
         public NativeArray<int> entityCount;
-        public NativeArray<int> startIndex;
+        public NativeArray<int> countAndStartIndex;
         public NativeList<T> values;
 
         public void Execute()
         {
             int startIndex = values.Length;
-            this.startIndex[0] = startIndex;
+            this.countAndStartIndex[1] = startIndex;
             values.ResizeUninitialized(startIndex + entityCount[0]);
         }
     }
@@ -97,16 +97,17 @@ namespace ZG
     }*/
 
     [BurstCompile]
-    public struct RollbackRestore<T> : IJobParallelFor where T : struct, IRollbackRestore
+    public struct RollbackRestore<T> : IJobParallelForDefer where T : struct, IRollbackRestore
     {
-        public int startIndex;
+        [ReadOnly]
+        public NativeArray<int> countAndStartIndex;
         [ReadOnly]
         public NativeArray<Entity> entityArray;
         public T instance;
 
         public void Execute(int index)
         {
-            int entityIndex = index + startIndex;
+            int entityIndex = index + countAndStartIndex[1];
             Entity entity = entityArray[entityIndex];
 
             instance.Execute(index, entityIndex, entity);
@@ -120,7 +121,7 @@ namespace ZG
         [ReadOnly]
         public NativeArray<Entity> entityArray;
         [ReadOnly]
-        public NativeParallelHashMap<uint, RollbackChunk> chunks;
+        public NativeHashMap<uint, RollbackChunk> chunks;
         public T instance;
 
         public void Execute()
@@ -128,12 +129,15 @@ namespace ZG
             if (!chunks.TryGetValue(frameIndex, out var chunk))
                 return;
 
-            RollbackRestore<T> executor;
-            executor.startIndex = chunk.startIndex;
-            executor.entityArray = entityArray;
-            executor.instance = instance;
+            Entity entity;
+            int entityIndex, startIndex = chunk.startIndex;
             for (int i = 0; i < chunk.count; ++i)
-                executor.Execute(i);
+            {
+                entityIndex = i + startIndex;
+                entity = entityArray[entityIndex];
+
+                instance.Execute(i, entityIndex, entity);
+            }
         }
     }
 
@@ -144,7 +148,7 @@ namespace ZG
         public EntityTypeHandle entityType;
 
         [ReadOnly]
-        public NativeArray<int> startIndex;
+        public NativeArray<int> countAndStartIndex;
 
         [ReadOnly]
         public NativeArray<int> chunkBaseEntityIndices;
@@ -162,13 +166,13 @@ namespace ZG
 
             if(useEnabledMask)
             {
-                int index = indexOfFirstEntityInQuery + startIndex[0];
+                int index = indexOfFirstEntityInQuery + countAndStartIndex[1];
                 var iterator = new ChunkEntityEnumerator(true, chunkEnabledMask, count);
                 while (iterator.NextEntityIndex(out int i))
                     entityArray[index++] = entities[i];
             }
             else
-                NativeArray<Entity>.Copy(entities, 0, entityArray, indexOfFirstEntityInQuery + startIndex[0], count);
+                NativeArray<Entity>.Copy(entities, 0, entityArray, indexOfFirstEntityInQuery + countAndStartIndex[1], count);
 
             instance.Execute(chunk, indexOfFirstEntityInQuery, useEnabledMask, chunkEnabledMask);
         }
@@ -224,7 +228,7 @@ namespace ZG
         public uint frameCount;
 
         public NativeList<Entity> entities;
-        public NativeParallelHashMap<uint, RollbackChunk> chunks;
+        public NativeHashMap<uint, RollbackChunk> chunks;
 
         public T instance;
 
@@ -317,7 +321,7 @@ namespace ZG
             }
 
             if (chunk.startIndex == 0)
-                UnityEngine.Assertions.Assert.AreEqual(0, chunks.Count());
+                UnityEngine.Assertions.Assert.AreEqual(0, chunks.Count);
 #endif
 
             entities.ResizeUninitialized(chunk.startIndex);
@@ -333,7 +337,7 @@ namespace ZG
         public BufferTypeHandle<T> type;
 
         [ReadOnly]
-        public NativeArray<int> startIndex;
+        public NativeArray<int> countAndStartIndex;
 
         [ReadOnly]
         public NativeArray<int> chunkBaseEntityIndices;
@@ -347,7 +351,7 @@ namespace ZG
         {
             RollbackChunk result;
             var bufferAccessor = chunk.GetBufferAccessor(ref type);
-            int index = chunkBaseEntityIndices[unfilteredChunkIndex] + startIndex[0];
+            int index = chunkBaseEntityIndices[unfilteredChunkIndex] + countAndStartIndex[1];
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
             {

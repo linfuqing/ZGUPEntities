@@ -87,7 +87,32 @@ namespace ZG
     public struct RollbackGroup : IRollbackContainer
     {
         [BurstCompile]
-        public struct SaveChunks : IJob
+        private struct GetChunk : IJob
+        {
+            public uint frameIndex;
+
+            [ReadOnly]
+            public NativeHashMap<uint, RollbackChunk> chunks;
+
+            public NativeArray<int> countAndStartIndex;
+
+            public void Execute()
+            {
+                if (chunks.TryGetValue(frameIndex, out var chunk))
+                {
+                    countAndStartIndex[0] = chunk.count;
+                    countAndStartIndex[1] = chunk.startIndex;
+                }
+                else
+                {
+                    countAndStartIndex[0] = 0;
+                    countAndStartIndex[1] = -1;
+                }
+            }
+        }
+
+        [BurstCompile]
+        private struct SaveChunks : IJob
         {
             public uint frameIndex;
 
@@ -95,9 +120,9 @@ namespace ZG
             public NativeArray<int> entityCount;
 
             [ReadOnly]
-            public NativeArray<int> startIndex;
+            public NativeArray<int> countAndStartIndex;
 
-            public NativeParallelHashMap<uint, RollbackChunk> chunks;
+            public NativeHashMap<uint, RollbackChunk> chunks;
 
             public void Execute()
             {
@@ -105,16 +130,16 @@ namespace ZG
                 chunk.count = entityCount[0];
                 if (chunk.count > 0)
                 {
-                    chunk.startIndex = startIndex[0];
+                    chunk.startIndex = countAndStartIndex[1];
                     chunks[frameIndex] = chunk;
                 }
             }
         }
 
         private NativeArray<JobHandle> __jobHandles;
-        private NativeArray<int> __startIndex;
+        private NativeArray<int> __countAndStartIndex;
         private NativeList<Entity> __entities;
-        private NativeParallelHashMap<uint, RollbackChunk> __chunks;
+        private NativeHashMap<uint, RollbackChunk> __chunks;
 
 #if ENABLE_PROFILER
         private ProfilerMarker __resize;
@@ -149,9 +174,9 @@ namespace ZG
             BurstUtility.InitializeJob<RollbackResize<Entity>>();
 
             __jobHandles = new NativeArray<JobHandle>(3, allocator, NativeArrayOptions.ClearMemory);
-            __startIndex = new NativeArray<int>(1, allocator, NativeArrayOptions.ClearMemory);
+            __countAndStartIndex = new NativeArray<int>(2, allocator, NativeArrayOptions.ClearMemory);
             __entities = new NativeList<Entity>(allocator);
-            __chunks = new NativeParallelHashMap<uint, RollbackChunk>(capacity, allocator);
+            __chunks = new NativeHashMap<uint, RollbackChunk>(capacity, allocator);
 
 #if ENABLE_PROFILER
             __resize = new ProfilerMarker("Resize");
@@ -235,7 +260,7 @@ namespace ZG
             restore.chunks = __chunks;
             restore.instance = instance;
 
-            var jobHandle = restore.Schedule(JobHandle.CombineDependencies(chunkJobHandle, dependsOn));
+            var jobHandle = restore.ScheduleByRef(JobHandle.CombineDependencies(chunkJobHandle, dependsOn));
 
             chunkJobHandle = jobHandle;
 
@@ -246,18 +271,24 @@ namespace ZG
 
         public JobHandle ScheduleParallel<T>(in T instance, uint frameIndex, int innerloopBatchCount, in JobHandle dependsOn) where T : struct, IRollbackRestore
         {
-            chunkJobHandle.Complete();
+            /*chunkJobHandle.Complete();
             chunkJobHandle = default;
 
             if (!__chunks.TryGetValue(frameIndex, out var chunk))
-                return dependsOn;
+                return dependsOn;*/
+
+            GetChunk getChunk;
+            getChunk.frameIndex = frameIndex;
+            getChunk.countAndStartIndex = __countAndStartIndex;
+            getChunk.chunks = __chunks;
+            var jobHandle = getChunk.ScheduleByRef(JobHandle.CombineDependencies(dependsOn, chunkJobHandle));
 
             RollbackRestore<T> restore;
-            restore.startIndex = chunk.startIndex;
+            restore.countAndStartIndex = __countAndStartIndex;
             restore.entityArray = __entities.AsArray();
             restore.instance = instance;
 
-            var jobHandle = restore.Schedule(chunk.count, innerloopBatchCount, dependsOn);
+            jobHandle = restore.ScheduleUnsafeIndex0ByRef(__countAndStartIndex, innerloopBatchCount, jobHandle);
 
             entityJobHandle = jobHandle;
 
@@ -281,7 +312,7 @@ namespace ZG
             {
                 RollbackResize<Entity> resize;
                 resize.entityCount = data.entityCount;
-                resize.startIndex = __startIndex;
+                resize.countAndStartIndex = __countAndStartIndex;
                 resize.values = __entities;
                 resizeJobHandle = resize.ScheduleByRef(JobHandle.CombineDependencies(data.lookupJobManager.readWriteJobHandle, readWriteJobHandle, this.entityJobHandle));
             }
@@ -294,7 +325,7 @@ namespace ZG
             {
                 RollbackSave<T> save;
                 save.entityType = entityType;
-                save.startIndex = __startIndex;
+                save.countAndStartIndex = __countAndStartIndex;
                 save.chunkBaseEntityIndices = data.chunkBaseEntityIndices;
                 save.entityArray = __entities.AsDeferredJobArray();
                 save.instance = instance;
@@ -313,10 +344,10 @@ namespace ZG
                 SaveChunks saveChunks;
                 saveChunks.frameIndex = frameIndex;
                 saveChunks.entityCount = data.entityCount;
-                saveChunks.startIndex = __startIndex;
+                saveChunks.countAndStartIndex = __countAndStartIndex;
                 saveChunks.chunks = __chunks;
 
-                chunkJobHandle = saveChunks.Schedule(resizeJobHandle);
+                chunkJobHandle = saveChunks.ScheduleByRef(resizeJobHandle);
             }
 
             this.chunkJobHandle = chunkJobHandle;
@@ -354,7 +385,7 @@ namespace ZG
             clear.chunks = __chunks;
             clear.instance = instance;
 
-            var jobHandle = clear.Schedule(dependsOn);
+            var jobHandle = clear.ScheduleByRef(dependsOn);
 
             entityJobHandle = chunkJobHandle = jobHandle;
 
@@ -369,7 +400,8 @@ namespace ZG
             entityJobHandle.Complete();
             entityJobHandle = default;
 
-            __startIndex[0] = 0;
+            __countAndStartIndex[0] = 0;
+            __countAndStartIndex[1] = -1;
             __entities.Clear();
             __chunks.Clear();
         }
@@ -383,7 +415,7 @@ namespace ZG
             entityJobHandle = default;
 
             __jobHandles.Dispose();
-            __startIndex.Dispose();
+            __countAndStartIndex.Dispose();
             __entities.Dispose();
             __chunks.Dispose();
         }
@@ -391,19 +423,20 @@ namespace ZG
 
     public struct RollbackComponentContainer : IRollbackContainer
     {
-        internal NativeArray<int> _startIndex;
+        internal NativeArray<int> _countAndStartIndex;
         internal NativeList<byte> _values;
 
         public void Clear()
         {
-            _startIndex[0] = 0;
+            _countAndStartIndex[0] = 0;
+            _countAndStartIndex[1] = -1;
 
             _values.Clear();
         }
 
         public void Dispose()
         {
-            _startIndex.Dispose();
+            _countAndStartIndex.Dispose();
 
             _values.Dispose();
         }
@@ -411,7 +444,7 @@ namespace ZG
 
     public struct RollbackComponent<T> where T : unmanaged, IComponentData
     {
-        private NativeArray<int> __startIndex;
+        private NativeArray<int> __countAndStartIndex;
         private NativeList<T> __values;
 
         private ComponentTypeHandle<T> __type;
@@ -428,7 +461,7 @@ namespace ZG
             get
             {
                 RollbackComponentContainer container;
-                container._startIndex = __startIndex;
+                container._countAndStartIndex = __countAndStartIndex;
                 container._values = UnsafeUtility.AsRef<NativeList<byte>>(UnsafeUtility.AddressOf(ref __values));
 
                 return container;
@@ -447,7 +480,7 @@ namespace ZG
         {
             BurstUtility.InitializeJob<RollbackResize<T>>();
 
-            __startIndex = new NativeArray<int>(1, allocator, NativeArrayOptions.ClearMemory);
+            __countAndStartIndex = new NativeArray<int>(2, allocator, NativeArrayOptions.ClearMemory);
             __values = new NativeList<T>(capacity, allocator);
 
             __type = state.GetComponentTypeHandle<T>(true);
@@ -481,7 +514,7 @@ namespace ZG
 #if ENABLE_PROFILER
             using (__save.Auto())
 #endif
-                return RollbackComponentSaveFunction<T>.Delegate(__startIndex, __values, __type.UpdateAsRef(ref systemState), ref data);
+                return RollbackComponentSaveFunction<T>.Delegate(__countAndStartIndex, __values, __type.UpdateAsRef(ref systemState), ref data);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -604,32 +637,32 @@ namespace ZG
         private NativeArray<T> __values;
 
         [ReadOnly]
-        private NativeArray<int> __startIndex;
+        private NativeArray<int> __countAndStartIndex;
 
         [ReadOnly]
         private ComponentTypeHandle<T> __type;
 
         public static RollbackComponentSaveFunction<T> Delegate(
-            NativeArray<int> startIndex,
+            NativeArray<int> countAndStartIndex,
             NativeList<T> values,
             in ComponentTypeHandle<T> type,
             ref RollbackSaveData data)
         {
             RollbackResize<T> resize;
             resize.entityCount = data.entityCount;
-            resize.startIndex = startIndex;
+            resize.countAndStartIndex = countAndStartIndex;
             resize.values = values;
             var jobHandle = resize.ScheduleByRef(data.lookupJobManager.readOnlyJobHandle);
 
             data.lookupJobManager.AddReadOnlyDependency(jobHandle);
 
-            return new RollbackComponentSaveFunction<T>(values.AsDeferredJobArray(), startIndex, type);
+            return new RollbackComponentSaveFunction<T>(values.AsDeferredJobArray(), countAndStartIndex, type);
         }
 
-        private RollbackComponentSaveFunction(NativeArray<T> values, in NativeArray<int> startIndex, in ComponentTypeHandle<T> type)
+        private RollbackComponentSaveFunction(NativeArray<T> values, in NativeArray<int> countAndStartIndex, in ComponentTypeHandle<T> type)
         {
             __values = values;
-            __startIndex = startIndex;
+            __countAndStartIndex = countAndStartIndex;
             __type = type;
         }
 
@@ -638,13 +671,13 @@ namespace ZG
             var values = chunk.GetNativeArray(ref __type);
             if (useEnabledMask)
             {
-                int index = firstEntityIndex + __startIndex[0];
+                int index = firstEntityIndex + __countAndStartIndex[1];
                 var iterator = new ChunkEntityEnumerator(true, chunkEnabledMask, chunk.Count);
                 while(iterator.NextEntityIndex(out int i))
                     __values[index++] = values[i];
             }
             else
-                NativeArray<T>.Copy(values, 0, __values, firstEntityIndex + __startIndex[0], chunk.Count);
+                NativeArray<T>.Copy(values, 0, __values, firstEntityIndex + __countAndStartIndex[1], chunk.Count);
 
             //__values.AddRange(chunk.GetNativeArray(__type));
         }
@@ -673,14 +706,15 @@ namespace ZG
     public struct RollbackBufferContainer : IRollbackContainer
     {
         internal NativeCounter _counter;
-        internal NativeArray<int> _startIndex;
+        internal NativeArray<int> _countAndStartIndex;
         internal NativeList<RollbackChunk> _chunks;
         internal NativeList<byte> _values;
 
         public void Clear()
         {
             _counter.count = 0;
-            _startIndex[0] = 0;
+            _countAndStartIndex[0] = 0;
+            _countAndStartIndex[1] = -1;
             _values.Clear();
             _chunks.Clear();
         }
@@ -688,7 +722,7 @@ namespace ZG
         public void Dispose()
         {
             _counter.Dispose();
-            _startIndex.Dispose();
+            _countAndStartIndex.Dispose();
             _values.Dispose();
             _chunks.Dispose();
         }
@@ -697,7 +731,7 @@ namespace ZG
     public struct RollbackBuffer<T> where T : unmanaged, IBufferElementData
     {
         private NativeCounter __counter;
-        private NativeArray<int> __startIndex;
+        private NativeArray<int> __countAndStartIndex;
         private NativeList<RollbackChunk> __chunks;
         private NativeList<T> __values;
 
@@ -716,7 +750,7 @@ namespace ZG
             {
                 RollbackBufferContainer container;
                 container._counter = __counter;
-                container._startIndex = __startIndex;
+                container._countAndStartIndex = __countAndStartIndex;
                 container._chunks = __chunks;
                 container._values = UnsafeUtility.AsRef<NativeList<byte>>(UnsafeUtility.AddressOf(ref __values));
 
@@ -730,7 +764,7 @@ namespace ZG
             BurstUtility.InitializeJob<RollbackSaveBufferResizeValues<T>>();
 
             __counter = new NativeCounter(allocator);
-            __startIndex = new NativeArray<int>(1, allocator, NativeArrayOptions.ClearMemory);
+            __countAndStartIndex = new NativeArray<int>(2, allocator, NativeArrayOptions.ClearMemory);
             __values = new NativeList<T>(capacity, allocator);
             __chunks = new NativeList<RollbackChunk>(capacity, allocator);
 
@@ -781,8 +815,8 @@ namespace ZG
             using (__save.Auto())
 #endif
                 return RollbackBufferSaveFunction<T>.Deletege(
-                    __counter,
-                    __startIndex, 
+                    ref __counter,
+                    ref __countAndStartIndex, 
                     __values,
                     __chunks,
                     __type.UpdateAsRef(ref systemState),
@@ -921,7 +955,7 @@ namespace ZG
         private BufferTypeHandle<T> __type;
 
         [ReadOnly]
-        private NativeArray<int> __startIndex;
+        private NativeArray<int> __countAndStartIndex;
 
         [ReadOnly]
         private NativeArray<RollbackChunk> __chunks;
@@ -929,8 +963,8 @@ namespace ZG
         private NativeArray<T> __values;
 
         public static RollbackBufferSaveFunction<T> Deletege(
-            NativeCounter counter,
-            NativeArray<int> startIndex,
+            ref NativeCounter counter,
+            ref NativeArray<int> countAndStartIndex,
             in NativeList<T> values,
             in NativeList<RollbackChunk> chunks,
             in BufferTypeHandle<T> type,
@@ -939,7 +973,7 @@ namespace ZG
         {
             RollbackResize<RollbackChunk> resize;
             resize.entityCount = data.entityCount;
-            resize.startIndex = startIndex;
+            resize.countAndStartIndex = countAndStartIndex;
             resize.values = chunks;
             var jobHandle = resize.ScheduleByRef(data.lookupJobManager.readOnlyJobHandle);
 
@@ -947,7 +981,7 @@ namespace ZG
 
             RollbackSaveBufferCount<T> count;
             count.type = type;
-            count.startIndex = startIndex;
+            count.countAndStartIndex = countAndStartIndex;
             count.chunkBaseEntityIndices = data.chunkBaseEntityIndices;
             count.chunks = frameChunks;
             count.counter = counter;
@@ -960,18 +994,18 @@ namespace ZG
 
             data.lookupJobManager.AddReadOnlyDependency(jobHandle);
 
-            return new RollbackBufferSaveFunction<T>(type, startIndex, frameChunks, values.AsDeferredJobArray());
+            return new RollbackBufferSaveFunction<T>(type, countAndStartIndex, frameChunks, values.AsDeferredJobArray());
         }
 
         private RollbackBufferSaveFunction(
             in BufferTypeHandle<T> type,
-            in NativeArray<int> startIndex,
+            in NativeArray<int> countAndStartIndex,
             in NativeArray<RollbackChunk> chunks,
             in NativeArray<T> values)
         {
             __type = type;
             __chunks = chunks;
-            __startIndex = startIndex;
+            __countAndStartIndex = countAndStartIndex;
             __values = values;
         }
 
@@ -980,7 +1014,7 @@ namespace ZG
             var bufferAccessor = chunk.GetBufferAccessor(ref __type);
 
             RollbackChunk frameChunk;
-            int index = firstEntityIndex + __startIndex[0];
+            int index = firstEntityIndex + __countAndStartIndex[1];
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while(iterator.NextEntityIndex(out int i))
             {
@@ -1302,18 +1336,11 @@ namespace ZG
 
             __flagGroup = systemState.GetEntityQuery(ComponentType.ReadOnly<RollbackFlag>());
             __restoreFrameGroup = systemState.GetEntityQuery(ComponentType.ReadOnly<RollbackRestoreFrame>());*/
-            __frameGroup = systemState.GetEntityQuery(
-                new EntityQueryDesc()
-                {
-                    All = new ComponentType[]
-                    {
-                        ComponentType.ReadOnly<RollbackFrame>(),
-                        ComponentType.ReadOnly<RollbackFrameRestore>(),
-                        ComponentType.ReadOnly<RollbackFrameSave>(),
-                        ComponentType.ReadOnly<RollbackFrameClear>()
-                    }, 
-                    Options = EntityQueryOptions.IncludeSystems
-                });
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __frameGroup = builder
+                        .WithAll<RollbackFrame, RollbackFrameRestore, RollbackFrameSave, RollbackFrameClear>()
+                        .WithOptions(EntityQueryOptions.IncludeSystems)
+                        .Build(ref systemState);
 
             __group = new RollbackGroup(1, allocator);
 
@@ -1430,9 +1457,7 @@ namespace ZG
             {
                 if (__group.GetEntities(frameIndex, out var entities))
                 {
-                    NativeParallelHashMap<Entity, int> entityIndices = __entityIndices;
-
-                    var entityIndicesParallelWriter = entityIndices.AsParallelWriter();
+                    var entityIndicesParallelWriter = __entityIndices.AsParallelWriter();
 
                     var jobHandle = systemState.Dependency;
 

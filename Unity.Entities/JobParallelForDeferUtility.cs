@@ -11,7 +11,7 @@ namespace ZG
     {
         public static unsafe JobHandle ScheduleUnsafeIndex0<T>(
             this T jobData, 
-            NativeArray<int> forEachCount, 
+            in NativeArray<int> forEachCount, 
             int innerloopBatchCount,
             in JobHandle dependsOn = new JobHandle())
             where T : struct, IJobParallelForDefer
@@ -25,7 +25,7 @@ namespace ZG
 
         public static unsafe JobHandle ScheduleUnsafeIndex0ByRef<T>(
             ref this T jobData,
-            NativeArray<int> forEachCount,
+            in NativeArray<int> forEachCount,
             int innerloopBatchCount,
             in JobHandle dependsOn = new JobHandle())
             where T : struct, IJobParallelForDefer
