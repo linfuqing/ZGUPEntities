@@ -271,7 +271,7 @@ namespace ZG
             in EntityQuery group, 
             in RollbackSaveData data) where T : struct, IRollbackSave
         {
-            readWriteJobHandle.Complete();
+            //readWriteJobHandle.Complete();
 
             JobHandle resizeJobHandle;
 
@@ -283,7 +283,7 @@ namespace ZG
                 resize.entityCount = data.entityCount;
                 resize.startIndex = __startIndex;
                 resize.values = __entities;
-                resizeJobHandle = resize.Schedule(JobHandle.CombineDependencies(data.lookupJobManager.readOnlyJobHandle, this.entityJobHandle));
+                resizeJobHandle = resize.ScheduleByRef(JobHandle.CombineDependencies(data.lookupJobManager.readWriteJobHandle, readWriteJobHandle, this.entityJobHandle));
             }
 
             JobHandle entityJobHandle;
@@ -299,7 +299,7 @@ namespace ZG
                 save.entityArray = __entities.AsDeferredJobArray();
                 save.instance = instance;
 
-                entityJobHandle = save.ScheduleParallel(group, JobHandle.CombineDependencies(resizeJobHandle, data.lookupJobManager.readWriteJobHandle));// JobHandle.CombineDependencies(resizeJobHandle, dependsOn));
+                entityJobHandle = save.ScheduleParallelByRef(group, resizeJobHandle);// JobHandle.CombineDependencies(resizeJobHandle, dependsOn));
             }
 
             this.entityJobHandle = entityJobHandle;
@@ -619,7 +619,7 @@ namespace ZG
             resize.entityCount = data.entityCount;
             resize.startIndex = startIndex;
             resize.values = values;
-            var jobHandle = resize.Schedule(data.lookupJobManager.readOnlyJobHandle);
+            var jobHandle = resize.ScheduleByRef(data.lookupJobManager.readOnlyJobHandle);
 
             data.lookupJobManager.AddReadOnlyDependency(jobHandle);
 
@@ -941,7 +941,7 @@ namespace ZG
             resize.entityCount = data.entityCount;
             resize.startIndex = startIndex;
             resize.values = chunks;
-            var jobHandle = resize.Schedule(data.lookupJobManager.readOnlyJobHandle);
+            var jobHandle = resize.ScheduleByRef(data.lookupJobManager.readOnlyJobHandle);
 
             var frameChunks = chunks.AsDeferredJobArray();
 
@@ -951,12 +951,12 @@ namespace ZG
             count.chunkBaseEntityIndices = data.chunkBaseEntityIndices;
             count.chunks = frameChunks;
             count.counter = counter;
-            jobHandle = count.ScheduleParallel(group, jobHandle);
+            jobHandle = count.ScheduleParallelByRef(group, jobHandle);
 
             RollbackSaveBufferResizeValues<T> resizeValues;
             resizeValues.counter = counter;
             resizeValues.values = values;
-            jobHandle = resizeValues.Schedule(jobHandle);
+            jobHandle = resizeValues.ScheduleByRef(jobHandle);
 
             data.lookupJobManager.AddReadOnlyDependency(jobHandle);
 
