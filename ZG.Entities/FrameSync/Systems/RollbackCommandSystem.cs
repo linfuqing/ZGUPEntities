@@ -722,8 +722,6 @@ namespace ZG
 
         public JobHandle Test<T>(/*uint frameIndex, */T tester, uint minRestoreFrameIndex, int innerloopBatchCount, in JobHandle inputDeps) where T : struct, IRollbackEntryTester
         {
-            __jobHandle[0].Complete();
-
             Init init;
             init.frameIndices = __frameIndices;
             init.values = __values;
@@ -731,7 +729,7 @@ namespace ZG
             init.frameEntryTypes = __frameEntryTypes;
             init.frameEntries = __frameEntries;
 
-            var jobHandle = init.Schedule(inputDeps);
+            var jobHandle = init.ScheduleByRef(JobHandle.CombineDependencies(inputDeps, __jobHandle[0]));
 
             //restoreFrameIndex = frameIndex;
 
@@ -1813,7 +1811,7 @@ namespace ZG
 
         public JobHandle Update(uint minFrameIndex, in JobHandle inputDeps)
         {
-            updateJobHandle.Complete();
+            //updateJobHandle.Complete();
 
             Command command;
             command.minFrameIndex = minFrameIndex;
@@ -1826,7 +1824,7 @@ namespace ZG
 
             var jobHandle = JobHandle.CombineDependencies(__commander.jobHandle, playbackJobHandle, inputDeps);
 
-            jobHandle = command.Schedule(jobHandle);
+            jobHandle = command.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, updateJobHandle));
 
             updateJobHandle = jobHandle;
 
