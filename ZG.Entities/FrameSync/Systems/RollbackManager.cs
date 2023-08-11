@@ -210,7 +210,7 @@ namespace ZG
             return loadChunk.ScheduleByRef(JobHandle.CombineDependencies(dependsOn, chunkJobHandle));
         }
 
-        public bool GetEntities(uint frameIndex, out NativeSlice<Entity> entities)
+        /*public bool GetEntities(uint frameIndex, out NativeSlice<Entity> entities)
         {
             chunkJobHandle.Complete();
             chunkJobHandle = default;
@@ -225,7 +225,7 @@ namespace ZG
             entities = __entities.AsArray().Slice(chunk.startIndex, chunk.count);
 
             return true;
-        }
+        }*/
 
         public int IndexOf(uint frameIndex, Entity entity)
         {
@@ -283,7 +283,12 @@ namespace ZG
             return jobHandle;
         }
 
-        public JobHandle ScheduleParallel<T>(in T instance, uint frameIndex, int innerloopBatchCount, in JobHandle dependsOn) where T : struct, IRollbackRestore
+        public JobHandle ScheduleParallel<T>(
+            in T instance, 
+            uint frameIndex, 
+            int innerloopBatchCount, 
+            in JobHandle dependsOn, 
+            bool needChunk) where T : struct, IRollbackRestore
         {
             /*chunkJobHandle.Complete();
             chunkJobHandle = default;
@@ -291,7 +296,7 @@ namespace ZG
             if (!__chunks.TryGetValue(frameIndex, out var chunk))
                 return dependsOn;*/
 
-            var jobHandle = GetChunk(frameIndex, dependsOn);
+            var jobHandle = needChunk ? GetChunk(frameIndex, dependsOn) : dependsOn;
 
             RollbackRestore<T> restore;
             restore.countAndStartIndex = __countAndStartIndex;
@@ -1194,6 +1199,7 @@ namespace ZG
         [BurstCompile]
         private struct ClearHashMap : IJob
         {
+            [ReadOnly]
             public NativeArray<int> count;
 
             public NativeParallelHashMap<Entity, int> value;
@@ -1461,14 +1467,15 @@ namespace ZG
             in EntityQuery group,
             in EntityTypeHandle entityType, 
             in EntityCommandPool<EntityCommandStructChange> commander,
-            in JobHandle inputDeps)
+            in JobHandle inputDeps, 
+            bool needChunk)
         {
 #if ENABLE_PROFILER
             using (__addOrRemoveComponentIfNotSaved.Auto())
 #endif
 
             {
-                //var jobHandle = __group.GetChunk(frameIndex, inputDeps);
+                var jobHandle = needChunk ? __group.GetChunk(frameIndex, inputDeps) : inputDeps;
 
                 //if (__group.GetEntities(frameIndex, out var entities))
                 //{
@@ -1478,7 +1485,7 @@ namespace ZG
                 ClearHashMap clearHashMap;
                 clearHashMap.count = countAndStartIndex;
                 clearHashMap.value = __entityIndices;
-                var jobHandle = clearHashMap.ScheduleByRef(inputDeps);
+                jobHandle = clearHashMap.ScheduleByRef(jobHandle);
 
                 BuildEntityIndices buildEntityIndices;
                 buildEntityIndices.countAndStartIndex = countAndStartIndex;
@@ -1519,7 +1526,8 @@ namespace ZG
             in EntityQuery group,
             in EntityTypeHandle entityType,
             in EntityCommandPool<EntityCommandStructChange> addComponentCommander,
-            in JobHandle inputDeps) where T : struct, IComponentData
+            in JobHandle inputDeps,
+            bool needChunk) where T : struct, IComponentData
         {
 #if ENABLE_PROFILER
             using (__addComponentIfNotSaved.Auto())
@@ -1542,7 +1550,8 @@ namespace ZG
                         group,
                         entityType,
                         addComponentCommander,
-                        inputDeps);
+                        inputDeps, 
+                        needChunk);
                     /*{
     #if GAME_DEBUG_DISABLE
                         if(TypeManager.GetTypeIndex<T>() == TypeManager.GetTypeIndex<Disabled>() && !group.IsEmpty)
@@ -1570,7 +1579,8 @@ namespace ZG
             in EntityQuery group,
             in EntityTypeHandle entityType,
             in EntityCommandPool<EntityCommandStructChange> removeComponentCommander,
-            in JobHandle inputDeps) where T : struct, IComponentData
+            in JobHandle inputDeps,
+            bool needChunk) where T : struct, IComponentData
         {
 #if ENABLE_PROFILER
             using (__removeComponentIfNotSaved.Auto())
@@ -1593,7 +1603,8 @@ namespace ZG
                         group,
                         entityType,
                         removeComponentCommander,
-                        inputDeps);
+                        inputDeps,
+                        needChunk);
                 }
                 /*{
                     //jobHandle.Complete();
@@ -1608,16 +1619,18 @@ namespace ZG
         public JobHandle ScheduleParallel<T>(
             in T instance,
             uint frameIndex,
-            in JobHandle dependsOn) where T : struct, IRollbackRestore
+            in JobHandle dependsOn,
+            bool needChunk) where T : struct, IRollbackRestore
         {
 #if ENABLE_PROFILER
             using (__scheduleRestore.Auto())
 #endif
                 return __group.ScheduleParallel(
-                instance,
-                frameIndex,
-                InnerloopBatchCount,
-                dependsOn);
+                    instance,
+                    frameIndex,
+                    InnerloopBatchCount,
+                    dependsOn,
+                    needChunk);
         }
 
         public JobHandle Schedule<T>(
@@ -1629,9 +1642,9 @@ namespace ZG
             using (__scheduleRestore.Auto())
 #endif
                 return __group.Schedule(
-                instance,
-                frameIndex,
-                dependsOn);
+                    instance,
+                    frameIndex,
+                    dependsOn);
         }
 
         public JobHandle ScheduleParallel<T>(
@@ -1840,8 +1853,15 @@ namespace ZG
             in EntityQuery group,
             in EntityTypeHandle entityType,
             in EntityCommandPool<EntityCommandStructChange> addComponentCommander,
-            in JobHandle inputDeps)
-            where T : struct, IComponentData => __imp.AddComponentIfNotSaved<T>(frameIndex, group, entityType, addComponentCommander, inputDeps);
+            in JobHandle inputDeps, 
+            bool needChunk)
+            where T : struct, IComponentData => __imp.AddComponentIfNotSaved<T>(
+                frameIndex, 
+                group, 
+                entityType, 
+                addComponentCommander, 
+                inputDeps, 
+                needChunk);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public JobHandle RemoveComponentIfNotSaved<T>(
@@ -1849,14 +1869,22 @@ namespace ZG
             in EntityQuery group,
             in EntityTypeHandle entityType,
             in EntityCommandPool<EntityCommandStructChange> removeComponentCommander,
-            in JobHandle inputDeps)
-            where T : struct, IComponentData => __imp.RemoveComponentIfNotSaved<T>(frameIndex, group, entityType, removeComponentCommander, inputDeps);
+            in JobHandle inputDeps,
+            bool needChunk)
+            where T : struct, IComponentData => __imp.RemoveComponentIfNotSaved<T>(
+                frameIndex, 
+                group, 
+                entityType, 
+                removeComponentCommander, 
+                inputDeps,
+                needChunk);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public JobHandle ScheduleParallel(
             in TRestore instance,
             uint frameIndex,
-            in JobHandle dependsOn) => __imp.ScheduleParallel(instance, frameIndex, dependsOn);
+            in JobHandle dependsOn, 
+            bool needChunk) => __imp.ScheduleParallel(instance, frameIndex, dependsOn, needChunk);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public JobHandle Schedule(
