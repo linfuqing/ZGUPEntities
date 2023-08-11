@@ -1550,16 +1550,24 @@ public abstract class RollbackSystemEx : RollbackSystem, IRollbackSystem
 
         private SystemGroup __sysetmGroup;
 
+
+        public RollbackContainerManager containerManager
+        {
+            get;
+
+            private set;
+        }
+
         public void OnCreate(ref SystemState state)
         {
             __sysetmGroup = state.World.GetOrCreateSystemGroup(typeof(RollbackSystemGroup));
 
-            //containerManager = new RollbackContainerManager();
+            containerManager = new RollbackContainerManager(Allocator.Persistent);
         }
 
         public void OnDestroy(ref SystemState state)
         {
-            //containerManager.Dispose();
+            containerManager.Dispose();
         }
 
         [BurstCompile]

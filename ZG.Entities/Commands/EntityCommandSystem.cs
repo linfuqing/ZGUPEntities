@@ -132,7 +132,10 @@ namespace ZG
         }
     }
 
-    [UpdateInGroup(typeof(ManagedSystemGroup))]
+    [UpdateInGroup(typeof(ManagedSystemGroup)), 
+        CreateAfter(typeof(EntityCommandFactorySystem)),
+        CreateAfter(typeof(EntityCommanderSystem)),
+        CreateAfter(typeof(EntitySharedComponentCommanderSystem))]
     public partial class EntityCommandSharedSystemGroup : ComponentSystemGroup, IEntityCommandScheduler
     {
         public EntityCommandFactory factory
@@ -166,15 +169,16 @@ namespace ZG
             base.OnCreate();
 
             World world = World;
-            factory = world.GetOrCreateSystemUnmanaged<EntityCommandFactorySystem>().factory;
-            commander = world.GetOrCreateSystemUnmanaged<EntityCommanderSystem>().value;
-            sharedComponentCommander = world.GetOrCreateSystemUnmanaged<EntitySharedComponentCommanderSystem>().value;
+            factory = world.GetExistingSystemUnmanaged<EntityCommandFactorySystem>().factory;
+            commander = world.GetExistingSystemUnmanaged<EntityCommanderSystem>().value;
+            sharedComponentCommander = world.GetExistingSystemUnmanaged<EntitySharedComponentCommanderSystem>().value;
         }
 
         EntityManager IEntityCommandScheduler.entityManager => EntityManager;
     }
 
-    public abstract partial class EntityCommandSystemHybrid : SystemBase, IEntityCommandScheduler
+    [CreateAfter(typeof(EntityCommandSharedSystemGroup)), UpdateInGroup(typeof(InitializationSystemGroup))]
+    public partial class BeginFrameEntityCommandSystem : SystemBase, IEntityCommandScheduler
     {
         private EntityCommandSharedSystemGroup __sharedSystemGroup;
 
@@ -186,7 +190,7 @@ namespace ZG
         {
             base.OnCreate();
 
-            __sharedSystemGroup = World.GetOrCreateSystemManaged<EntityCommandSharedSystemGroup>();
+            __sharedSystemGroup = World.GetExistingSystemManaged<EntityCommandSharedSystemGroup>();
         }
 
         protected override sealed void OnUpdate()
@@ -195,11 +199,6 @@ namespace ZG
         }
 
         EntityManager IEntityCommandScheduler.entityManager => EntityManager;
-    }
-
-    [UpdateInGroup(typeof(InitializationSystemGroup))]
-    public sealed class BeginFrameEntityCommandSystem : EntityCommandSystemHybrid
-    {
     }
 
     public static partial class EntityCommandUtility

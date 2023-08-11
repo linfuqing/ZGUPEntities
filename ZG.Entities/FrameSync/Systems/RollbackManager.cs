@@ -1,6 +1,5 @@
 using System;
-using System.Reflection;
-using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using Unity.Jobs;
 using Unity.Burst;
@@ -11,12 +10,16 @@ using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using Unity.Profiling;
 using ZG;
+using static ZG.RollbackUtility;
 
 [assembly: RegisterGenericJobType(typeof(RollbackResize<Entity>))]
 [assembly: RegisterGenericJobType(typeof(RollbackResize<RollbackChunk>))]
 
 namespace ZG
 {
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void RollbackContainerDelegate(in UnsafeBlock value);
+
     public interface IRollbackContainer : IDisposable
     {
         void Clear();
@@ -37,14 +40,11 @@ namespace ZG
 
         public static EntityQuery GetEntityQuery(ref SystemState state)
         {
-            return state.GetEntityQuery(new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<RollbackFrame>()
-                },
-                Options = EntityQueryOptions.IncludeSystems
-            });
+            using(var builder = new EntityQueryBuilder(Allocator.Temp))
+                return builder
+                        .WithAll<RollbackFrame>()
+                        .WithOptions(EntityQueryOptions.IncludeSystems)
+                        .Build(ref state);
         }
     }
 
@@ -389,7 +389,27 @@ namespace ZG
         }
     }
 
-    public struct RollbackComponent<T> : IRollbackContainer where T : unmanaged, IComponentData
+    public struct RollbackComponentContainer : IRollbackContainer
+    {
+        internal NativeArray<int> _startIndex;
+        internal NativeList<byte> _values;
+
+        public void Clear()
+        {
+            _startIndex[0] = 0;
+
+            _values.Clear();
+        }
+
+        public void Dispose()
+        {
+            _startIndex.Dispose();
+
+            _values.Dispose();
+        }
+    }
+
+    public struct RollbackComponent<T> where T : unmanaged, IComponentData
     {
         private NativeArray<int> __startIndex;
         private NativeList<T> __values;
@@ -402,6 +422,18 @@ namespace ZG
         private ProfilerMarker __save;
         private ProfilerMarker __clear;
 #endif
+
+        internal unsafe RollbackComponentContainer container
+        {
+            get
+            {
+                RollbackComponentContainer container;
+                container._startIndex = __startIndex;
+                container._values = UnsafeUtility.AsRef<NativeList<byte>>(UnsafeUtility.AddressOf(ref __values));
+
+                return container;
+            }
+        }
 
         public T this[int index]
         {
@@ -459,20 +491,6 @@ namespace ZG
             using (__clear.Auto())
 #endif
                 return new RollbackComponentClearFunction<T>(__values);
-        }
-
-        public void Clear()
-        {
-            __startIndex[0] = 0;
-
-            __values.Clear();
-        }
-
-        public void Dispose()
-        {
-            __startIndex.Dispose();
-
-            __values.Dispose();
         }
     }
 
@@ -652,12 +670,36 @@ namespace ZG
         }
     }
 
-    public struct RollbackBuffer<T> : IRollbackContainer where T : unmanaged, IBufferElementData
+    public struct RollbackBufferContainer : IRollbackContainer
+    {
+        internal NativeCounter _counter;
+        internal NativeArray<int> _startIndex;
+        internal NativeList<RollbackChunk> _chunks;
+        internal NativeList<byte> _values;
+
+        public void Clear()
+        {
+            _counter.count = 0;
+            _startIndex[0] = 0;
+            _values.Clear();
+            _chunks.Clear();
+        }
+
+        public void Dispose()
+        {
+            _counter.Dispose();
+            _startIndex.Dispose();
+            _values.Dispose();
+            _chunks.Dispose();
+        }
+    }
+
+    public struct RollbackBuffer<T> where T : unmanaged, IBufferElementData
     {
         private NativeCounter __counter;
         private NativeArray<int> __startIndex;
-        private NativeList<T> __values;
         private NativeList<RollbackChunk> __chunks;
+        private NativeList<T> __values;
 
         private BufferTypeHandle<T> __type;
         private BufferLookup<T> __targets;
@@ -667,6 +709,20 @@ namespace ZG
         private ProfilerMarker __save;
         private ProfilerMarker __clear;
 #endif
+
+        internal unsafe RollbackBufferContainer container
+        {
+            get
+            {
+                RollbackBufferContainer container;
+                container._counter = __counter;
+                container._startIndex = __startIndex;
+                container._chunks = __chunks;
+                container._values = UnsafeUtility.AsRef<NativeList<byte>>(UnsafeUtility.AddressOf(ref __values));
+
+                return container;
+            }
+        }
 
         public RollbackBuffer(int capacity, Allocator allocator, ref SystemState systemState)
         {
@@ -743,21 +799,15 @@ namespace ZG
                 return new RollbackBufferClearFunction<T>(__counter, __values, __chunks);
         }
 
-        public void Clear()
+        /*public void Clear()
         {
-            __counter.count = 0;
-            __startIndex[0] = 0;
-            __values.Clear();
-            __chunks.Clear();
+            container.Clear();
         }
 
         public void Dispose()
         {
-            __counter.Dispose();
-            __startIndex.Dispose();
-            __values.Dispose();
-            __chunks.Dispose();
-        }
+            container.Dispose();
+        }*/
     }
 
     public struct RollbackBufferRestoreChunkFunction<T> where T : unmanaged, IBufferElementData
@@ -1676,23 +1726,19 @@ namespace ZG
         }
     }
 
-    public struct RollbackManager<TRestore, TSave, TClear> : IRollbackContainer 
+    public struct RollbackManager<TRestore, TSave, TClear> 
         where TRestore : struct, IRollbackRestore
         where TSave : struct, IRollbackSave
         where TClear : struct, IRollbackClear
     {
         private RollbackManager __imp;
 
+        internal RollbackManager container => __imp;
+
         public RollbackManager(ref SystemState systemState, Allocator allocator, int innerloopBatchCount = 1/*, uint maxFrameCount = 256*/)
         {
             __imp = new RollbackManager(ref systemState, allocator, innerloopBatchCount/*, maxFrameCount*/);
         }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Dispose() => __imp.Dispose();
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void Clear() => __imp.Clear();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public int GetEntityCount(uint frameIndex) => __imp.GetEntityCount(frameIndex);
@@ -1777,13 +1823,33 @@ namespace ZG
             where T : IRollbackCore => __imp.Update(ref systemState, ref core);
     }
 
-    public class RollbackContainerManager
+    public struct RollbackContainerManager
     {
-        private HashSet<IRollbackContainer> __containers;
-
-        public RollbackContainerManager()
+        private struct Container
         {
-            __containers = new HashSet<IRollbackContainer>();
+            public UnsafeBlock value;
+            public FunctionPointer<RollbackContainerDelegate> clearFunction;
+            public FunctionPointer<RollbackContainerDelegate> disposeFunction;
+
+            public void Clear()
+            {
+                clearFunction.Invoke(value);
+            }
+
+            public void Dispose()
+            {
+                disposeFunction.Invoke(value);
+            }
+        }
+
+        private NativeBuffer __buffer;
+        private NativeList<Container> __containers;
+
+        public RollbackContainerManager(in AllocatorManager.AllocatorHandle allocator)
+        {
+            __buffer = new NativeBuffer(allocator, 1);
+
+            __containers = new NativeList<Container>(allocator);
         }
 
         public RollbackManager<TRestore, TSave, TClear> CreateManager<TRestore, TSave, TClear>(ref SystemState systemState, int innerloopBatchCount = 4/*, uint maxFrameCount = 256*/)
@@ -1791,82 +1857,170 @@ namespace ZG
             where TSave : struct, IRollbackSave
             where TClear : struct, IRollbackClear
         {
-            var container = new RollbackManager<TRestore, TSave, TClear>(ref systemState, Allocator.Persistent, innerloopBatchCount/*, maxFrameCount*/);
+            var result = new RollbackManager<TRestore, TSave, TClear>(ref systemState, Allocator.Persistent, innerloopBatchCount/*, maxFrameCount*/);
 
-            __containers.Add(container);
+            Manage(result.container, _ClearManagerFunction, _DisposeManagerFunction.Data);
 
-            return container;
+            return result;
         }
 
         public RollbackManager CreateManager(ref SystemState systemState, int innerloopBatchCount = 1/*, uint maxFrameCount = 256*/)
         {
-            var container = new RollbackManager(ref systemState, Allocator.Persistent, innerloopBatchCount/*, maxFrameCount*/);
+            var result = new RollbackManager(ref systemState, Allocator.Persistent, innerloopBatchCount/*, maxFrameCount*/);
 
-            __containers.Add(container);
+            Manage(result, _ClearManagerFunction, _DisposeManagerFunction.Data);
 
-            return container;
+            return result;
         }
 
         public RollbackGroup CreateGroup()
         {
-            var container = new RollbackGroup(1, Allocator.Persistent);
+            var result = new RollbackGroup(1, Allocator.Persistent);
 
-            __containers.Add(container);
+            Manage(result, _ClearGroupFunction, _DisposeGroupFunction.Data);
 
-            return container;
+            return result;
         }
 
         public RollbackComponent<T> CreateComponent<T>(ref SystemState systemState) where T : unmanaged, IComponentData
         {
-            var container = new RollbackComponent<T>(1, Allocator.Persistent, ref systemState);
+            var result = new RollbackComponent<T>(1, Allocator.Persistent, ref systemState);
 
-            __containers.Add(container);
+            Manage(result.container, _ClearComponentFunction, _DisposeComponentFunction.Data);
 
-            return container;
+            return result;
         }
 
         public RollbackBuffer<T> CreateBuffer<T>(ref SystemState systemState) where T : unmanaged, IBufferElementData
         {
-            var container = new RollbackBuffer<T>(1, Allocator.Persistent, ref systemState);
+            var result = new RollbackBuffer<T>(1, Allocator.Persistent, ref systemState);
+
+            Manage(result.container, _ClearBufferFunction, _DisposeBufferFunction.Data);
+
+            return result;
+        }
+
+        public void Manage<T>(
+            in T value, 
+            in FunctionPointer<RollbackContainerDelegate> clearFunction , 
+            FunctionPointer<RollbackContainerDelegate> disposeFunction) where T : unmanaged, IRollbackContainer
+        {
+            var writer = __buffer.writer;
+
+            Container container;
+            container.value = (UnsafeBlock)writer.WriteBlock(value);
+            container.clearFunction = clearFunction;
+            container.disposeFunction = disposeFunction;
 
             __containers.Add(container);
-
-            return container;
-        }
-
-        public bool Register<T>(T container) where T : IRollbackContainer
-        {
-            return __containers.Add(container);
-        }
-
-        public bool Unregister<T>(T container) where T : IRollbackContainer
-        {
-            return __containers.Remove(container);
         }
 
         public void Clear()
         {
-            if (__containers == null)
-                return;
-
             foreach (var container in __containers)
                 container.Clear();
         }
 
         public void Dispose()
         {
-            if (__containers == null)
-                return;
-
             foreach (var container in __containers)
                 container.Dispose();
 
-            __containers = null;
+            __containers.Dispose();
         }
     }
 
+    [BurstCompile]
     public static partial class RollbackUtility
     {
+        internal static readonly FunctionPointer<RollbackContainerDelegate> _ClearManagerFunction = BurstCompiler.CompileFunctionPointer<RollbackContainerDelegate>(__ClearManager);
+
+        internal static readonly FunctionPointer<RollbackContainerDelegate> _ClearGroupFunction = BurstCompiler.CompileFunctionPointer<RollbackContainerDelegate>(__ClearGroup);
+
+        internal static readonly FunctionPointer<RollbackContainerDelegate> _ClearComponentFunction = BurstCompiler.CompileFunctionPointer<RollbackContainerDelegate>(__ClearComponent);
+
+        internal static readonly FunctionPointer<RollbackContainerDelegate> _ClearBufferFunction = BurstCompiler.CompileFunctionPointer<RollbackContainerDelegate>(__ClearBuffer);
+
+        internal static readonly SharedStatic<FunctionPointer<RollbackContainerDelegate>> _DisposeManagerFunction = SharedStatic<FunctionPointer<RollbackContainerDelegate>>.GetOrCreate<RollbackManager>();
+
+        internal static readonly SharedStatic<FunctionPointer<RollbackContainerDelegate>> _DisposeGroupFunction = SharedStatic<FunctionPointer<RollbackContainerDelegate>>.GetOrCreate<RollbackGroup>();
+
+        internal static readonly SharedStatic<FunctionPointer<RollbackContainerDelegate>> _DisposeComponentFunction = SharedStatic<FunctionPointer<RollbackContainerDelegate>>.GetOrCreate<RollbackComponentContainer>();
+
+        internal static readonly SharedStatic<FunctionPointer<RollbackContainerDelegate>> _DisposeBufferFunction = SharedStatic<FunctionPointer<RollbackContainerDelegate>>.GetOrCreate<RollbackBufferContainer>();
+
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.AfterAssembliesLoaded)]
+        public static void Init()
+        {
+            _DisposeManagerFunction.Data = FunctionWrapperUtility.CompileManagedFunctionPointer<RollbackContainerDelegate>(__DisposeManager);
+
+            _DisposeGroupFunction.Data = FunctionWrapperUtility.CompileManagedFunctionPointer<RollbackContainerDelegate>(__DisposeGroup);
+
+            _DisposeComponentFunction.Data = FunctionWrapperUtility.CompileManagedFunctionPointer<RollbackContainerDelegate>(__DisposeComponent);
+
+            _DisposeBufferFunction.Data = FunctionWrapperUtility.CompileManagedFunctionPointer<RollbackContainerDelegate>(__DisposeBuffer);
+        }
+
+    #region Clear
+    [BurstCompile]
+        [MonoPInvokeCallback(typeof(RollbackContainerDelegate))]
+        private static void __ClearManager(in UnsafeBlock value)
+        {
+            value.As<RollbackManager>().Clear();
+        }
+
+        [BurstCompile]
+        [MonoPInvokeCallback(typeof(RollbackContainerDelegate))]
+        private static void __ClearGroup(in UnsafeBlock value)
+        {
+            value.As<RollbackGroup>().Clear();
+        }
+
+        [BurstCompile]
+        [MonoPInvokeCallback(typeof(RollbackContainerDelegate))]
+        private static void __ClearComponent(in UnsafeBlock value)
+        {
+            value.As<RollbackComponentContainer>().Clear();
+        }
+
+        [BurstCompile]
+        [MonoPInvokeCallback(typeof(RollbackContainerDelegate))]
+        private static void __ClearBuffer(in UnsafeBlock value)
+        {
+            value.As<RollbackBufferContainer>().Clear();
+        }
+        #endregion
+
+        #region Dispose
+        //[BurstCompile]
+        [AOT.MonoPInvokeCallback(typeof(RollbackContainerDelegate))]
+        private static void __DisposeManager(in UnsafeBlock value)
+        {
+            value.As<RollbackManager>().Dispose();
+        }
+
+        //[BurstCompile]
+        [AOT.MonoPInvokeCallback(typeof(RollbackContainerDelegate))]
+        internal static void __DisposeGroup(in UnsafeBlock value)
+        {
+            value.As<RollbackGroup>().Dispose();
+        }
+
+        //[BurstCompile]
+        [AOT.MonoPInvokeCallback(typeof(RollbackContainerDelegate))]
+        internal static void __DisposeComponent(in UnsafeBlock value)
+        {
+            value.As<RollbackComponentContainer>().Dispose();
+        }
+
+        //[BurstCompile]
+        [AOT.MonoPInvokeCallback(typeof(RollbackContainerDelegate))]
+        internal static void __DisposeBuffer(in UnsafeBlock value)
+        {
+            value.As<RollbackBufferContainer>().Dispose();
+        }
+        #endregion
+
         public static bool InvokeDiff<T>(this RollbackComponentRestoreFunction<T> function, int entityIndex, Entity entity, out T value) where T : unmanaged, IEquatable<T>, IComponentData
         {
             value = function[entityIndex]; ;
@@ -1882,6 +2036,5 @@ namespace ZG
         {
             return InvokeDiff(function, entityIndex, entity, out var value);
         }
-
     }
 }

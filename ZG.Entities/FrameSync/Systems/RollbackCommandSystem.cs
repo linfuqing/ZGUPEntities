@@ -1850,6 +1850,7 @@ namespace ZG
             private set;
         }
 
+        [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
             __frameGroup = RollbackFrame.GetEntityQuery(ref state);
@@ -1867,6 +1868,7 @@ namespace ZG
             commander = new RollbackCommanderManaged(Allocator.Persistent);
         }
 
+        //[BurstCompile]
         public void OnDestroy(ref SystemState state)
         {
             commander.Dispose();

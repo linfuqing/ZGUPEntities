@@ -293,7 +293,7 @@ namespace ZG
             AddSystemToUpdateList(__rollbackCommandSystem);
             AddSystemToUpdateList(world.GetOrCreateSystem<BeginRollbackSystemGroupEntityCommandSystem>());
 #else
-            commander = world.GetOrCreateSystemUnmanaged<RollbackCommandSystem>().commander;
+            commander = world.GetExistingSystemUnmanaged<RollbackCommandSystem>().commander;
 #endif
 
             //AddSystemToUpdateList(__rollbackSystemGroup);

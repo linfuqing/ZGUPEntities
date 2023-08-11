@@ -276,7 +276,7 @@ namespace ZG
             systemTypes = FilterSystemTypes(systemTypes, worldName);
 
             var types = new List<Type>();
-            var unmanagedTypes = new List<Type>();
+            //var unmanagedTypes = new List<Type>();
 
             bool isMask;
             foreach (var system in systemTypes)
@@ -308,7 +308,7 @@ namespace ZG
                 {
                     types.Add(system);
 
-                    unmanagedTypes.Add(system);
+                    //unmanagedTypes.Add(system);
                 }
                 else
                     throw new InvalidOperationException("Bad type");

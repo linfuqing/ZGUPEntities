@@ -402,7 +402,7 @@ namespace ZG
         }
     }
 
-    [AlwaysSynchronizeSystem, UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true)/*, UpdateBefore(typeof(BeginTimeSystemGroupEntityCommandSystem))*/]
+    [AlwaysSynchronizeSystem, CreateAfter(typeof(RollbackCommandSystem)), UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true)/*, UpdateBefore(typeof(BeginTimeSystemGroupEntityCommandSystem))*/]
     public partial class SyncFrameEventSystem : SystemBase
     {
         public struct RollbackEntryTester : IRollbackEntryTester
@@ -506,15 +506,13 @@ namespace ZG
 
             __rollbackFrameGroup = RollbackFrame.GetEntityQuery(ref this.GetState());
 
-            __group = GetEntityQuery(
-                new EntityQueryDesc()
-                {
-                    All = new ComponentType[] { ComponentType.ReadOnly<SyncFrameEvent>() },
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __group = builder
+                        .WithAll<SyncFrameEvent>()
+                        .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                        .Build(this);
 
-                    Options = EntityQueryOptions.IncludeDisabledEntities
-                });
-
-            __commander = World.GetOrCreateSystemUnmanaged<RollbackCommandSystem>().commander;
+            __commander = World.GetExistingSystemUnmanaged<RollbackCommandSystem>().commander;
 
             __entityType = GetEntityTypeHandle();
             __eventType = GetBufferTypeHandle<SyncFrameEvent>(true);
