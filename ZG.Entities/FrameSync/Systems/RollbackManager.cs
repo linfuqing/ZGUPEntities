@@ -2026,12 +2026,12 @@ namespace ZG
     {
         private class Clear<T>
         {
-            public static readonly SharedStatic<FunctionPointer<RollbackContainerDelegate>> Function = SharedStatic<FunctionPointer<RollbackContainerDelegate>>.GetOrCreate<T>();
+            public static readonly SharedStatic<FunctionPointer<RollbackContainerDelegate>> Function = SharedStatic<FunctionPointer<RollbackContainerDelegate>>.GetOrCreate<Clear<T>>();
         }
 
         private class Dispose<T>
         {
-            public static readonly SharedStatic<FunctionPointer<RollbackContainerDelegate>> Function = SharedStatic<FunctionPointer<RollbackContainerDelegate>>.GetOrCreate<T>();
+            public static readonly SharedStatic<FunctionPointer<RollbackContainerDelegate>> Function = SharedStatic<FunctionPointer<RollbackContainerDelegate>>.GetOrCreate<Dispose<T>>();
         }
 
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.AfterAssembliesLoaded)]
