@@ -350,7 +350,7 @@ namespace ZG
 
     public struct EntityCommandQueue
     {
-        private UnsafeFactory __commands;
+        internal UnsafeFactory _commands;
         private UnsafeListEx<JobHandle> __jobHandles;
 
 #if DEBUG
@@ -361,7 +361,7 @@ namespace ZG
         internal AtomicSafetyHandle m_Safety;
 #endif
 
-        public bool isCreated => __commands.isCreated;
+        public bool isCreated => _commands.isCreated;
 
         internal UnsafeFactory commands
         {
@@ -381,7 +381,7 @@ namespace ZG
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
 #endif
-                return __commands;
+                return _commands;
             }
         }
 
@@ -396,7 +396,7 @@ namespace ZG
 #endif
 
             __jobHandles = new UnsafeListEx<JobHandle>(allocator);
-            __commands = new UnsafeFactory(allocator, true);
+            _commands = new UnsafeFactory(allocator, true);
         }
 
         public JobHandle MoveTo<T>(T destination, in JobHandle inputDeps) where T : IEntityCommandContainer
@@ -409,10 +409,10 @@ namespace ZG
             source.m_Safety = m_Safety;
 #endif
 
-            source._commands = __commands;
+            source._commands = _commands;
 
             var jobHandle = destination.CopyFrom(source, JobHandle.CombineDependencies(__jobHandles.AsArray()));
-            jobHandle = __commands.Clear(jobHandle);
+            jobHandle = _commands.Clear(jobHandle);
 
             __jobHandles.Clear();
             __jobHandles.Add(jobHandle);
@@ -431,7 +431,7 @@ namespace ZG
             source._commands = commands;
 
             destination.CopyFrom(source);
-            __commands.Clear();
+            _commands.Clear();
         }
 
         public void Clear()
@@ -463,7 +463,7 @@ namespace ZG
 #endif
 
             __jobHandles.Dispose();
-            __commands.Dispose();
+            _commands.Dispose();
         }
 
         private void __CompleteAll()
@@ -537,7 +537,7 @@ namespace ZG
 
                 Writer writer;
 
-                writer._commands = __instance.commands;
+                writer._commands = __instance._commands;
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 writer.m_Safety = __instance.m_Safety;
@@ -554,7 +554,7 @@ namespace ZG
 
                 ParallelWriter parallelWriter;
 
-                parallelWriter._commands = __instance.commands.parallelWriter;
+                parallelWriter._commands = __instance._commands.parallelWriter;
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 parallelWriter.m_Safety = __instance.m_Safety;
@@ -676,7 +676,7 @@ namespace ZG
 
                 __caches.RemoveAt(length);
 
-                value.Clear();
+                value._commands.Clear();
             }
             else
                 value = new EntityCommandQueue(__values.allocator);
