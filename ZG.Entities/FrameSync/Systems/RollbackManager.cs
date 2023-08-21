@@ -11,6 +11,7 @@ using Unity.Mathematics;
 using Unity.Profiling;
 using ZG;
 using static ZG.RollbackUtility;
+using static ZG.EntityCommandStructChangeContainer;
 
 [assembly: RegisterGenericJobType(typeof(RollbackResize<Entity>))]
 [assembly: RegisterGenericJobType(typeof(RollbackResize<RollbackChunk>))]
@@ -651,6 +652,7 @@ namespace ZG
 
     public struct RollbackComponentSaveFunction<T> where T : unmanaged, IComponentData
     {
+        [NativeDisableParallelForRestriction]
         private NativeArray<T> __values;
 
         [ReadOnly]
@@ -1231,6 +1233,57 @@ namespace ZG
         }
 
         [BurstCompile]
+        private struct RestoreDisable : IJobChunk
+        {
+            public DynamicComponentTypeHandle instanceType;
+
+            [ReadOnly]
+            public EntityTypeHandle entityType;
+            [ReadOnly]
+            public NativeParallelHashMap<Entity, int> entityIndices;
+
+            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+            {
+                var entityArray = chunk.GetNativeArray(entityType);
+                Entity entity;
+                var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+                while (iterator.NextEntityIndex(out int i))
+                {
+                    entity = entityArray[i];
+                    if (!entityIndices.ContainsKey(entity))
+                        chunk.SetComponentEnabled(ref instanceType, i, false);
+                }
+            }
+        }
+
+        [BurstCompile]
+        private struct RestoreEnable : IJobChunk
+        {
+            public DynamicComponentTypeHandle instanceType;
+
+            [ReadOnly]
+            public EntityTypeHandle entityType;
+            [ReadOnly]
+            public NativeParallelHashMap<Entity, int> entityIndices;
+
+            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+            {
+                var entityArray = chunk.GetNativeArray(entityType);
+                Entity entity;
+                int count = chunk.Count;
+                for (int i = 0; i < count; ++i)
+                {
+                    if (chunk.IsComponentEnabled(ref instanceType, i))
+                        continue;
+
+                    entity = entityArray[i];
+                    if (!entityIndices.ContainsKey(entity))
+                        chunk.SetComponentEnabled(ref instanceType, i, true);
+                }
+            }
+        }
+
+        [BurstCompile]
         private struct RestoreChunk : IJobChunk, IEntityCommandProducerJob
         {
 #if UNITY_EDITOR
@@ -1262,10 +1315,8 @@ namespace ZG
                     {
                         command.entity = entity;
 
-#if GAME_DEBUG_DISABLE
-                        if (isAddOrRemove && componentType.TypeIndex == TypeManager.GetTypeIndex<Disabled>())
-                            UnityEngine.Debug.Log($"Chunk Disable {entity.Index} In {frameIndex}");
-#endif
+                        /*if (isAddOrRemove && componentType.TypeIndex == TypeManager.GetTypeIndex<Disabled>())
+                            UnityEngine.Debug.Log($"Chunk Disable {entity.Index} In {frameIndex}");*/
 
                         entityManager.Enqueue(command);
                     }
@@ -1303,6 +1354,7 @@ namespace ZG
         private ProfilerMarker __scheduleRestore;
         private ProfilerMarker __scheduleSave;
         private ProfilerMarker __scheduleClear;
+        private ProfilerMarker __enableOrDisableComponentIfNotSaved;
         private ProfilerMarker __addOrRemoveComponentIfNotSaved;
         private ProfilerMarker __addComponentIfNotSaved;
         private ProfilerMarker __removeComponentIfNotSaved;
@@ -1378,6 +1430,7 @@ namespace ZG
             __scheduleRestore = new ProfilerMarker("Schedule Restore");
             __scheduleSave = new ProfilerMarker("Schedule Save");
             __scheduleClear = new ProfilerMarker("Schedule Clear");
+            __enableOrDisableComponentIfNotSaved = new ProfilerMarker("Enable Or Disable Component If Not Saved");
             __addOrRemoveComponentIfNotSaved = new ProfilerMarker("Add Or Remove Component If Not Saved");
             __addComponentIfNotSaved = new ProfilerMarker("Add Component If Not Saved");
             __removeComponentIfNotSaved = new ProfilerMarker("Remove Component If Not Saved");
@@ -1460,6 +1513,69 @@ namespace ZG
         public RollbackBufferClearFunction<U> DelegateClear<U>(in RollbackBuffer<U> instance) where U : unmanaged, IBufferElementData
         {
             return instance.DelegateClear();
+        }
+
+        public JobHandle EnableOrDisableComponentIfNotSaved(
+            bool isEnableOrDisable,
+            uint frameIndex,
+            in EntityQuery group,
+            in EntityTypeHandle entityType,
+            ref DynamicComponentTypeHandle instanceType,
+            in JobHandle inputDeps,
+            bool needChunk)
+        {
+#if ENABLE_PROFILER
+            using (__addOrRemoveComponentIfNotSaved.Auto())
+#endif
+
+            {
+                var jobHandle = needChunk ? __group.GetChunk(frameIndex, inputDeps) : inputDeps;
+
+                //if (__group.GetEntities(frameIndex, out var entities))
+                //{
+                var entityIndicesParallelWriter = __entityIndices.AsParallelWriter();
+                var countAndStartIndex = __group.countAndStartIndex;
+
+                ClearHashMap clearHashMap;
+                clearHashMap.count = countAndStartIndex;
+                clearHashMap.value = __entityIndices;
+                jobHandle = clearHashMap.ScheduleByRef(jobHandle);
+
+                BuildEntityIndices buildEntityIndices;
+                buildEntityIndices.countAndStartIndex = countAndStartIndex;
+                buildEntityIndices.entities = __group.entities;
+                buildEntityIndices.results = entityIndicesParallelWriter;
+                jobHandle = buildEntityIndices.ScheduleUnsafeIndex0ByRef(countAndStartIndex, InnerloopBatchCount, JobHandle.CombineDependencies(jobHandle, __group.entityJobHandle));
+
+                __group.entityJobHandle = jobHandle;
+
+                if (isEnableOrDisable)
+                {
+                    RestoreEnable restore;
+                    restore.instanceType = instanceType;
+                    restore.entityType = entityType;
+                    restore.entityIndices = __entityIndices;
+
+                    jobHandle = restore.ScheduleParallelByRef(group, jobHandle);
+                }
+                else
+                {
+                    RestoreDisable restore;
+                    restore.instanceType = instanceType;
+                    restore.entityType = entityType;
+                    restore.entityIndices = __entityIndices;
+
+                    jobHandle = restore.ScheduleParallelByRef(group, jobHandle);
+                }
+
+                return jobHandle;
+                //systemState.Dependency = jobHandle;
+
+                //return true;
+                //}
+
+                //return false;
+            }
         }
 
         public JobHandle AddOrRemoveComponentIfNotSaved(
@@ -1850,6 +1966,23 @@ namespace ZG
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public RollbackBufferClearFunction<U> DelegateClear<U>(in RollbackBuffer<U> instance)
             where U : unmanaged, IBufferElementData => __imp.DelegateClear(instance);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public JobHandle EnableOrDisableComponentIfNotSaved(
+            bool isEnableOrDisable,
+            uint frameIndex,
+            in EntityQuery group,
+            in EntityTypeHandle entityType,
+            ref DynamicComponentTypeHandle instanceType,
+            in JobHandle inputDeps,
+            bool needChunk) => __imp.EnableOrDisableComponentIfNotSaved(
+                isEnableOrDisable, 
+                frameIndex,
+                group,
+                entityType,
+                ref instanceType,
+                inputDeps,
+                needChunk);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public JobHandle AddComponentIfNotSaved<T>(

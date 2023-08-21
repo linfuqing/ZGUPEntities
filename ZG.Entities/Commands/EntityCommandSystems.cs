@@ -4,8 +4,8 @@ using Unity.Collections;
 
 namespace ZG
 {
-    [BurstCompile, UpdateInGroup(typeof(EndFrameEntityCommandSystemGroup))]
-    public partial struct EndFrameStructChangeSystem : ISystem
+    [BurstCompile, UpdateInGroup(typeof(BeginFrameEntityCommandSystemGroup))]
+    public partial struct BeginFrameStructChangeSystem : ISystem
     {
         /*private struct Assigner : EntityCommandStructChangeManager.IAssigner
         {
@@ -72,8 +72,8 @@ namespace ZG
         }
     }
 
-    [UpdateInGroup(typeof(PresentationSystemGroup), OrderLast = true)]
-    public sealed class EndFrameEntityCommandSystemGroup : ComponentSystemGroup
+    [UpdateInGroup(typeof(InitializationSystemGroup), OrderFirst = true)]
+    public sealed class BeginFrameEntityCommandSystemGroup : ComponentSystemGroup
     {
 
     }

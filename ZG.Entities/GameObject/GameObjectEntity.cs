@@ -1088,7 +1088,7 @@ namespace ZG
             UnityEngine.Object.DestroyImmediate(info);
         }
 
-        internal static void _Add<T>(World world, in Entity entity, GameObjectEntityStatus status, int value) where T : unmanaged, IComponentData, IGameObjectEntityStatus
+        internal static void _Add<T>(World world, in Entity entity, GameObjectEntityStatus status, int value) where T : unmanaged, IComponentData, IEnableableComponent, IGameObjectEntityStatus
         {
             if (world == null || !world.IsCreated)
                 return;
@@ -1111,6 +1111,7 @@ namespace ZG
                     {
                         componentData.value += value;
                         commandSystem.SetComponentData(entity, componentData);
+                        commandSystem.SetComponentEnabled<T>(entity, true);
                     }
                     break;
             }
@@ -1120,7 +1121,7 @@ namespace ZG
             int value,
             in Entity entity,
             ref EntityCommandFactory factory,
-            ref EntityManager entityManager) where T : unmanaged, IComponentData, IGameObjectEntityStatus
+            ref EntityManager entityManager) where T : unmanaged, IComponentData, IEnableableComponent, IGameObjectEntityStatus
         {
             var commandSystem = __GetCommandSystem(entityManager.World);
 
@@ -1132,13 +1133,15 @@ namespace ZG
             int value, 
             in Entity entity, 
             ref EntityCommandFactory factory) 
-            where TValue : unmanaged, IComponentData, IGameObjectEntityStatus
+            where TValue : unmanaged, IComponentData, IEnableableComponent, IGameObjectEntityStatus
             where TScheduler : IEntityCommandScheduler
         {
             __TryGetComponentData(entityManager, entity, factory, out TValue componentData);
 
             componentData.value += value;
-            factory.instanceAssigner.SetComponentData(entity, componentData);
+            var assigner = factory.instanceAssigner;
+            assigner.SetComponentData(entity, componentData);
+            assigner.SetComponentEnabled<TValue>(entity, true);
         }
 
     }

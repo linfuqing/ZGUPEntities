@@ -12,7 +12,7 @@ using ZG;
 
 namespace ZG
 {
-    [BurstCompile, UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(BeginFrameEntityCommandSystem))]
+    [BurstCompile, UpdateInGroup(typeof(InitializationSystemGroup))/*, UpdateAfter(typeof(BeginFrameEntityCommandSystem))*/]
     public partial struct SyncFrameCallbackSystem : ISystem
     {
         private struct Comparer : IComparer<uint>

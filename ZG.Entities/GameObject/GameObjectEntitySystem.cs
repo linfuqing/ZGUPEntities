@@ -167,7 +167,7 @@ namespace ZG
         }
     }*/
 
-    public struct GameObjectEntityInstanceCount : IComponentData, IGameObjectEntityStatus
+    public struct GameObjectEntityInstanceCount : IComponentData, IEnableableComponent, IGameObjectEntityStatus
     {
         public int value;
 
@@ -179,7 +179,7 @@ namespace ZG
         }
     }
 
-    public struct GameObjectEntityActiveCount : IComponentData, IGameObjectEntityStatus
+    public struct GameObjectEntityActiveCount : IComponentData, IEnableableComponent, IGameObjectEntityStatus
     {
         public int value;
 
@@ -333,7 +333,6 @@ namespace ZG
             [ReadOnly]
             public EntityTypeHandle entityType;
 
-            [ReadOnly]
             public ComponentTypeHandle<GameObjectEntityInstanceCount> instanceCountType;
 
             //public NativeList<Entity> entitiesToDestroy;
@@ -348,7 +347,11 @@ namespace ZG
 
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
                 while (iterator.NextEntityIndex(out int i))
+                {
+                    chunk.SetComponentEnabled(ref instanceCountType, i, false);
+
                     collect.Execute(i);
+                }
             }
         }
 
@@ -382,10 +385,9 @@ namespace ZG
             public EntityTypeHandle entityType;
 
             [ReadOnly]
-            public ComponentTypeHandle<GameObjectEntityActiveCount> activeCountType;
-
-            [ReadOnly]
             public ComponentTypeHandle<Disabled> disabledType;
+
+            public ComponentTypeHandle<GameObjectEntityActiveCount> activeCountType;
 
             public EntityCommander.ParallelWriter entityManager;
 
@@ -402,7 +404,11 @@ namespace ZG
 
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
                 while (iterator.NextEntityIndex(out int i))
+                {
+                    chunk.SetComponentEnabled(ref activeCountType, i, false);
+
                     collect.Execute(i);
+                }
             }
         }
 
@@ -437,23 +443,23 @@ namespace ZG
         {
             using (var builder = new EntityQueryBuilder(Allocator.Temp))
                 __instanceGroup = builder
-                    .WithAll<GameObjectEntityInstanceCount>()
+                    .WithAllRW<GameObjectEntityInstanceCount>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
 
-            __instanceGroup.SetChangedVersionFilter(ComponentType.ReadWrite<GameObjectEntityInstanceCount>());
+            //__instanceGroup.SetChangedVersionFilter(ComponentType.ReadWrite<GameObjectEntityInstanceCount>());
 
             using (var builder = new EntityQueryBuilder(Allocator.Temp))
                 __activeGroup = builder
-                    .WithAll<GameObjectEntityActiveCount>()
+                    .WithAllRW<GameObjectEntityActiveCount>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
 
-            __activeGroup.SetChangedVersionFilter(ComponentType.ReadWrite<GameObjectEntityActiveCount>());
+            //__activeGroup.SetChangedVersionFilter(ComponentType.ReadWrite<GameObjectEntityActiveCount>());
 
             __entityType = state.GetEntityTypeHandle();
-            __instanceCountType = state.GetComponentTypeHandle<GameObjectEntityInstanceCount>(true);
-            __activeCountType = state.GetComponentTypeHandle<GameObjectEntityActiveCount>(true);
+            __instanceCountType = state.GetComponentTypeHandle<GameObjectEntityInstanceCount>();
+            __activeCountType = state.GetComponentTypeHandle<GameObjectEntityActiveCount>();
             __disabledType = state.GetComponentTypeHandle<Disabled>(true);
 
             var world = state.WorldUnmanaged;
@@ -472,6 +478,8 @@ namespace ZG
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
+            __commander.Playback(ref state);
+
             var entityManager = __commander.AsParallelWriter(
                 0, 
                 __activeGroup.CalculateEntityCountWithoutFiltering(), 
@@ -488,8 +496,8 @@ namespace ZG
 
             CollectActivesEx collectActive;
             collectActive.entityType = __entityType.UpdateAsRef(ref state);
-            collectActive.activeCountType = __activeCountType.UpdateAsRef(ref state);
             collectActive.disabledType = __disabledType.UpdateAsRef(ref state);
+            collectActive.activeCountType = __activeCountType.UpdateAsRef(ref state);
             collectActive.entityManager = entityManager;
 
             jobHandle = collectActive.ScheduleParallelByRef(__activeGroup, jobHandle);

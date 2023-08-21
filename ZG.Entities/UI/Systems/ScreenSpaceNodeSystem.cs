@@ -7,7 +7,6 @@ using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.Jobs;
 using ZG;
-using static ZG.Avatar.Database;
 
 [assembly: RegisterGenericJobType(typeof(ClearHashMap<Entity, float3>))]
 [assembly: RegisterGenericJobType(typeof(CopyNativeArrayToComponentData<ScreenSpaceNodeVisible>))]
@@ -15,7 +14,7 @@ using static ZG.Avatar.Database;
 
 namespace ZG
 {
-    [UpdateInGroup(typeof(EndFrameEntityCommandSystemGroup))]
+    [UpdateInGroup(typeof(PresentationSystemGroup), OrderLast = true)]
     public partial class ScreenSpaceNodeStructChangeSystem : SystemBase
     {
         [BurstCompile]
@@ -179,7 +178,7 @@ namespace ZG
         }
     }
 
-    [CreateAfter(typeof(ScreenSpaceNodeStructChangeSystem))]
+    [CreateAfter(typeof(ScreenSpaceNodeStructChangeSystem)), UpdateInGroup(typeof(PresentationSystemGroup))]
     public partial class ScreenSpaceNodeSystem : SystemBase, IEntityCommandProducerJob
     {
         [BurstCompile]

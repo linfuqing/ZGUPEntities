@@ -177,7 +177,7 @@ namespace ZG
         EntityManager IEntityCommandScheduler.entityManager => EntityManager;
     }
 
-    [CreateAfter(typeof(EntityCommandSharedSystemGroup)), UpdateInGroup(typeof(InitializationSystemGroup))]
+    [CreateAfter(typeof(EntityCommandSharedSystemGroup)), UpdateInGroup(typeof(BeginFrameEntityCommandSystemGroup))]
     public partial class BeginFrameEntityCommandSystem : SystemBase, IEntityCommandScheduler
     {
         private EntityCommandSharedSystemGroup __sharedSystemGroup;

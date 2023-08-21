@@ -70,7 +70,7 @@ namespace ZG
         }
     }
 
-    [BurstCompile, RequireMatchingQueriesForUpdate, UpdateInGroup(typeof(PresentationSystemGroup))/*, UpdateBefore(typeof(EndFrameEntityCommandSystemGroup))*/, UpdateAfter(typeof(CallbackSystem))]
+    [BurstCompile, RequireMatchingQueriesForUpdate, UpdateInGroup(typeof(InitializationSystemGroup))/*, UpdateAfter(typeof(CallbackSystem))*/]
     public partial struct EntityDataSystem : ISystem
     {
         [BurstCompile]

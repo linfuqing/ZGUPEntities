@@ -229,7 +229,7 @@ namespace ZG
         }
     }
 
-    [UpdateInGroup(typeof(InitializationSystemGroup)), UpdateAfter(typeof(BeginFrameEntityCommandSystem))]
+    [UpdateInGroup(typeof(InitializationSystemGroup))/*, UpdateAfter(typeof(BeginFrameEntityCommandSystem))*/]
     public partial class EntityObjectSystemGroup : ComponentSystemGroup
     {
         public EntityObjectSystemGroup()

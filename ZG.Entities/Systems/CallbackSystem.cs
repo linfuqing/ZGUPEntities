@@ -4,7 +4,13 @@ using Unity.Collections;
 
 namespace ZG
 {
-    [BurstCompile, UpdateInGroup(typeof(PresentationSystemGroup))]
+    [UpdateInGroup(typeof(InitializationSystemGroup), OrderFirst = true), UpdateBefore(typeof(BeginFrameEntityCommandSystemGroup))]
+    public partial class CallbackSystemGroup : ComponentSystemGroup
+    {
+
+    }
+
+    [BurstCompile, UpdateInGroup(typeof(CallbackSystemGroup))]
     public partial struct CallbackSystem : ISystem
     {
         public SharedList<CallbackHandle> handlesToInvokeAndUnregister

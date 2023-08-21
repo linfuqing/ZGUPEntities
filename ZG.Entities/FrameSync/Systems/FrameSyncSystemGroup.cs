@@ -22,6 +22,16 @@ namespace ZG
 
         public Value value;
 
+        public bool isRollback
+        {
+            get
+            {
+                Value value = Value.Active | Value.Rollback;
+
+                return (this.value & value) == value;
+            }
+        }
+
         public bool isClear
         {
             get
@@ -216,6 +226,8 @@ namespace ZG
             realFrameIndex = 0;
             syncFrameIndex = 0;
             clearFrameIndex = maxFrameCount;
+
+            flag &= ~FrameSyncFlag.Value.Active;
         }
 
         /*public override void SortSystemUpdateList()
@@ -509,11 +521,12 @@ namespace ZG
                 {
                     frameRestore.index = restoreFrameIndex; //commander.restoreFrameIndex;
 
-                    if (frameRestore.index > 0 && frameRestore.index < frame.index)
+                    if (frameRestore.index > 0 && frameRestore.index <= frame.index)
                     {
 #if DEBUG
-                        /*if (entityManager.World.Name.Contains("Server"))
-                            UnityEngine.Debug.LogError("F Y MT");*/
+                        var worldName = world.Name;
+                        if (worldName.Contains(new FixedString128Bytes("Server")))
+                            UnityEngine.Debug.LogError("F Y MT");
 
                         if (realFrameIndex > frameRestore.index + 256)
                             UnityEngine.Debug.LogError($"Rollback From Frame Index {frameRestore.index} To {realFrameIndex}");

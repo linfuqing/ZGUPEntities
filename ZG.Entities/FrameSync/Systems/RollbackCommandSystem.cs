@@ -56,7 +56,7 @@ namespace ZG
         public Entity entity;
     }
 
-    public struct RollbackObject : IComponentData
+    public struct RollbackObject : IComponentData, IEnableableComponent
     {
 
     }
@@ -628,7 +628,6 @@ namespace ZG
                 return __frameIndices[(int)RollbackFrameIndexType.Command];
             }
 
-            
             set
             {
                 CompleteDependency();
@@ -653,7 +652,11 @@ namespace ZG
             BurstUtility.InitializeJob<Command>();
 
             __jobHandle = new NativeArray<JobHandle>(1, allocator, NativeArrayOptions.ClearMemory);
-            __frameIndices = new NativeArray<uint>((int)RollbackFrameIndexType.Count, allocator, NativeArrayOptions.ClearMemory);
+            __frameIndices = new NativeArray<uint>((int)RollbackFrameIndexType.Count, allocator, NativeArrayOptions.UninitializedMemory);
+            __frameIndices[(int)RollbackFrameIndexType.Min] = 0; 
+            __frameIndices[(int)RollbackFrameIndexType.Restore] = 1;
+            __frameIndices[(int)RollbackFrameIndexType.Command] = 0;
+
             __values = new NativeList<RollbackEntry>(allocator);
             __keys = new NativeList<RollbackEntryKey>(allocator);
             //__moveCommands = new NativeListLite<MoveCommand>(allocator);
@@ -678,8 +681,9 @@ namespace ZG
         {
             CompleteDependency();
 
-            for (int i = 0; i < (int)RollbackFrameIndexType.Count; ++i)
-                __frameIndices[i] = 0;
+            __frameIndices[(int)RollbackFrameIndexType.Min] = 0;
+            __frameIndices[(int)RollbackFrameIndexType.Restore] = 1;
+            __frameIndices[(int)RollbackFrameIndexType.Command] = 0;
 
             __values.Clear();
             __keys.Clear();
@@ -1765,36 +1769,44 @@ namespace ZG
             __moveCommands.Add(moveCommand);
         }
 
-        public bool Playback(uint frameIndex, ref SystemState systemState)
+        public bool Playback(bool isRollback, uint frameIndex, ref SystemState systemState)
         {
             systemState.Dependency = JobHandle.CombineDependencies(systemState.Dependency, updateJobHandle);
 
             playbackJobHandle.Complete();
 
-            uint restoreFrameIndex = __commander.restoreFrameIndex;
-            if (restoreFrameIndex == 0 || restoreFrameIndex == frameIndex)
+            if (isRollback)
             {
-                bool result = false;
-                for (uint i = __commander.commandFrameIndex; i <= frameIndex; ++i)
+                uint restoreFrameIndex = __commander.restoreFrameIndex;
+                if (restoreFrameIndex == 0 || restoreFrameIndex == frameIndex)
                 {
-                    if (__commanderPool.Apply(i < restoreFrameIndex, i, ref systemState))
+                    bool result = false;
+                    for (uint i = __commander.commandFrameIndex; i <= frameIndex; ++i)
                     {
-                        //UnityEngine.Debug.Log($"{systemState.World.Name} Do {i}");
+                        if (__commanderPool.Apply(i < restoreFrameIndex, i, ref systemState))
+                        {
+                            //UnityEngine.Debug.Log($"{systemState.World.Name} Do {i}");
 
-                        //JobHandle.ScheduleBatchedJobs();
+                            //JobHandle.ScheduleBatchedJobs();
 
-                        result = true;
+                            result = true;
+                        }
                     }
+
+                    /*if (systemState.World.Name.Contains("Client"))
+                        UnityEngine.Debug.Log($"Command Frame Index {frameIndex + 1}");*/
+
+                    playbackJobHandle = result ? systemState.Dependency : default;
+
+                    /*if (systemState.World.Name.Contains("Client"))
+                    {
+                        UnityEngine.Debug.LogError($"Play {frameIndex} : {__commander.commandFrameIndex}");
+                    }*/
+
+                    __commander.commandFrameIndex = frameIndex + 1;
+
+                    return result;
                 }
-
-                /*if (systemState.World.Name.Contains("Client"))
-                    UnityEngine.Debug.Log($"Command Frame Index {frameIndex + 1}");*/
-
-                playbackJobHandle = result ? systemState.Dependency : default;
-
-                __commander.commandFrameIndex = frameIndex + 1;
-
-                return result;
             }
 
             if(__commanderPool.Apply(false, frameIndex, ref systemState))
@@ -1805,6 +1817,9 @@ namespace ZG
 
                 return true;
             }
+
+            if (frameIndex == __commander.commandFrameIndex)
+                __commander.commandFrameIndex = frameIndex + 1;
 
             return false;
         }
@@ -1851,7 +1866,12 @@ namespace ZG
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
-            __frameGroup = RollbackFrame.GetEntityQuery(ref state);
+            using(var builder = new EntityQueryBuilder(Allocator.Temp))
+                __frameGroup = builder
+                        .WithAll<FrameSyncFlag>()
+                        .WithAll<RollbackFrame>()
+                        .WithOptions(EntityQueryOptions.IncludeSystems)
+                        .Build(ref state);
 
             /*__group = state.GetEntityQuery(
                 new EntityQueryDesc()
@@ -1875,7 +1895,10 @@ namespace ZG
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            commander.Playback(__frameGroup.GetSingleton<RollbackFrame>().index, ref state);
+            commander.Playback(
+                __frameGroup.GetSingleton<FrameSyncFlag>().isRollback, 
+                __frameGroup.GetSingleton<RollbackFrame>().index, 
+                ref state);
         }
     }
 }

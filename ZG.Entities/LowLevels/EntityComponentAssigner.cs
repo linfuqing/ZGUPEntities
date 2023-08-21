@@ -1196,6 +1196,8 @@ namespace ZG
 
                         if (TypeManager.IsBuffer(key.typeIndex))
                             bufferAccessor = entityStorageInfo.Chunk.GetUntypedBufferAccessor(ref dynamicComponentTypeHandle);
+                        else if (TypeManager.IsZeroSized(key.typeIndex))
+                            destination = null;
                         else
                             destination = (byte*)entityStorageInfo.Chunk.GetDynamicComponentDataArrayReinterpret<byte>(ref dynamicComponentTypeHandle, elementSize).GetUnsafePtr() + entityStorageInfo.IndexInChunk * elementSize;
 
@@ -1227,6 +1229,9 @@ namespace ZG
                             switch (command.type)
                             {
                                 case Command.Type.ComponentData:
+                                    /*if (TypeManager.GetTypeName(key.typeIndex)->ToString().Contains("GameNodeCharacterStatus"))
+                                        UnityEngine.Debug.LogError($"{entity} To {*(int*)source}");*/
+
                                     UnityEngine.Assertions.Assert.AreEqual(blockSize, elementSize);
 
                                     //destination = (byte*)batchInChunk.GetDynamicComponentDataArrayReinterpret<byte>(dynamicComponentTypeHandle, blockSize).GetUnsafePtr() + i * blockSize;
@@ -1668,7 +1673,7 @@ namespace ZG
             resize.counts = entityCount;
             resize.bufferSizeAndTypeCount = __bufferSizeAndTypeCount;
             resize.writer = writer;
-            jobHandle = resize.Schedule(JobHandle.CombineDependencies(jobHandle, this.jobHandle));
+            jobHandle = resize.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, this.jobHandle));
 
             this.jobHandle = jobHandle;
 
@@ -1683,7 +1688,7 @@ namespace ZG
             resize.counts = typeAndBufferCounts;
             resize.bufferSizeAndTypeCount = __bufferSizeAndTypeCount;
             resize.writer = writer;
-            jobHandle = resize.Schedule(JobHandle.CombineDependencies(jobHandle, this.jobHandle));
+            jobHandle = resize.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, this.jobHandle));
 
             this.jobHandle = jobHandle;
 
