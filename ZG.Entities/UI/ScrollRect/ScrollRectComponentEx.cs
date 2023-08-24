@@ -177,7 +177,7 @@ namespace ZG
             return MoveTo(result);
         }
 
-        public override bool MoveTo(int2 destination)
+        public override bool MoveTo(in int2 destination)
         {
             if (__isMoving)
                 return false;

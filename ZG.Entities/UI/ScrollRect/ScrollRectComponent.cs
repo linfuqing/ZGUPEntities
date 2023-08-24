@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using Unity.Burst;
 using Unity.Mathematics;
 using UnityEngine;
@@ -101,7 +102,8 @@ namespace ZG
         private ScrollRectEvent __event;
 
         private ScrollRect __scrollRect;
-        
+        private List<ISubmitHandler> __submitHandlers;
+
         public virtual int2 count
         {
             get
@@ -111,18 +113,22 @@ namespace ZG
                 if (content == null)
                     return int2.zero;
 
-                int count = 0;
+                if (__submitHandlers == null)
+                    __submitHandlers = new List<ISubmitHandler>();
+                else
+                    __submitHandlers.Clear();
+
                 GameObject gameObject;
                 foreach (Transform child in content)
                 {
                     gameObject = child.gameObject;
                     if (gameObject != null && gameObject.activeSelf)
-                        ++count;
+                        __submitHandlers.Add(gameObject.GetComponent<ISubmitHandler>());
                 }
 
                 RectTransform.Axis axis = scrollRect.horizontal ? RectTransform.Axis.Horizontal : RectTransform.Axis.Vertical;
                 int2 result = int2.zero;
-                result[(int)axis] = count;
+                result[(int)axis] = __submitHandlers.Count;
 
                 return result;
             }
@@ -237,6 +243,13 @@ namespace ZG
             return rectTransform.rect.size;
         }
 
+        public virtual int __ToSubmitIndex(in int2 index)
+        {
+            RectTransform.Axis axis = scrollRect.horizontal ? RectTransform.Axis.Horizontal : RectTransform.Axis.Vertical;
+
+            return index[(int)axis];
+        }
+
         public virtual bool UpdateData()
         {
             __data = data;
@@ -248,7 +261,7 @@ namespace ZG
             return true;
         }
 
-        public virtual bool MoveTo(int2 index)
+        public virtual bool MoveTo(in int2 index)
         {
             ScrollRectInfo info;
             info.isVail = true;
@@ -264,6 +277,8 @@ namespace ZG
             __event.version = 0;
             __event.flag = 0;
             __event.index = math.int2(-1, -1);
+
+            UpdateData();
         }
 
         protected void Update()
@@ -282,7 +297,7 @@ namespace ZG
             }
         }
 
-        internal void _Set(ScrollRectEvent result)
+        internal void _Set(in ScrollRectEvent result)
         {
             if (__version == result.version)
                 return;
@@ -291,17 +306,18 @@ namespace ZG
 
             if ((result.flag & ScrollRectEvent.Flag.Changed) == ScrollRectEvent.Flag.Changed)
             {
-                if (onChanged != null)
-                    onChanged.Invoke(result.index);
+                var index = (int2)math.round(result.index);
 
-                index = (int2)math.round(result.index);
+                __OnChanged(result.index, index);
+
+                this.index = index;
             }
 
             if ((result.flag & ScrollRectEvent.Flag.SameAsInfo) == ScrollRectEvent.Flag.SameAsInfo)
                 __info.isVail = false;//this.RemoveComponent<ScrollRectInfo>();
         }
 
-        private bool __EnableNode(float2 normalizedPosition)
+        private bool __EnableNode(in float2 normalizedPosition)
         {
             ScrollRect scrollRect = this.scrollRect;
             if (scrollRect == null)
@@ -319,8 +335,7 @@ namespace ZG
             int2 index = (int2)math.round(node.index);
             if (math.any(index != this.index))
             {
-                if (onChanged != null)
-                    onChanged.Invoke(node.index);
+                __OnChanged(node.index, index);
 
                 this.index = index;
             }
@@ -362,10 +377,23 @@ namespace ZG
             int2 destination = (int2)math.round(source);
             if(math.any(destination != this.index))
             {
-                if (onChanged != null)
-                    onChanged.Invoke(source);
+                __OnChanged(source, destination);
 
                 this.index = destination;
+            }
+        }
+
+        private void __OnChanged(in float2 indexFloat, in int2 indexInt)
+        {
+            if (onChanged != null)
+                onChanged.Invoke(indexFloat);
+
+            if (__submitHandlers != null)
+            {
+                int index = __ToSubmitIndex(indexInt);
+                var submitHandler = index > 0 && index < __submitHandlers.Count ? __submitHandlers[index] : null;
+                if (submitHandler != null)
+                    submitHandler.OnSubmit(new BaseEventData(EventSystem.current));
             }
         }
 
@@ -427,30 +455,33 @@ namespace ZG
         }
 
         [BurstCompile]
-        private static unsafe void __Execute(
-            float deltaTime,
-            Data* data)
+        private static unsafe void __Execute(float deltaTime, Data* data)
         {
-            bool isExistsInfo = data->info.isVail;
-            int2 source = (int2)math.round(data->node.index), destination = isExistsInfo ? data->info.index : source;
+            int2 source = (int2)math.round(data->node.index),
+                destination = data->info.index;
             float2 length = data->instance.length,
                      cellLength = data->instance.cellLength,
                      offset = data->instance.GetOffset(cellLength),
                      distance = data->node.normalizedPosition * length - destination * cellLength + offset;
 
-            float t = math.pow(data->instance.decelerationRate, deltaTime);
-            //t = t * t* (3.0f - (2.0f * t));
-            data->node.velocity = math.lerp(data->node.velocity, distance / data->instance.elasticity, t);
+            if (data->info.isVail)
+            {
+                float t = math.pow(data->instance.decelerationRate, deltaTime);
+                //t = t * t* (3.0f - (2.0f * t));
+                data->node.velocity = math.lerp(data->node.velocity, distance / data->instance.elasticity, t);
 
-            //velocity *= math.pow(instance.decelerationRate, deltaTime);
+                //velocity *= math.pow(instance.decelerationRate, deltaTime);
 
-            //node.velocity = velocity;
+                //node.velocity = velocity;
 
-            //velocity += distance / instance.elasticity;
+                //velocity += distance / instance.elasticity;
 
-            data->node.normalizedPosition -= math.select(float2.zero, data->node.velocity / length, length > math.FLT_MIN_NORMAL) * deltaTime;
+                data->node.normalizedPosition -= math.select(float2.zero, data->node.velocity / length, length > math.FLT_MIN_NORMAL) * deltaTime;
 
-            data->node.index = data->instance.GetIndex(data->node.normalizedPosition, length, cellLength, offset);
+                data->node.index = data->instance.GetIndex(data->node.normalizedPosition, length, cellLength, offset);
+            }
+            else
+                data->node.normalizedPosition -= math.select(float2.zero, distance / length, length > math.FLT_MIN_NORMAL);
 
             int2 target = (int2)math.round(data->node.index);
 
@@ -458,7 +489,7 @@ namespace ZG
             if (!math.all(source == target))
                 flag |= ScrollRectEvent.Flag.Changed;
 
-            if (isExistsInfo && math.all(destination == target))
+            if (data->info.isVail && math.all(destination == target))
             {
                 flag |= ScrollRectEvent.Flag.SameAsInfo;
 
