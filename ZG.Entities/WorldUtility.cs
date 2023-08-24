@@ -48,7 +48,7 @@ namespace ZG
         }
     }
 
-    [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
+    /*[AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true)]
     public class CollectSystemsAttribute : Attribute
     {
         public MethodInfo method;
@@ -72,7 +72,7 @@ namespace ZG
             if (Array.IndexOf(types, typeof(IEnumerable<Type>)) == -1)
                 throw new InvalidOperationException();
         }
-    }
+    }*/
 
     /*[UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true)]
     public partial class BeginTimeSystemGroupEntityCommandSystem : EntityCommandSystemHybrid
@@ -241,7 +241,7 @@ namespace ZG
 
             List<Type> groupTypes;
             IEnumerable<ForceUpdateInGroupAttribute> forceUpdateInGroupAttributes;
-            IEnumerable<CollectSystemsAttribute> collectSystemsAttributes;
+            //IEnumerable<CollectSystemsAttribute> collectSystemsAttributes;
             foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 forceUpdateInGroupAttributes = assembly.GetCustomAttributes<ForceUpdateInGroupAttribute>();
@@ -263,12 +263,12 @@ namespace ZG
                     }
                 }
 
-                collectSystemsAttributes = assembly.GetCustomAttributes<CollectSystemsAttribute>();
+                /*collectSystemsAttributes = assembly.GetCustomAttributes<CollectSystemsAttribute>();
                 if (collectSystemsAttributes != null)
                 {
                     foreach (var collectSystemsAttribute in collectSystemsAttributes)
                         systemTypes.AddRange((IEnumerable<Type>)collectSystemsAttribute.method.Invoke(null, null));
-                }
+                }*/
 
             }
 

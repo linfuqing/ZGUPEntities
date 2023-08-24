@@ -3,11 +3,11 @@ using System.Reflection;
 using System.Collections.Generic;
 using Unity.Entities;
 using Unity.Collections;
-using System.Runtime.InteropServices;
 using Unity.Burst;
 using Unity.Collections.LowLevel.Unsafe;
+using Unity.Burst.Intrinsics;
 
-[assembly: ZG.CollectSystems(typeof(ZG.EntityObjects), "CollectSystemTypes")]
+//[assembly: ZG.CollectSystems(typeof(ZG.EntityObjects), "CollectSystemTypes")]
 
 namespace ZG
 {
@@ -18,7 +18,7 @@ namespace ZG
 
     public struct EntityObjects : IComponentData
     {
-        public struct Types
+        /*public struct Types
         {
             public Type concreteType;
             public Type systemType;
@@ -83,29 +83,91 @@ namespace ZG
                 return types;
 
             return default;
-        }
+        }*/
 
         internal static void Set(in Entity entity, EntityComponentAssigner assigner, Type type, object value, World world)
         {
-            var systemType = GetTypes(type).systemType;
+            var target = new EntityObject(value);
+            //target.Retain();
+
+            var compoentType = EntityObjectUtility.GetType(type);
+            if (compoentType == null)
+                world.EntityManager.SetComponentObject(entity, type, value);
+            else
+            {
+                var typeIndex = TypeManager.GetTypeIndex(compoentType);
+
+                assigner.SetComponentData(typeIndex, entity, target);
+            }
+
+            /*var systemType = GetTypes(type).systemType;
             System system = systemType == null ? null : world.GetExistingSystemManaged(systemType) as System;
             if (system == null)
                 world.EntityManager.SetComponentObject(entity, type, value);
             else
-                system.SetObject(entity, assigner, value);
+                system.SetObject(entity, assigner, value);*/
+        }
+    }
+
+    public struct EntityObject : IEquatable<EntityObject>
+    {
+        private struct Instance
+        {
+            public object value;
+        }
+
+        private unsafe void* __ptr;
+
+        private ulong __gcHandle;
+
+        private int __hashCode;
+
+        public unsafe bool isCreated
+        {
+            get => __ptr != null;
+        }
+
+        public unsafe object value
+        {
+            get
+            {
+                UnityEngine.Assertions.Assert.IsTrue(isCreated);
+
+                return UnsafeUtility.AsRef<Instance>(__ptr).value;
+            }
+        }
+
+        public unsafe EntityObject(object value)
+        {
+            UnityEngine.Assertions.Assert.AreNotEqual(default, value);
+
+            Instance instance;
+            instance.value = value;
+
+            __ptr = (byte*)UnsafeUtility.PinGCObjectAndGetAddress(instance, out __gcHandle) + TypeManager.ObjectOffset;
+
+            __hashCode = value.GetHashCode();
+        }
+
+        public void Dispose()
+        {
+            UnsafeUtility.ReleaseGCObject(__gcHandle);
+        }
+
+        public unsafe bool Equals(EntityObject other)
+        {
+            return UnsafeUtility.MemCmp(__ptr, other.__ptr, UnsafeUtility.SizeOf<Instance>()) == 0;
+        }
+
+        public override int GetHashCode()
+        {
+            return __hashCode;
         }
     }
 
     public struct EntityObject<T> : ICleanupComponentData, IEntityObject, IDisposable, IEquatable<EntityObject<T>>
     {
-        private struct Instance
-        {
-            public static readonly SharedStatic<long> Size = SharedStatic<long>.GetOrCreate<Instance>();
-
-            public T value;
-        }
-
-        [UpdateInGroup(typeof(EntityObjectSystemGroup)), RequireMatchingQueriesForUpdate, AlwaysSynchronizeSystem]
+        /*[UpdateInGroup(typeof(EntityObjectSystemGroup)), RequireMatchingQueriesForUpdate, AlwaysSynchronizeSystem]
         private class System : EntityObjects.System
         {
             private EntityQuery __group;
@@ -140,54 +202,41 @@ namespace ZG
 
                 EntityManager.RemoveComponent<EntityObject<T>>(__group);
             }
-        }
+        }*/
 
         public static readonly EntityObject<T> Null = default;
 
-        private unsafe void* __ptr;
+        private EntityObject __instance;
 
-        private ulong __gcHandle;
-
-        private int __hashCode;
-
-        internal static Type systemType
+        /*internal static Type systemType
         {
             get
             {
                 return typeof(System);
             }
-        }
+        }*/
 
-        public unsafe bool isCreated
+        public bool isCreated
         {
-            get => __ptr != null;
+            get => __instance.isCreated;
         }
 
-        public unsafe T value
+        public T value
         {
             get
             {
-                return UnsafeUtility.AsRef<Instance>(__ptr).value;
+                return (T)__instance.value;
             }
         }
 
         public unsafe EntityObject(T value)
         {
-            UnityEngine.Assertions.Assert.AreNotEqual(default, value);
-
-            Instance.Size.Data = UnsafeUtility.SizeOf<Instance>();
-
-            Instance instance;
-            instance.value = value;
-
-            __ptr = (byte*)UnsafeUtility.PinGCObjectAndGetAddress(instance, out __gcHandle) + TypeManager.ObjectOffset;
-
-            __hashCode = value.GetHashCode();
+            __instance = new EntityObject(value);
         }
 
         public void Dispose()
         {
-            UnsafeUtility.ReleaseGCObject(__gcHandle);
+            __instance.Dispose();
         }
 
         public void SetTo(Entity entity, EntityManager entityManager)
@@ -207,12 +256,12 @@ namespace ZG
 
         public unsafe bool Equals(EntityObject<T> other)
         {
-            return UnsafeUtility.MemCmp(__ptr, other.__ptr, Instance.Size.Data) == 0;
+            return __instance.Equals(other.__instance);
         }
 
         public override int GetHashCode()
         {
-            return __hashCode;
+            return __instance.GetHashCode();
         }
     }
 
@@ -220,12 +269,12 @@ namespace ZG
     public class RegisterEntityObjectAttribute : RegisterGenericComponentTypeAttribute
     {
         public Type objectType;
-        public Type systemType;
+        //public Type systemType;
 
         public RegisterEntityObjectAttribute(Type type) : base(typeof(EntityObject<>).MakeGenericType(type))
         {
             objectType = type;
-            systemType = (Type)ConcreteType.GetProperty("systemType", BindingFlags.Static | BindingFlags.NonPublic).GetMethod.Invoke(null, null);
+            //systemType = (Type)ConcreteType.GetProperty("systemType", BindingFlags.Static | BindingFlags.NonPublic).GetMethod.Invoke(null, null);
         }
     }
 
@@ -235,6 +284,141 @@ namespace ZG
         public EntityObjectSystemGroup()
         {
             //UseLegacySortOrder = false;
+        }
+    }
+
+    [UpdateInGroup(typeof(InitializationSystemGroup))]
+    public struct EntityObjectSystem : ISystem
+    {
+        [BurstCompile]
+        private struct DisposeAll : IJobChunk
+        {
+            public DynamicComponentTypeHandle instanceType;
+
+            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+            {
+                var targets = chunk.GetDynamicComponentDataArrayReinterpret<EntityObject>(ref instanceType, UnsafeUtility.SizeOf<EntityObject>());
+                foreach (var target in targets)
+                    target.Dispose();
+            }
+        }
+
+        private struct Group
+        {
+            private EntityQuery __entityQuery;
+
+            private DynamicComponentTypeHandle __instanceType;
+
+            public Group(in TypeIndex typeIndex, ref SystemState state)
+            {
+                ComponentType componentType;
+                componentType.AccessModeType = ComponentType.AccessMode.ReadOnly;
+                componentType.TypeIndex = typeIndex;
+                var componentTypes = new NativeList<ComponentType>(Allocator.Temp)
+                {
+                    componentType
+                };
+
+                using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                    __entityQuery = builder
+                        .WithAll(ref componentTypes)
+                        .WithNone<EntityObjects>()
+                        .Build(ref state);
+
+                __instanceType = state.GetDynamicComponentTypeHandle(componentType);
+            }
+
+            public void Apply(ref SystemState state)
+            {
+                if (__entityQuery.IsEmpty)
+                    return;
+
+                DisposeAll dispose;
+                dispose.instanceType = __instanceType.UpdateAsRef(ref state);
+                dispose.RunByRef(__entityQuery);
+
+                ComponentType componentType;
+                componentType.AccessModeType = ComponentType.AccessMode.ReadWrite;
+                componentType.TypeIndex = __instanceType.GetTypeIndex();
+                state.EntityManager.RemoveComponent(__entityQuery, componentType);
+            }
+        }
+
+        private UnsafeHashMap<TypeIndex, Group> __groups;
+
+        public void OnCreate(ref SystemState state)
+        {
+            var types = EntityObjectUtility.types;
+            __groups = new UnsafeHashMap<TypeIndex, Group>(types.Count, Allocator.Persistent);
+
+            TypeIndex typeIndex;
+            foreach(var pair in EntityObjectUtility.types)
+            {
+                typeIndex = TypeManager.GetTypeIndex(pair.Value);
+
+                __groups[typeIndex] = new Group(typeIndex, ref state);
+            }
+        }
+
+        [BurstCompile]
+        public void OnDestroy(ref SystemState state)
+        {
+        }
+
+        [BurstCompile]
+        public void OnUpdate(ref SystemState state)
+        {
+            state.CompleteDependency();
+
+            foreach(var group in __groups)
+            {
+                group.Value.Apply(ref state);
+            }
+        }
+    }
+
+    public static class EntityObjectUtility
+    {
+        private static Dictionary<Type, Type> __types;
+
+        public static IReadOnlyDictionary<Type, Type> types
+        {
+            get
+            {
+                if (__types == null)
+                    __types = CollectTypes();
+
+                return __types;
+            }
+        }
+
+        public static Dictionary<Type, Type> CollectTypes()
+        {
+            var results = new Dictionary<Type, Type>();
+
+            IEnumerable<RegisterEntityObjectAttribute> registerEntityObjectAttributes;
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                registerEntityObjectAttributes = assembly.GetCustomAttributes<RegisterEntityObjectAttribute>();
+                if (registerEntityObjectAttributes != null)
+                {
+                    foreach (var registerEntityObjectAttribute in registerEntityObjectAttributes)
+                        results[registerEntityObjectAttribute.objectType] = registerEntityObjectAttribute.ConcreteType;
+                }
+            }
+
+            return results;
+        }
+
+        public static Type GetType(Type type)
+        {
+            if (__types == null)
+                __types = CollectTypes();
+
+            if (__types.TryGetValue(type, out var result))
+                return result;
+
+            return null;
         }
     }
 

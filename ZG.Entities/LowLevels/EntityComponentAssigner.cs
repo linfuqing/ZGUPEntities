@@ -1719,6 +1719,13 @@ namespace ZG
             return container.TryGetBuffer(entity, index, ref value, indexOffset);
         }
 
+        public void SetComponentData<T>(in TypeIndex typeIndex, in Entity entity, in T value) where T : struct
+        {
+            CompleteDependency();
+
+            container.SetComponentData(typeIndex, entity, value);
+        }
+
         public void SetComponentData<T>(in Entity entity, in T value) where T : struct, IComponentData
         {
             CompleteDependency();

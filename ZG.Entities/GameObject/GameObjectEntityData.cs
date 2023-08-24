@@ -263,7 +263,7 @@ namespace ZG
                     ComponentType componentType;
                     foreach (var type in data.__componentMap.Keys)
                     {
-                        componentType = EntityObjects.GetTypes(type).concreteType ?? type;
+                        componentType = EntityObjectUtility.GetType(type) ?? type;
                         if (isPrefab && componentType.IsCleanupComponent)
                         {
                             if (__systemStateComponentTypes == null)

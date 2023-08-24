@@ -88,5 +88,10 @@ namespace Unity.Entities
 
             return ref value;
         }
+
+        public static TypeIndex GetTypeIndex(this in DynamicComponentTypeHandle value)
+        {
+            return value.m_TypeIndex;
+        }
     }
 }
