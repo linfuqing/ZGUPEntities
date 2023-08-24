@@ -287,7 +287,7 @@ namespace ZG
         }
     }
 
-    [UpdateInGroup(typeof(InitializationSystemGroup))]
+    [BurstCompile, UpdateInGroup(typeof(InitializationSystemGroup))]
     public struct EntityObjectSystem : ISystem
     {
         [BurstCompile]

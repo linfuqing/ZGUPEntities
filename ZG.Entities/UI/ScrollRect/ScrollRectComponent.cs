@@ -1,16 +1,13 @@
 ﻿using System;
-using Unity.Entities;
+using Unity.Burst;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-[assembly: ZG.RegisterEntityObject(typeof(ZG.ScrollRectComponent))]
-
 namespace ZG
 {
-    [Serializable]
-    public struct ScrollRectData : IComponentData
+    public struct ScrollRectData
     {
         public float decelerationRate;
         public float elasticity;
@@ -65,22 +62,20 @@ namespace ZG
         }
     }
 
-    [Serializable]
-    public struct ScrollRectInfo : IComponentData
+    public struct ScrollRectInfo
     {
+        public bool isVail;
         public int2 index;
     }
     
-    [Serializable]
-    public struct ScrollRectNode : IComponentData
+    public struct ScrollRectNode
     {
         public float2 velocity;
         public float2 normalizedPosition;
         public float2 index;
     }
 
-    [Serializable]
-    public struct ScrollRectEvent : IComponentData
+    public struct ScrollRectEvent
     {
         [Flags]
         public enum Flag
@@ -94,17 +89,16 @@ namespace ZG
         public float2 index;
     }
 
-    [EntityComponent]
-    [EntityComponent(typeof(ScrollRectData))]
-    [EntityComponent(typeof(ScrollRectInfo))]
-    [EntityComponent(typeof(ScrollRectEvent))]
-    public class ScrollRectComponent : EntityProxyComponent, IBeginDragHandler, IEndDragHandler, IDragHandler, IEntityComponent
+    public class ScrollRectComponent : MonoBehaviour, IBeginDragHandler, IEndDragHandler, IDragHandler
     {
         public event Action<float2> onChanged;
 
         private int __version = 0;
 
         private ScrollRectData __data;
+        private ScrollRectInfo __info;
+        private ScrollRectNode? __node;
+        private ScrollRectEvent __event;
 
         private ScrollRect __scrollRect;
         
@@ -247,7 +241,7 @@ namespace ZG
         {
             __data = data;
 
-            this.SetComponentData(__data);
+            //this.SetComponentData(__data);
 
             __EnableNode(float2.zero);
 
@@ -257,18 +251,37 @@ namespace ZG
         public virtual bool MoveTo(int2 index)
         {
             ScrollRectInfo info;
+            info.isVail = true;
             info.index = index;
-            this.AddComponentData(info);
+            __info = info;
+            //this.AddComponentData(info);
 
             return true;
         }
 
-        protected void OnEnable()
+        protected void Start()
         {
-            if (gameObjectEntity.isCreated)
-                Canvas.willRenderCanvases += __UpdateData;
+            __event.version = 0;
+            __event.flag = 0;
+            __event.index = math.int2(-1, -1);
         }
-        
+
+        protected void Update()
+        {
+            if (__node != null)
+            {
+                __data = data;
+
+                var node = __node.Value;
+                if (ScrollRectUtility.Execute(__version, Time.deltaTime, __data, __info, ref node, ref __event))
+                    _Set(__event);
+
+                scrollRect.normalizedPosition = node.normalizedPosition;
+
+                __node = node;
+            }
+        }
+
         internal void _Set(ScrollRectEvent result)
         {
             if (__version == result.version)
@@ -285,7 +298,7 @@ namespace ZG
             }
 
             if ((result.flag & ScrollRectEvent.Flag.SameAsInfo) == ScrollRectEvent.Flag.SameAsInfo)
-                this.RemoveComponent<ScrollRectInfo>();
+                __info.isVail = false;//this.RemoveComponent<ScrollRectInfo>();
         }
 
         private bool __EnableNode(float2 normalizedPosition)
@@ -300,7 +313,8 @@ namespace ZG
             node.normalizedPosition = normalizedPosition;// scrollRect.normalizedPosition;
             node.index = data.GetIndex(normalizedPosition);
 
-            this.AddComponentData(node);
+            __node = node;
+            //this.AddComponentData(node);
 
             int2 index = (int2)math.round(node.index);
             if (math.any(index != this.index))
@@ -316,16 +330,17 @@ namespace ZG
 
         private void __DisableNode()
         {
-            this.RemoveComponent<ScrollRectNode>();
+            __node = null;
+            //this.RemoveComponent<ScrollRectNode>();
         }
 
-        private void __UpdateData()
+        /*private void __UpdateData()
         {
             Canvas.willRenderCanvases -= __UpdateData;
 
             if(this != null)
                 UpdateData();
-        }
+        }*/
 
         void IBeginDragHandler.OnBeginDrag(PointerEventData eventData)
         {
@@ -354,13 +369,110 @@ namespace ZG
             }
         }
 
-        void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
+        /*void IEntityComponent.Init(in Entity entity, EntityComponentAssigner assigner)
         {
             ScrollRectEvent result;
             result.version = 0;
             result.flag = 0;
             result.index = math.int2(-1, -1);
             assigner.SetComponentData(entity, result);
+        }*/
+    }
+
+    [BurstCompile]
+    public static class ScrollRectUtility
+    {
+        private struct Data
+        {
+            public ScrollRectData instance;
+            public ScrollRectInfo info;
+            public ScrollRectNode node;
+            public ScrollRectEvent result;
+
+            public Data(
+                in ScrollRectData instance,
+                in ScrollRectInfo info,
+                ref ScrollRectNode node,
+                ref ScrollRectEvent result)
+            {
+                this.instance = instance;
+                this.info = info;
+                this.node = node;
+                this.result = result;
+            }
+        }
+
+        public static unsafe bool Execute(
+            int version, 
+            float deltaTime,
+            in ScrollRectData instance,
+            in ScrollRectInfo info,
+            ref ScrollRectNode node,
+            ref ScrollRectEvent result)
+        {
+            var data = new Data(instance, info, ref node, ref result);
+
+            __Execute(deltaTime, (Data*)Unity.Collections.LowLevel.Unsafe.UnsafeUtility.AddressOf(ref data));
+
+            node = data.node;
+
+            if (version != data.result.version)
+            {
+                result = data.result;
+
+                return true;
+            }
+
+            return false;
+        }
+
+        [BurstCompile]
+        private static unsafe void __Execute(
+            float deltaTime,
+            Data* data)
+        {
+            bool isExistsInfo = data->info.isVail;
+            int2 source = (int2)math.round(data->node.index), destination = isExistsInfo ? data->info.index : source;
+            float2 length = data->instance.length,
+                     cellLength = data->instance.cellLength,
+                     offset = data->instance.GetOffset(cellLength),
+                     distance = data->node.normalizedPosition * length - destination * cellLength + offset;
+
+            float t = math.pow(data->instance.decelerationRate, deltaTime);
+            //t = t * t* (3.0f - (2.0f * t));
+            data->node.velocity = math.lerp(data->node.velocity, distance / data->instance.elasticity, t);
+
+            //velocity *= math.pow(instance.decelerationRate, deltaTime);
+
+            //node.velocity = velocity;
+
+            //velocity += distance / instance.elasticity;
+
+            data->node.normalizedPosition -= math.select(float2.zero, data->node.velocity / length, length > math.FLT_MIN_NORMAL) * deltaTime;
+
+            data->node.index = data->instance.GetIndex(data->node.normalizedPosition, length, cellLength, offset);
+
+            int2 target = (int2)math.round(data->node.index);
+
+            ScrollRectEvent.Flag flag = 0;
+            if (!math.all(source == target))
+                flag |= ScrollRectEvent.Flag.Changed;
+
+            if (isExistsInfo && math.all(destination == target))
+            {
+                flag |= ScrollRectEvent.Flag.SameAsInfo;
+
+                data->node.velocity = float2.zero;
+            }
+
+            //nodes[index] = node;
+
+            if (flag != 0)
+            {
+                ++data->result.version;
+                data->result.flag = flag;
+                data->result.index = data->node.index;
+            }
         }
     }
 }

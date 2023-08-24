@@ -1,4 +1,4 @@
-using Unity.Entities;
+/*using Unity.Entities;
 using Unity.Collections;
 using Unity.Mathematics;
 using Unity.Jobs;
@@ -260,4 +260,4 @@ namespace ZG
             invoke.RunByRefWithoutJobs(__eventGroup);
         }
     }
-}
+}*/
