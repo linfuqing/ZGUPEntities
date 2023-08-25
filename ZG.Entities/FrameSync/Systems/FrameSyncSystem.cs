@@ -165,21 +165,21 @@ namespace ZG
                                 if (frameArray.count > 0)
                                 {
                                     frame = frames[frameArray.startIndex + frameArray.count - 1];
-                                    frameIndex = frameCallback.frameIndex + frame.destinationIndex - frame.sourceIndex;
-                                    frameIndex = math.min(frameIndex, frame.destinationIndex/*this.frameIndex*/ + maxFrameCount);
-                                    frameIndex = math.max(frameIndex, frame.destinationIndex + 1);
+                                    /*frameIndex = frameCallback.frameIndex + frame.destinationIndex - frame.sourceIndex;
+                                    frameIndex = math.min(frameIndex, frame.destinationIndex + maxFrameCount);
+                                    frameIndex = math.max(frameIndex, frame.destinationIndex + 1);*/
+                                    frameIndex = math.max(frameCallback.frameIndex, frame.destinationIndex + 1);
                                 }
                                 else
                                 {
-                                    frameIndex = frameCallback.frameIndex + frameArray.oldDestinationIndex - frameArray.oldSourceIndex;
+                                    /*frameIndex = frameCallback.frameIndex + frameArray.oldDestinationIndex - frameArray.oldSourceIndex;
                                     frameIndex = math.min(frameIndex, frameArray.oldDestinationIndex + maxFrameCount);
-                                    frameIndex = math.max(frameIndex, frameArray.oldDestinationIndex + 1);
+                                    frameIndex = math.max(frameIndex, frameArray.oldDestinationIndex + 1);*/
+                                    frameIndex = math.max(frameCallback.frameIndex, frameArray.oldDestinationIndex + 1);
                                 }
 
-                                if(frameCallback.frameIndex < this.frameIndex + (maxFrameCount >> 1))
-                                    frameIndex = math.max(frameIndex, frameCallback.frameIndex);
-
-                                //frameIndex = math.max(frameIndex, math.min(frameCallback.frameIndex, this.frameIndex + (maxFrameCount >> 1)));
+                                /*if(frameCallback.frameIndex < this.frameIndex + (maxFrameCount >> 1))
+                                    frameIndex = math.max(frameIndex, frameCallback.frameIndex);*/
                             }
 
                             frameIndex = math.max(frameIndex, this.frameIndex);
@@ -348,31 +348,37 @@ namespace ZG
             }
         }*/
 
-        public const uint maxFrameCount = 4;
+        public const uint MAX_FRAME_COUNT = 4;
+
         private EntityQuery __rollbackFrameGroup;
         private EntityQuery __group;
-        //private EntityCommandPool<Entity> __entityManager;
 
+        private EntityTypeHandle __entityType;
+        private BufferTypeHandle<SyncFrameCallback> __frameCallbackType;
+        private BufferTypeHandle<SyncFrameEvent> __frameEventType;
+        private BufferTypeHandle<SyncFrame> __frameType;
+        private BufferTypeHandle<SyncFrameArray> __frameArrayType;
+
+        [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
             __rollbackFrameGroup = RollbackFrame.GetEntityQuery(ref state);
 
-            __group = state.GetEntityQuery(
-                new EntityQueryDesc()
-                {
-                    All = new ComponentType[]
-                    {
-                        ComponentType.ReadWrite<SyncFrameCallback>(),
-                        //ComponentType.ReadWrite<SyncFrameEvent>(),
-                        ComponentType.ReadWrite<SyncFrame>(),
-                        ComponentType.ReadWrite<SyncFrameArray>()
-                    },
-                    Options = EntityQueryOptions.IncludeDisabledEntities
-                });
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __group = builder
+                    .WithAllRW<SyncFrameCallback>()
+                    .WithAllRW<SyncFrame, SyncFrameArray>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
 
-            //__entityManager = state.World.GetOrCreateSystemManaged<SyncFrameEventSystem>().pool;
+            __entityType = state.GetEntityTypeHandle();
+            __frameCallbackType = state.GetBufferTypeHandle<SyncFrameCallback>();
+            __frameEventType = state.GetBufferTypeHandle<SyncFrameEvent>();
+            __frameType = state.GetBufferTypeHandle<SyncFrame>();
+            __frameArrayType = state.GetBufferTypeHandle<SyncFrameArray>();
         }
 
+        [BurstCompile]
         public void OnDestroy(ref SystemState state)
         {
 
@@ -381,22 +387,15 @@ namespace ZG
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            //var entityManager = __entityManager.Create();
-
-            var callbackType = state.GetBufferTypeHandle<SyncFrameCallback>();
-
             CallEx call;
             call.frameIndex = __rollbackFrameGroup.GetSingleton<RollbackFrame>().index + 1;
-            call.maxFrameCount = maxFrameCount;
-            call.entityType = state.GetEntityTypeHandle();
-            call.frameCallbackType = callbackType;
-            call.frameEventType = state.GetBufferTypeHandle<SyncFrameEvent>();
-            call.frameType = state.GetBufferTypeHandle<SyncFrame>();
-            call.frameArrayType = state.GetBufferTypeHandle<SyncFrameArray>();
-            //call.entityManager = entityManager.parallelWriter;
-            var jobHandle = call.ScheduleParallel(__group, state.Dependency);
-
-            //entityManager.AddJobHandleForProducer<CallEx>(jobHandle);
+            call.maxFrameCount = MAX_FRAME_COUNT;
+            call.entityType = __entityType.UpdateAsRef(ref state);
+            call.frameCallbackType = __frameCallbackType.UpdateAsRef(ref state);
+            call.frameEventType = __frameEventType.UpdateAsRef(ref state);
+            call.frameType = __frameType.UpdateAsRef(ref state);
+            call.frameArrayType = __frameArrayType.UpdateAsRef(ref state);
+            var jobHandle = call.ScheduleParallelByRef(__group, state.Dependency);
 
             state.Dependency = jobHandle;
         }

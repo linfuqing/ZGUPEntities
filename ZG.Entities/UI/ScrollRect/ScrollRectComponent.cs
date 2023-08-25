@@ -391,7 +391,7 @@ namespace ZG
             if (__submitHandlers != null)
             {
                 int index = __ToSubmitIndex(indexInt);
-                var submitHandler = index > 0 && index < __submitHandlers.Count ? __submitHandlers[index] : null;
+                var submitHandler = index >= 0 && index < __submitHandlers.Count ? __submitHandlers[index] : null;
                 if (submitHandler != null)
                     submitHandler.OnSubmit(new BaseEventData(EventSystem.current));
             }
