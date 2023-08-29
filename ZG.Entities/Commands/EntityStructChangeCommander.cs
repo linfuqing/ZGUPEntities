@@ -424,17 +424,13 @@ namespace ZG
             __componentStates.Clear();
         }
 
-        public void Apply(ref SystemState systemState)
+        public bool Apply(ref SystemState systemState)
         {
             NativeParallelMultiHashMap<int, Entity> addComponentCommanders;
             NativeParallelMultiHashMap<int, Entity> removeComponentCommanders;
 
-            if (__componentStates.IsEmpty)
-            {
-                addComponentCommanders = default;
-                removeComponentCommanders = default;
-            }
-            else
+            bool result = !__componentStates.IsEmpty;
+            if (result)
             {
                 addComponentCommanders = new NativeParallelMultiHashMap<int, Entity>(1, Allocator.Temp);
                 removeComponentCommanders = new NativeParallelMultiHashMap<int, Entity>(1, Allocator.Temp);
@@ -444,6 +440,11 @@ namespace ZG
                 init.addComponentCommanders = addComponentCommanders;
                 init.removeComponentCommanders = removeComponentCommanders;
                 init.Execute();
+            }
+            else
+            {
+                addComponentCommanders = default;
+                removeComponentCommanders = default;
             }
 
             if (addComponentCommanders.IsCreated)
@@ -479,6 +480,8 @@ namespace ZG
                     removeComponentCommanders.Dispose();
                 }
             }
+
+            return result;
         }
 
         public void Playback(ref SystemState systemState)
@@ -486,88 +489,6 @@ namespace ZG
             Apply(ref systemState);
 
             __componentStates.Clear();
-        }
-    }
-
-    public struct EntitySharedComponentCommander
-    {
-        private struct SetSharedComponentCommander
-        {
-            public EntitySharedComponentAssigner assigner;
-
-#if ENABLE_PROFILER
-            public ProfilerMarker setSharedComponentProfilerMarker;
-#endif
-            public void Playback(ref SystemState systemState)
-            {
-#if ENABLE_PROFILER
-                using (setSharedComponentProfilerMarker.Auto())
-#endif
-                    assigner.Playback(systemState.EntityManager);
-            }
-        }
-
-        private EntitySharedComponentAssigner __assigner;
-        private EntityStructChangeCommander __structChangeCommander;
-
-#if ENABLE_PROFILER
-        private ProfilerMarker __setSharedComponentProfilerMarker;
-#endif
-
-        public EntitySharedComponentCommander(Allocator allocator)
-        {
-            __assigner = new EntitySharedComponentAssigner(allocator);
-            __structChangeCommander = new EntityStructChangeCommander(allocator);
-
-#if ENABLE_PROFILER
-            __setSharedComponentProfilerMarker = new ProfilerMarker("SetSharedComponents");
-#endif
-        }
-
-        public void Dispose()
-        {
-            __assigner.Dispose();
-            __structChangeCommander.Dispose();
-        }
-
-        public bool IsAddOrRemoveComponent(in Entity entity, int componentTypeIndex, out bool status) => __structChangeCommander.IsAddOrRemoveComponent(entity, componentTypeIndex, out status);
-
-        public bool AddComponent<T>(in Entity entity) => __structChangeCommander.AddComponent<T>(entity);
-
-        public bool RemoveComponent<T>(in Entity entity)
-        {
-            if (__structChangeCommander.RemoveComponent<T>(entity))
-            {
-                __assigner.RemoveComponent<T>(entity);
-
-                return true;
-            }
-
-            return false;
-        }
-
-        public bool TryGetSharedComponentData<T>(in Entity entity, ref T value) where T : struct, ISharedComponentData => __assigner.TryGetSharedComponentData<T>(entity, ref value);
-
-        public void SetSharedComponentData<T>(in Entity entity, in T value) where T : struct, ISharedComponentData
-        {
-            __assigner.SetSharedComponentData(entity, value);
-        }
-
-        public void AddSharedComponentData<T>(in Entity entity, in T value) where T : struct, ISharedComponentData
-        {
-            AddComponent<T>(entity);
-
-            __assigner.SetSharedComponentData(entity, value);
-        }
-
-        public void Playback(ref SystemState systemState)
-        {
-            __structChangeCommander.Playback(ref systemState);
-
-#if ENABLE_PROFILER
-            using (__setSharedComponentProfilerMarker.Auto())
-#endif
-                __assigner.Playback(systemState.EntityManager);
         }
     }
 }

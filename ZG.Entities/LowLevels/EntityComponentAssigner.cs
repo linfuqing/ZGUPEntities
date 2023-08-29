@@ -9,6 +9,10 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
+using UnityEngine;
+using System;
+using NUnit.Framework;
+using UnityEngine.UIElements;
 
 namespace ZG
 {
@@ -29,7 +33,7 @@ namespace ZG
             public SharedHashMap<Entity, Entity>.Reader wrapper;
             
             [ReadOnly]
-            public UnsafeParallelHashMap<int, int> typeHandleIndicess;
+            public UnsafeHashMap<int, int> typeHandleIndicess;
 
             [ReadOnly]
             public ReadOnly container;
@@ -63,11 +67,14 @@ namespace ZG
             [ReadOnly]
             public NativeArray<int> counts;
 
-            public NativeArray<int> bufferSizeAndTypeCount;
+            [NativeDisableUnsafePtrRestriction]
+            public unsafe int* bufferSize;
+            [NativeDisableUnsafePtrRestriction]
+            public unsafe int* typeCount;
 
             public Writer writer;
 
-            public void Execute()
+            public unsafe void Execute()
             {
                 int elementCount, typeCount, bufferSize;
                 switch (counterLength)
@@ -105,8 +112,8 @@ namespace ZG
 
                 //int bufferSize = elementSize * elementCount;
 
-                bufferSize = bufferSizeAndTypeCount[0] += bufferSize;
-                typeCount = bufferSizeAndTypeCount[1] += typeCount;
+                bufferSize = *this.bufferSize += bufferSize;
+                typeCount = *this.typeCount += typeCount;
 
                 writer._Reset(bufferSize, typeCount);
             }
@@ -430,183 +437,70 @@ namespace ZG
             }
         }
 
-        internal struct Data
+        internal struct Info
         {
-            public UnsafeBufferEx buffer;
+            public UnsafeBuffer buffer;
             public UnsafeParallelMultiHashMap<Entity, TypeIndex> entityTypes;
             public UnsafeParallelMultiHashMap<Key, Value> values;
 
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-            internal AtomicSafetyHandle m_Safety;
+            /*#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                        internal AtomicSafetyHandle m_Safety;
 
-            internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<Data>();
-#endif
+                        //internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<Data>();
+            #endif*/
 
             public AllocatorManager.AllocatorHandle allocator => buffer.allocator;
 
-            public Data(AllocatorManager.AllocatorHandle allocator)
+            public Info(in AllocatorManager.AllocatorHandle allocator)
             {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                m_Safety =  CollectionHelper.CreateSafetyHandle(allocator);
-
-                CollectionHelper.SetStaticSafetyId<EntityComponentAssigner>(ref m_Safety, ref StaticSafetyID.Data);
-                AtomicSafetyHandle.SetBumpSecondaryVersionOnScheduleWrite(m_Safety, true);
-#endif
-
-                buffer = new UnsafeBufferEx(allocator, 1);
+                buffer = new UnsafeBuffer(0, 1, allocator);
                 entityTypes = new UnsafeParallelMultiHashMap<Entity, TypeIndex>(1, allocator);
                 values = new UnsafeParallelMultiHashMap<Key, Value>(1, allocator);
             }
 
             public void Dispose()
             {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                AtomicSafetyHandle.CheckDeallocateAndThrow(m_Safety);
-                AtomicSafetyHandle.Release(m_Safety);
-#endif
-
                 buffer.Dispose();
                 entityTypes.Dispose();
                 values.Dispose();
             }
 
-            public void Set(in Key key, in Command command)
-            {
-                Value value;
-                value.index = values.CountValuesForKey(key);
-                value.command = command;
-
-                if (value.index == 0)
-                    entityTypes.Add(key.entity, key.typeIndex);
-                //Fail In Enable Or Disable
-                /*else
-                {
-                    if (command.type == Command.Type.ComponentData)
-                    {
-                        values.Remove(key);
-
-                        value.index = 0;
-                    }
-                }*/
-
-                values.Add(key, value);
-            }
-        }
-
-        [NativeContainer]
-        internal struct Container
-        {
-            private UnsafeBufferEx __buffer;
-            private UnsafeParallelMultiHashMap<Entity, TypeIndex> __entityTypes;
-            private UnsafeParallelMultiHashMap<Key, Value> __values;
-
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-            internal AtomicSafetyHandle m_Safety;
-
-            internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<Container>();
-#endif
-
-            internal Data data
-            {
-                get
-                {
-                    Data data;
-                    data.buffer = __buffer;
-                    data.entityTypes = __entityTypes;
-                    data.values = __values;
-
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                    data.m_Safety = m_Safety;
-#endif
-
-                    return data;
-                }
-            }
-
-            internal Container(ref Data data)
-            {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                m_Safety = data.m_Safety;
-
-                CollectionHelper.SetStaticSafetyId<Container>(ref m_Safety, ref StaticSafetyID.Data);
-#endif
-
-                __buffer = data.buffer;
-                __entityTypes = data.entityTypes;
-                __values = data.values;
-            }
-
-            /*public Allocator allocator => __buffer.allocator;
-
-            public Container(Allocator allocator)
-            {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                m_Safety = AtomicSafetyHandle.Create();
-#endif
-
-                __buffer = new UnsafeBufferEx(allocator, 1);
-                __entityTypes = new UnsafeParallelMultiHashMap<Entity, int>(1, allocator);
-                __values = new UnsafeParallelMultiHashMap<Key, Value>(1, allocator);
-            }*/
-
-            /*public void Dispose()
-            {
-                __buffer.Dispose();
-                __entityTypes.Dispose();
-                __values.Dispose();
-            }*/
-
             public void Clear()
             {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                AtomicSafetyHandle.CheckWriteAndBumpSecondaryVersion(m_Safety);
-#endif
-                __entityTypes.Clear();
-                __values.Clear();
-                __buffer.Reset();
+                entityTypes.Clear();
+                values.Clear();
+                buffer.Reset();
             }
 
             public void Reset(int bufferSize, int typeCount)
             {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
-#endif
-                int length = __buffer.position + bufferSize;
-                __buffer.capacity = math.max(__buffer.capacity, length);
-                __buffer.length = math.max(__buffer.length, length);
+                int length = buffer.position + bufferSize;
+                buffer.capacity = math.max(buffer.capacity, length);
+                buffer.length = math.max(buffer.length, length);
 
-                __entityTypes.Capacity = math.max(__entityTypes.Capacity, __entityTypes.Count() + typeCount);
-                __values.Capacity = math.max(__values.Capacity, __values.Count() + typeCount);
-            }
-
-            public void Reset(int elementSize, int elementCount, int typeCount)
-            {
-                Reset(elementSize * elementCount, typeCount);
+                entityTypes.Capacity = math.max(entityTypes.Capacity, entityTypes.Count() + typeCount);
+                values.Capacity = math.max(values.Capacity, values.Count() + typeCount);
             }
 
             public bool TryGetComponentData<T>(in Entity entity, ref T value) where T : struct, IComponentData
             {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
-#endif
-
                 int index = -1;
 
                 Key key;
                 key.entity = entity;
                 key.typeIndex = TypeManager.GetTypeIndex<T>();
 
-                if (__values.TryGetFirstValue(key, out var temp, out var iterator))
+                if (values.TryGetFirstValue(key, out var temp, out var iterator))
                 {
                     do
                     {
-                        if(temp.command.type == Command.Type.ComponentData && temp.index > index)
+                        if (temp.command.type == Command.Type.ComponentData && temp.index > index)
                         {
                             index = temp.index;
 
                             value = temp.command.block.As<T>();
                         }
-                    } while (__values.TryGetNextValue(out temp, ref iterator));
+                    } while (values.TryGetNextValue(out temp, ref iterator));
                 }
 
                 return index != -1;
@@ -616,26 +510,22 @@ namespace ZG
                 where TValue : struct, IBufferElementData
                 where TWrapper : IWriteOnlyListWrapper<TValue, TList>
             {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
-#endif
-
                 Key key;
                 key.entity = entity;
                 key.typeIndex = TypeManager.GetTypeIndex<TValue>();
 
-                int count = __values.CountValuesForKey(key);
+                int count = values.CountValuesForKey(key);
                 if (count < 1)
                     return false;
 
                 var commands = new NativeArray<Command>(count, Allocator.Temp);
                 {
-                    if (__values.TryGetFirstValue(key, out var value, out var iterator))
+                    if (values.TryGetFirstValue(key, out var value, out var iterator))
                     {
                         do
                         {
                             commands[value.index] = value.command;
-                        } while (__values.TryGetNextValue(out value, ref iterator));
+                        } while (values.TryGetNextValue(out value, ref iterator));
                     }
 
                     Command command;
@@ -674,27 +564,23 @@ namespace ZG
             public bool TryGetBuffer<T>(in Entity entity, int index, ref T value, int indexOffset = 0)
                 where T : struct, IBufferElementData
             {
-#if ENABLE_UNITY_COLLECTIONS_CHECKS
-                AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
-#endif
-
                 bool result = false;
 
                 Key key;
                 key.entity = entity;
                 key.typeIndex = TypeManager.GetTypeIndex<T>();
 
-                int count = __values.CountValuesForKey(key);
+                int count = values.CountValuesForKey(key);
                 if (count > 0)
                 {
                     var commands = new NativeArray<Command>(count, Allocator.Temp);
                     {
-                        if (__values.TryGetFirstValue(key, out var temp, out var iterator))
+                        if (values.TryGetFirstValue(key, out var temp, out var iterator))
                         {
                             do
                             {
                                 commands[temp.index] = temp.command;
-                            } while (__values.TryGetNextValue(out temp, ref iterator));
+                            } while (values.TryGetNextValue(out temp, ref iterator));
                         }
 
                         Command command;
@@ -738,11 +624,10 @@ namespace ZG
             public void SetComponentData<T>(in TypeIndex typeIndex, in Entity entity, in T value) where T : struct
             {
                 __CheckTypeSize<T>(typeIndex);
-                __CheckWrite();
 
                 Command command;
                 command.type = Command.Type.ComponentData;
-                command.block = __buffer.writer.WriteBlock(UnsafeUtility.SizeOf<T>(), false);
+                command.block = buffer.writer.WriteBlock(UnsafeUtility.SizeOf<T>(), false);
                 command.block.As<T>() = value;
 
                 __Set(typeIndex, entity, command);
@@ -765,8 +650,6 @@ namespace ZG
             public unsafe void SetBuffer<T>(bool isOverride, in Entity entity, void* values, int length)
                 where T : struct, IBufferElementData
             {
-                __CheckWrite();
-
                 Command command;
                 command.type = isOverride ? Command.Type.BufferOverride : Command.Type.BufferAppend;
                 if (values == null || length < 1)
@@ -775,11 +658,324 @@ namespace ZG
                 {
                     int size = UnsafeUtility.SizeOf<T>() * length;
 
-                    command.block = __buffer.writer.WriteBlock(size, false);
+                    command.block = buffer.writer.WriteBlock(size, false);
                     command.block.writer.Write(values, size);
                 }
 
                 __Set<T>(entity, command);
+            }
+
+            public unsafe void SetBuffer<TValue, TCollection>(bool isOverride, in Entity entity, in TCollection values)
+                where TValue : struct, IBufferElementData
+                where TCollection : IReadOnlyCollection<TValue>
+            {
+                Command command;
+                command.type = isOverride ? Command.Type.BufferOverride : Command.Type.BufferAppend;
+
+                int count = values == null ? 0 : values.Count;
+                if (count > 0)
+                {
+                    command.block = buffer.writer.WriteBlock(UnsafeUtility.SizeOf<TValue>() * count, false);
+
+                    int index = 0;
+                    var array = command.block.AsArray<TValue>();
+                    foreach (var value in values)
+                    {
+                        array[index++] = value;
+
+                        UnityEngine.Assertions.Assert.IsTrue(index <= count);
+                    }
+                }
+                else
+                    command.block = UnsafeBlock.Empty;
+
+                __Set<TValue>(entity, command);
+            }
+
+            public void SetComponentEnabled<T>(in Entity entity, bool value) where T : struct, IEnableableComponent
+            {
+                Command command;
+                command.type = value ? Command.Type.Enable : Command.Type.Disable;
+                command.block = UnsafeBlock.Empty;
+
+                __Set<T>(entity, command);
+            }
+
+            public bool RemoveComponent(in Entity entity, in TypeIndex typeIndex)
+            {
+                Key key;
+                key.typeIndex = typeIndex;
+                key.entity = entity;
+                if (values.Remove(key) > 0)
+                {
+                    if (entityTypes.TryGetFirstValue(entity, out var temp, out var iterator))
+                    {
+                        do
+                        {
+                            if (temp == key.typeIndex)
+                            {
+                                entityTypes.Remove(iterator);
+
+                                return true;
+                            }
+                        } while (entityTypes.TryGetNextValue(out temp, ref iterator));
+                    }
+
+                    __CheckEntityType();
+                }
+
+                return false;
+            }
+
+            /*private void __Set(in Key key, in Command command)
+            {
+                Value value;
+                value.index = __values.CountValuesForKey(key);
+                value.command = command;
+
+                if (value.index > 0)
+                {
+                    if (command.type == Command.Type.ComponentData)
+                    {
+                        __values.Remove(key);
+
+                        value.index = 0;
+                    }
+                }
+                else
+                    __entityTypes.Add(key.entity, key.typeIndex);
+
+                __values.Add(key, value);
+            }*/
+
+            internal void _Set(in Key key, in Command command)
+            {
+                Value value;
+                value.index = values.CountValuesForKey(key);
+                value.command = command;
+
+                if (value.index == 0)
+                    entityTypes.Add(key.entity, key.typeIndex);
+                //Fail In Enable Or Disable
+                /*else
+                {
+                    if (command.type == Command.Type.ComponentData)
+                    {
+                        values.Remove(key);
+
+                        value.index = 0;
+                    }
+                }*/
+
+                values.Add(key, value);
+            }
+
+            private void __Set<T>(in Entity entity, in Command command) where T : struct
+            {
+                Key key;
+                key.entity = entity;
+                key.typeIndex = TypeManager.GetTypeIndex<T>();
+
+                _Set(key, command);
+                //__Set(key, command);
+
+                /*Value value;
+                value.index = __values.CountValuesForKey(key);
+                value.command = command;
+
+                if (value.index > 0)
+                {
+                    if (command.type == Command.Type.ComponentData)
+                    {
+                        __values.Remove(key);
+
+                        value.index = 0;
+                    }
+                }
+                else
+                    __entityTypes.Add(key.entity, key.typeIndex);
+
+                __values.Add(key, value);*/
+            }
+
+            private void __Set(int typeIndex, in Entity entity, in Command command)
+            {
+                Key key;
+                key.entity = entity;
+                key.typeIndex = typeIndex;
+
+                _Set(key, command);
+            }
+
+            [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+            static void __CheckTypeSize<T>(int typeIndex) where T : struct
+            {
+                if (UnsafeUtility.SizeOf<T>() != TypeManager.GetTypeInfo(typeIndex).ElementSize)
+                    throw new System.InvalidCastException();
+            }
+
+        }
+
+        internal struct Data
+        {
+            public Info info;
+
+            public JobHandle jobHandle;
+
+            public int bufferSize;
+            public int typeCount;
+
+            public AllocatorManager.AllocatorHandle allocator => info.allocator;
+
+            public Data(in AllocatorManager.AllocatorHandle allocator)
+            {
+                info = new Info(allocator);
+
+                jobHandle = default;
+
+                bufferSize = 0;
+                typeCount = 0;
+            }
+
+            public void Dispose()
+            {
+                info.Dispose();
+            }
+        }
+
+        [NativeContainer]
+        internal struct Container
+        {
+            [NativeDisableUnsafePtrRestriction]
+            internal unsafe Info* _info;
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            internal AtomicSafetyHandle m_Safety;
+
+            internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<Container>();
+#endif
+
+            /*internal Data data
+            {
+                get
+                {
+                    Data data;
+                    data.buffer = __buffer;
+                    data.entityTypes = __entityTypes;
+                    data.values = __values;
+
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                    data.m_Safety = m_Safety;
+#endif
+
+                    return data;
+                }
+            }*/
+
+            internal unsafe Container(ref EntityComponentAssigner assigner)
+            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                m_Safety = assigner.m_Safety;
+
+                CollectionHelper.SetStaticSafetyId<Container>(ref m_Safety, ref StaticSafetyID.Data);
+#endif
+
+                _info = (Info*)UnsafeUtility.AddressOf(ref assigner.__data->info);
+            }
+
+            /*public Allocator allocator => __buffer.allocator;
+
+            public Container(Allocator allocator)
+            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                m_Safety = AtomicSafetyHandle.Create();
+#endif
+
+                __buffer = new UnsafeBufferEx(allocator, 1);
+                __entityTypes = new UnsafeParallelMultiHashMap<Entity, int>(1, allocator);
+                __values = new UnsafeParallelMultiHashMap<Key, Value>(1, allocator);
+            }*/
+
+            /*public void Dispose()
+            {
+                __buffer.Dispose();
+                __entityTypes.Dispose();
+                __values.Dispose();
+            }*/
+
+            public unsafe void Clear()
+            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                AtomicSafetyHandle.CheckWriteAndBumpSecondaryVersion(m_Safety);
+#endif
+                _info->Clear();
+            }
+
+            public unsafe void Reset(int bufferSize, int typeCount)
+            {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                AtomicSafetyHandle.CheckWriteAndThrow(m_Safety);
+#endif
+
+                _info->Reset(bufferSize, typeCount);
+            }
+
+            public void Reset(int elementSize, int elementCount, int typeCount)
+            {
+                Reset(elementSize * elementCount, typeCount);
+            }
+
+            public unsafe bool TryGetComponentData<T>(in Entity entity, ref T value) where T : struct, IComponentData
+            {
+                __CheckRead();
+
+                return _info->TryGetComponentData(entity, ref value);
+            }
+
+            public unsafe bool TryGetBuffer<TValue, TList, TWrapper>(in Entity entity, ref TList list, ref TWrapper wrapper)
+                where TValue : struct, IBufferElementData
+                where TWrapper : IWriteOnlyListWrapper<TValue, TList>
+            {
+                __CheckRead();
+
+                return _info->TryGetBuffer< TValue, TList, TWrapper>(entity, ref list, ref wrapper);
+            }
+
+            public unsafe bool TryGetBuffer<T>(in Entity entity, int index, ref T value, int indexOffset = 0)
+                where T : struct, IBufferElementData
+            {
+                __CheckRead();
+
+                return _info->TryGetBuffer(entity, index, ref value, indexOffset);
+            }
+
+            public unsafe void SetComponentData<T>(in TypeIndex typeIndex, in Entity entity, in T value) where T : struct
+            {
+                __CheckWrite();
+
+                _info->SetComponentData(typeIndex, entity, value);
+            }
+
+            public unsafe void SetComponentData<T>(in Entity entity, in T value) where T : struct, IComponentData
+            {
+                /*__CheckWrite();
+
+                Command command;
+                command.type = Command.Type.ComponentData;
+                command.block = __buffer.writer.WriteBlock(UnsafeUtility.SizeOf<T>(), false);
+                command.block.As<T>() = value;
+
+                __Set<T>(entity, command);*/
+
+                SetComponentData(TypeManager.GetTypeIndex<T>(), entity, value);
+            }
+
+            public unsafe void SetBuffer<T>(bool isOverride, in Entity entity, void* values, int length)
+                where T : struct, IBufferElementData
+            {
+                __CheckWrite();
+
+                _info->SetBuffer<T>(isOverride, entity, values, length);
             }
 
             public unsafe void SetBuffer<T>(bool isOverride, in Entity entity, in NativeArray<T> values) where T : struct, IBufferElementData => SetBuffer<T>(
@@ -806,66 +1002,21 @@ namespace ZG
             {
                 __CheckWrite();
 
-                Command command;
-                command.type = isOverride ? Command.Type.BufferOverride : Command.Type.BufferAppend;
-
-                int count = values == null ? 0 : values.Count;
-                if (count > 0)
-                {
-                    command.block = __buffer.writer.WriteBlock(UnsafeUtility.SizeOf<TValue>() * count, false);
-
-                    int index = 0;
-                    var array = command.block.AsArray<TValue>();
-                    foreach (var value in values)
-                    {
-                        array[index++] = value;
-
-                        UnityEngine.Assertions.Assert.IsTrue(index <= count);
-                    }
-                }
-                else
-                    command.block = UnsafeBlock.Empty;
-
-                __Set<TValue>(entity, command);
+                _info->SetBuffer<TValue, TCollection>(isOverride, entity, values);
             }
 
-            public void SetComponentEnabled<T>(in Entity entity, bool value) where T : struct, IEnableableComponent
+            public unsafe void SetComponentEnabled<T>(in Entity entity, bool value) where T : struct, IEnableableComponent
             {
                 __CheckWrite();
 
-                Command command;
-                command.type = value ? Command.Type.Enable : Command.Type.Disable;
-                command.block = UnsafeBlock.Empty;
-
-                __Set<T>(entity, command);
+                _info->SetComponentEnabled<T>(entity, value);
             }
 
-            public bool RemoveComponent<T>(in Entity entity)
+            public unsafe bool RemoveComponent<T>(in Entity entity)
             {
                 __CheckWrite();
 
-                Key key;
-                key.typeIndex = TypeManager.GetTypeIndex<T>();
-                key.entity = entity;
-                if (__values.Remove(key) > 0)
-                {
-                    if (__entityTypes.TryGetFirstValue(entity, out var typeIndex, out var iterator))
-                    {
-                        do
-                        {
-                            if (typeIndex == key.typeIndex)
-                            {
-                                __entityTypes.Remove(iterator);
-
-                                return true;
-                            }
-                        } while (__entityTypes.TryGetNextValue(out typeIndex, ref iterator));
-                    }
-
-                    __CheckEntityType();
-                }
-
-                return false;
+                return _info->RemoveComponent(entity, TypeManager.GetTypeIndex<T>());
             }
 
             public unsafe bool Apply(
@@ -874,17 +1025,17 @@ namespace ZG
                 SharedHashMap<Entity, Entity> wrapper,
                 int innerloopBatchCount = 1)
             {
-                if (__entityTypes.IsEmpty)
+                if (_info->entityTypes.IsEmpty)
                     return false;
 
                 AssignJob assign;
                 assign.types = default;
                 assign.entityStorageInfoLookup = systemState.GetEntityStorageInfoLookup();
                 assign.wrapper = wrapper.isCreated ? wrapper.reader : default;
-                assign.container = new ReadOnly(data);
+                assign.container = new ReadOnly(this);
 
                 var jobHandle = wrapper.isCreated ? JobHandle.CombineDependencies(systemState.Dependency, wrapper.lookupJobManager.readOnlyJobHandle) : systemState.Dependency;
-                var keys = __entityTypes.GetKeyArray(systemState.WorldUpdateAllocator);
+                var keys = _info->entityTypes.GetKeyArray(systemState.WorldUpdateAllocator);
                 {
                     NativeParallelMultiHashMapIterator<Entity> iterator;
 
@@ -892,9 +1043,8 @@ namespace ZG
                     componentType.AccessModeType = ComponentType.AccessMode.ReadWrite;
 
                     int numTypes = 0, numEntities = keys.ConvertToUniqueArray(), entityIndex = 0, i;
-                    var typeHandleIndicess = new UnsafeParallelHashMap<int, int>(BurstCompatibleTypeArray.LENGTH, Allocator.TempJob);
 
-                    assign.typeHandleIndicess = typeHandleIndicess;
+                    assign.typeHandleIndicess = new UnsafeHashMap<int, int>(BurstCompatibleTypeArray.LENGTH, Allocator.TempJob);
 
                     Entity key, entity;
                     for (i = 0; i < numEntities; ++i)
@@ -913,11 +1063,11 @@ namespace ZG
                             }
                         }
 
-                        if (__entityTypes.TryGetFirstValue(key, out componentType.TypeIndex, out iterator))
+                        if (_info->entityTypes.TryGetFirstValue(key, out componentType.TypeIndex, out iterator))
                         {
                             do
                             {
-                                if (typeHandleIndicess.ContainsKey(componentType.TypeIndex))
+                                if (assign.typeHandleIndicess.ContainsKey(componentType.TypeIndex))
                                     continue;
 
                                 if (numTypes >= BurstCompatibleTypeArray.LENGTH)
@@ -936,18 +1086,17 @@ namespace ZG
 
                                     numTypes = 0;
 
-                                    jobHandle = typeHandleIndicess.Dispose(jobHandle);
+                                    jobHandle = assign.typeHandleIndicess.Dispose(jobHandle);
 
-                                    typeHandleIndicess = new UnsafeParallelHashMap<int, int>(BurstCompatibleTypeArray.LENGTH, Allocator.TempJob);
-                                    assign.typeHandleIndicess = typeHandleIndicess;
+                                    assign.typeHandleIndicess = new UnsafeHashMap<int, int>(BurstCompatibleTypeArray.LENGTH, Allocator.TempJob);
 
                                     break;
                                 }
 
-                                typeHandleIndicess[componentType.TypeIndex] = numTypes;
+                                assign.typeHandleIndicess[componentType.TypeIndex] = numTypes;
 
                                 assign.types[numTypes++] = systemState.GetDynamicComponentTypeHandle(componentType);
-                            } while (__entityTypes.TryGetNextValue(out componentType.TypeIndex, ref iterator));
+                            } while (_info->entityTypes.TryGetNextValue(out componentType.TypeIndex, ref iterator));
                         }
                     }
 
@@ -957,7 +1106,7 @@ namespace ZG
                         jobHandle = assign.ScheduleByRef(assign.entityArray.Length, innerloopBatchCount, jobHandle);
                     }
 
-                    jobHandle = typeHandleIndicess.Dispose(jobHandle);
+                    jobHandle = assign.typeHandleIndicess.Dispose(jobHandle);
                 }
                 //keys.Dispose();
 
@@ -987,69 +1136,12 @@ namespace ZG
                 return false;
             }
 
-            /*private void __Set(in Key key, in Command command)
-            {
-                Value value;
-                value.index = __values.CountValuesForKey(key);
-                value.command = command;
-
-                if (value.index > 0)
-                {
-                    if (command.type == Command.Type.ComponentData)
-                    {
-                        __values.Remove(key);
-
-                        value.index = 0;
-                    }
-                }
-                else
-                    __entityTypes.Add(key.entity, key.typeIndex);
-
-                __values.Add(key, value);
-            }*/
-
-            private void __Set<T>(in Entity entity, in Command command) where T : struct
-            {
-                Key key;
-                key.entity = entity;
-                key.typeIndex = TypeManager.GetTypeIndex<T>();
-
-                data.Set(key, command);
-                //__Set(key, command);
-
-                /*Value value;
-                value.index = __values.CountValuesForKey(key);
-                value.command = command;
-
-                if (value.index > 0)
-                {
-                    if (command.type == Command.Type.ComponentData)
-                    {
-                        __values.Remove(key);
-
-                        value.index = 0;
-                    }
-                }
-                else
-                    __entityTypes.Add(key.entity, key.typeIndex);
-
-                __values.Add(key, value);*/
-            }
-
-            private void __Set(int typeIndex, in Entity entity, in Command command)
-            {
-                Key key;
-                key.entity = entity;
-                key.typeIndex = typeIndex;
-
-                data.Set(key, command);
-            }
-
             [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
-            static void __CheckTypeSize<T>(int typeIndex) where T : struct
+            void __CheckRead()
             {
-                if (UnsafeUtility.SizeOf<T>() != TypeManager.GetTypeInfo(typeIndex).ElementSize)
-                    throw new System.InvalidCastException();
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+                AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
+#endif
             }
 
             [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
@@ -1064,55 +1156,52 @@ namespace ZG
         [NativeContainer]
         public struct ReadOnly
         {
-            private UnsafeParallelMultiHashMap<Entity, TypeIndex> __entityTypes;
-
-            private UnsafeParallelMultiHashMap<Key, Value> __values;
+            [NativeDisableUnsafePtrRestriction]
+            private unsafe Info* __info;
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             internal AtomicSafetyHandle m_Safety;
 #endif
 
-            internal ReadOnly(in Data data)
+            internal unsafe ReadOnly(in Container container)
             {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 //AtomicSafetyHandle.CheckReadAndThrow(data.m_Safety);
 
-                m_Safety = data.m_Safety;
+                m_Safety = container.m_Safety;
 
                 AtomicSafetyHandle.UseSecondaryVersion(ref m_Safety);
 
                 //UnityEngine.Debug.LogError($"dddd {AtomicSafetyHandle.GetAllowReadOrWriteAccess(m_Safety)}");
 #endif
 
-                __entityTypes = data.entityTypes;
-                __values = data.values;
+                __info = container._info;
             }
 
-            public bool AppendTo(Writer assigner, in NativeArray<Entity> entityArray = default)
+            public bool AppendTo(ref Writer assigner, in NativeArray<Entity> entityArray = default)
             {
-                var data = assigner.data;
-                return AppendTo(ref data, entityArray);
+                return AppendTo(ref assigner._container, entityArray);
             }
 
-            internal bool AppendTo(ref Data data, in NativeArray<Entity> entityArray = default)
+            internal unsafe bool AppendTo(ref Container container, in NativeArray<Entity> entityArray = default)
             {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
 #endif
 
-                if (__values.IsEmpty)
+                if (__info->values.IsEmpty)
                     return false;
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-                AtomicSafetyHandle.CheckWriteAndThrow(data.m_Safety);
+                AtomicSafetyHandle.CheckWriteAndThrow(container.m_Safety);
 #endif
 
                 bool result = false;
-                using (var keys = __values.GetKeyArray(Allocator.Temp))
+                using (var keys = __info->values.GetKeyArray(Allocator.Temp))
                 {
                     var values = new NativeList<Value>(Allocator.Temp);
 
-                    UnsafeBufferEx.Writer writer = data.buffer.writer;
+                    UnsafeBuffer.Writer writer = container._info->buffer.writer;
                     NativeParallelMultiHashMapIterator<Key> iterator;
                     Value value;
                     Key key;
@@ -1124,7 +1213,7 @@ namespace ZG
                         if (entityArray.IsCreated && !entityArray.Contains(key.entity))
                             continue;
 
-                        if (__values.TryGetFirstValue(key, out value, out iterator))
+                        if (__info->values.TryGetFirstValue(key, out value, out iterator))
                         {
                             result = true;
 
@@ -1133,7 +1222,7 @@ namespace ZG
                             do
                             {
                                 values.Add(value);
-                            } while (__values.TryGetNextValue(out value, ref iterator));
+                            } while (__info->values.TryGetNextValue(out value, ref iterator));
 
                             values.Sort();
 
@@ -1146,7 +1235,7 @@ namespace ZG
 
                                 destination.block = source.block.isCreated ? writer.WriteBlock(source.block) : UnsafeBlock.Empty;
 
-                                data.Set(key, destination);
+                                container._info->_Set(key, destination);
                             }
                         }
                     }
@@ -1161,7 +1250,7 @@ namespace ZG
                 in Entity entity,
                 in EntityStorageInfoLookup entityStorageInfoLookup,
                 in SharedHashMap<Entity, Entity>.Reader wrapper,
-                in UnsafeParallelHashMap<int, int> typeHandleIndicess,
+                in UnsafeHashMap<int, int> typeHandleIndicess,
                 in BurstCompatibleTypeArray types)
             {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
@@ -1181,7 +1270,7 @@ namespace ZG
 
                 key.entity = wrapper.isCreated ? wrapper[entity] : entity;
 
-                if (__entityTypes.TryGetFirstValue(key.entity, out key.typeIndex, out entityIterator))
+                if (__info->entityTypes.TryGetFirstValue(key.entity, out key.typeIndex, out entityIterator))
                 {
                     do
                     {
@@ -1203,12 +1292,12 @@ namespace ZG
 
                         values.Clear();
 
-                        if (__values.TryGetFirstValue(key, out value, out keyIterator))
+                        if (__info->values.TryGetFirstValue(key, out value, out keyIterator))
                         {
                             do
                             {
                                 values.Add(value);
-                            } while (__values.TryGetNextValue(out value, ref keyIterator));
+                            } while (__info->values.TryGetNextValue(out value, ref keyIterator));
                         }
 
                         values.Sort();
@@ -1263,7 +1352,7 @@ namespace ZG
                             if (source != null)
                                 UnsafeUtility.MemCpy(destination, source, blockSize);
                         }
-                    } while (__entityTypes.TryGetNextValue(out key.typeIndex, ref entityIterator));
+                    } while (__info->entityTypes.TryGetNextValue(out key.typeIndex, ref entityIterator));
                 }
 
                 values.Dispose();
@@ -1272,41 +1361,39 @@ namespace ZG
 
         public struct Writer
         {
-            private Container __container;
+            internal Container _container;
 
-            internal Data data => __container.data;
-
-            internal Writer(ref Data data)
+            internal Writer(ref Container container)
             {
-                __container = new Container(ref data);
+                _container = container;
 
 /*#if ENABLE_UNITY_COLLECTIONS_CHECKS
                 AtomicSafetyHandle.UseSecondaryVersion(ref __container.m_Safety);
 #endif*/
             }
 
-            public void SetComponentData<T>(in TypeIndex typeIndex, in Entity entity, in T value) where T : struct => __container.SetComponentData(typeIndex, entity, value);
+            public void SetComponentData<T>(in TypeIndex typeIndex, in Entity entity, in T value) where T : struct => _container.SetComponentData(typeIndex, entity, value);
 
-            public void SetComponentData<T>(in Entity entity, in T value) where T : struct, IComponentData => __container.SetComponentData(entity, value);
+            public void SetComponentData<T>(in Entity entity, in T value) where T : struct, IComponentData => _container.SetComponentData(entity, value);
 
             public unsafe void SetBuffer<T>(bool isOverride, in Entity entity, void* values, int length)
-                where T : struct, IBufferElementData => __container.SetBuffer<T>(isOverride, entity, values, length);
+                where T : struct, IBufferElementData => _container.SetBuffer<T>(isOverride, entity, values, length);
 
             public unsafe void SetBuffer<T>(bool isOverride, in Entity entity, in NativeArray<T> values) where T : struct, IBufferElementData =>
-                __container.SetBuffer(isOverride, entity, values);
+                _container.SetBuffer(isOverride, entity, values);
 
             public void Clear()
             {
-                __container.Clear();
+                _container.Clear();
             }
 
-            internal void _Reset(int bufferSize, int typeCount) => __container.Reset(bufferSize, typeCount);
+            internal void _Reset(int bufferSize, int typeCount) => _container.Reset(bufferSize, typeCount);
         }
 
         [NativeContainer, NativeContainerIsAtomicWriteOnly]
         public struct ParallelWriter
         {
-            private UnsafeBufferEx.ParallelWriter __buffer;
+            private UnsafeBuffer.ParallelWriter __buffer;
             private UnsafeParallelMultiHashMap<Entity, TypeIndex>.ParallelWriter __entityTypes;
             private UnsafeParallelMultiHashMap<Key, Value>.ParallelWriter __values;
 
@@ -1314,17 +1401,17 @@ namespace ZG
             internal AtomicSafetyHandle m_Safety;
 #endif
 
-            internal ParallelWriter(ref Data data)
+            internal unsafe ParallelWriter(ref Container container)
             {
-                __buffer = data.buffer.parallelWriter;
-                __entityTypes = data.entityTypes.AsParallelWriter();
-                __values = data.values.AsParallelWriter();
-
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
-                m_Safety = data.m_Safety;
+                m_Safety = container.m_Safety;
 
                 AtomicSafetyHandle.UseSecondaryVersion(ref m_Safety);
 #endif
+
+                __buffer = container._info->buffer.parallelWriter;
+                __entityTypes = container._info->entityTypes.AsParallelWriter();
+                __values = container._info->values.AsParallelWriter();
             }
 
             public void SetComponentData<T>(in TypeIndex typeIndex, in Entity entity, in T value) where T : struct
@@ -1546,65 +1633,81 @@ namespace ZG
             }
         }*/
 
-        private unsafe JobHandle* __jobHandle;
+        private unsafe Data* __data;
 
-        private NativeArray<int> __bufferSizeAndTypeCount;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+        internal AtomicSafetyHandle m_Safety;
 
-        private Data __data;
+        internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<EntityComponentAssigner>();
+#endif
 
-        public unsafe bool isCreated => __jobHandle != null;
+        public unsafe bool isCreated => __data != null;
 
-        public int bufferSize
+        public unsafe int bufferSize
         {
-            get => __bufferSizeAndTypeCount[0];
+            get => __data->bufferSize;
 
             private set
             {
-                __bufferSizeAndTypeCount[0] = value;
+                __data->bufferSize = value;
             }
         }
 
-        public int typeCount
+        public unsafe int typeCount
         {
-            get => __bufferSizeAndTypeCount[1];
+            get => __data->typeCount;
 
             private set
             {
-                __bufferSizeAndTypeCount[1] = value;
+                __data->typeCount = value;
             }
         }
 
         public unsafe JobHandle jobHandle
         {
-            get => *__jobHandle;
+            get => __data->jobHandle;
 
-            set => *__jobHandle = value;
+            set => __data->jobHandle = value;
         }
 
-        public Writer writer => new Writer(ref __data);
+        public Writer writer
+        {
+            get
+            {
+                var container = this.container;
+                return new Writer(ref container);
+            }
+        }
 
-        internal Container container => new Container(ref __data);
+        internal Container container => new Container(ref this);
 
         public unsafe EntityComponentAssigner(in AllocatorManager.AllocatorHandle allocator)
         {
-            __jobHandle = AllocatorManager.Allocate<JobHandle>(allocator);
-            *__jobHandle = default;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            m_Safety = CollectionHelper.CreateSafetyHandle(allocator);
 
-            __bufferSizeAndTypeCount = new NativeArray<int>(2, (Allocator)allocator.Value, NativeArrayOptions.ClearMemory);
+            CollectionHelper.SetStaticSafetyId<EntityComponentAssigner>(ref m_Safety, ref StaticSafetyID.Data);
+            AtomicSafetyHandle.SetBumpSecondaryVersionOnScheduleWrite(m_Safety, true);
+#endif
 
-            __data = new Data(allocator);
+            __data = AllocatorManager.Allocate<Data>(allocator);
+            *__data = new Data(allocator);
         }
 
         public unsafe void Dispose()
         {
             jobHandle.Complete();
 
-            AllocatorManager.Free(__data.allocator, __jobHandle);
-            __jobHandle = null;
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            AtomicSafetyHandle.CheckDeallocateAndThrow(m_Safety);
+            AtomicSafetyHandle.Release(m_Safety);
+#endif
 
-            __bufferSizeAndTypeCount.Dispose();
+            var allocator = __data->allocator;
 
-            __data.Dispose();
+            __data->Dispose();
+
+            AllocatorManager.Free(allocator, __data);
         }
 
         public void Clear()
@@ -1619,7 +1722,7 @@ namespace ZG
 
         public ReadOnly AsReadOnly()
         {
-            return new ReadOnly(__data);
+            return new ReadOnly(container);
         }
 
         public void CompleteDependency()
@@ -1637,22 +1740,25 @@ namespace ZG
 
             writer._Reset(bufferSize, typeCount);
 
-            return new ParallelWriter(ref __data);
+            var container = this.container;
+            return new ParallelWriter(ref container);
         }
 
-        public ParallelWriter AsParallelWriter(in NativeArray<int> typeCountAndBufferSize, ref JobHandle jobHandle)
+        public unsafe ParallelWriter AsParallelWriter(in NativeArray<int> typeCountAndBufferSize, ref JobHandle jobHandle)
         {
             ResizeJob resize;
             resize.elementSize = 0;
             resize.counterLength = 0;
             resize.counts = typeCountAndBufferSize;
-            resize.bufferSizeAndTypeCount = __bufferSizeAndTypeCount;
+            resize.bufferSize = (int*)UnsafeUtility.AddressOf(ref __data->bufferSize);
+            resize.typeCount = (int*)UnsafeUtility.AddressOf(ref __data->typeCount);
             resize.writer = writer;
             jobHandle = resize.Schedule(JobHandle.CombineDependencies(jobHandle, this.jobHandle));
 
             this.jobHandle = jobHandle;
 
-            return new ParallelWriter(ref __data);
+            var container = this.container;
+            return new ParallelWriter(ref container);
         }
 
         public ParallelWriter AsComponentDataParallelWriter<T>(int entityCount) where T : struct, IComponentData
@@ -1665,34 +1771,38 @@ namespace ZG
             return AsParallelWriter(UnsafeUtility.SizeOf<T>() * elementCount, typeCount);
         }
 
-        public ParallelWriter AsComponentDataParallelWriter<T>(in NativeArray<int> entityCount, ref JobHandle jobHandle) where T  : struct, IComponentData
+        public unsafe ParallelWriter AsComponentDataParallelWriter<T>(in NativeArray<int> entityCount, ref JobHandle jobHandle) where T  : struct, IComponentData
         {
             ResizeJob resize;
             resize.elementSize = UnsafeUtility.SizeOf<T>();
             resize.counterLength = 1;
             resize.counts = entityCount;
-            resize.bufferSizeAndTypeCount = __bufferSizeAndTypeCount;
+            resize.bufferSize = (int*)UnsafeUtility.AddressOf(ref __data->bufferSize);
+            resize.typeCount = (int*)UnsafeUtility.AddressOf(ref __data->typeCount);
             resize.writer = writer;
             jobHandle = resize.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, this.jobHandle));
 
             this.jobHandle = jobHandle;
 
-            return new ParallelWriter(ref __data);
+            var container = this.container;
+            return new ParallelWriter(ref container);
         }
 
-        public ParallelWriter AsBufferParallelWriter<T>(in NativeArray<int> typeAndBufferCounts, ref JobHandle jobHandle) where T : struct, IBufferElementData
+        public unsafe ParallelWriter AsBufferParallelWriter<T>(in NativeArray<int> typeAndBufferCounts, ref JobHandle jobHandle) where T : struct, IBufferElementData
         {
             ResizeJob resize;
             resize.elementSize = UnsafeUtility.SizeOf<T>();
             resize.counterLength = 2;
             resize.counts = typeAndBufferCounts;
-            resize.bufferSizeAndTypeCount = __bufferSizeAndTypeCount;
+            resize.bufferSize = (int*)UnsafeUtility.AddressOf(ref __data->bufferSize);
+            resize.typeCount = (int*)UnsafeUtility.AddressOf(ref __data->typeCount);
             resize.writer = writer;
             jobHandle = resize.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, this.jobHandle));
 
             this.jobHandle = jobHandle;
 
-            return new ParallelWriter(ref __data);
+            var container = this.container;
+            return new ParallelWriter(ref container);
         }
 
         public bool TryGetComponentData<T>(in Entity entity, ref T value) where T : struct, IComponentData
@@ -1826,7 +1936,7 @@ namespace ZG
 
         public unsafe long GetHashCode64()
         {
-            return (long)__jobHandle;
+            return (long)__data;
         }
 
         [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
@@ -1845,120 +1955,225 @@ namespace ZG
 
     public struct EntitySharedComponentAssigner
     {
-        private interface IHandler
+        private struct SharedComponent : IEquatable<SharedComponent>
         {
-            bool Delete(in Entity entity);
+            public TypeIndex typeIndex;
+            public UnsafeBlock value;
 
-            void Playback(EntityManager entityManager);
-        }
-
-        private class Handler<T> : IHandler where T : struct, ISharedComponentData
-        {
-            private Dictionary<Entity, T> __values;
-
-            public Handler()
+            public unsafe bool Equals(SharedComponent other)
             {
-                __values = new Dictionary<Entity, T>();
+                return typeIndex == other.typeIndex &&
+                    (!value.isCreated || 
+                    !other.value.isCreated || 
+                    TypeManager.SharedComponentEquals(value.GetRangePtr(out _), other.value.GetRangePtr(out _), typeIndex));
             }
 
-            public bool TryGetValue(Entity entity, out T value)
+            public override int GetHashCode()
             {
-                return __values.TryGetValue(entity, out value);
-            }
-
-            public void Set(in Entity entity, in T value)
-            {
-                __values[entity] = value;
-            }
-
-            public bool Delete(in Entity entity)
-            {
-                return __values.Remove(entity);
-            }
-
-            public void Playback(EntityManager entityManager)
-            {
-                foreach(var pair in __values)
-                    entityManager.SetSharedComponentManaged(pair.Key, pair.Value);
-
-                __values.Clear();
+                return typeIndex.GetHashCode();
             }
         }
 
-        private UnsafeParallelHashMap<int, GCHandle> __handles;
-
-        public EntitySharedComponentAssigner(Allocator allocator)
+        private struct Data
         {
-            __handles = new UnsafeParallelHashMap<int, GCHandle>(1, allocator);
-        }
+            private UnsafeBuffer __buffer;
+            private UnsafeParallelMultiHashMap<SharedComponent, Entity> __entities;
 
-        public void Dispose()
-        {
-            using (var handles = __handles.GetValueArray(Allocator.Temp))
-                __Dispose(handles);
+            public AllocatorManager.AllocatorHandle allocator => __buffer.allocator;
 
-            __handles.Dispose();
-        }
-
-        public bool TryGetSharedComponentData<T>(Entity entity, ref T value) where T : struct, ISharedComponentData
-        {
-            int typeIndex = TypeManager.GetTypeIndex<T>();
-            if (__handles.TryGetValue(typeIndex, out var handle) &&
-                ((Handler<T>)handle.Target).TryGetValue(entity, out var result))
+            public Data(in AllocatorManager.AllocatorHandle allocator)
             {
-                value = result;
+                __buffer = new UnsafeBuffer(0, 1, allocator);
+                __entities = new UnsafeParallelMultiHashMap<SharedComponent, Entity>(1, allocator);
+            }
+
+            public void Dispose()
+            {
+                __buffer.Dispose();
+                __entities.Dispose();
+            }
+
+            public void Clear()
+            {
+                __buffer.Reset();
+                __entities.Clear();
+            }
+
+            public bool TryGetSharedComponentData<T>(in Entity entity, ref T value) where T : struct, ISharedComponentData
+            {
+                SharedComponent sharedComponent;
+                sharedComponent.typeIndex = TypeManager.GetTypeIndex<T>();
+                sharedComponent.value = UnsafeBlock.Empty;
+
+                if (__entities.TryGetFirstValue(sharedComponent, out var temp, out var iterator))
+                {
+                    do
+                    {
+                        if (temp == entity)
+                        {
+                            value = sharedComponent.value.As<T>();
+
+                            return true;
+                        }
+                    } while (__entities.TryGetNextValue(out temp, ref iterator));
+                }
+
+                return false;
+            }
+
+            public void SetSharedComponent<T>(in Entity entity, in T value) where T : struct, ISharedComponentData
+            {
+                var typeIndex = TypeManager.GetTypeIndex<T>();
+
+                RemoveComponent(entity, typeIndex);
+
+                var writer = __buffer.writer;
+
+                SharedComponent sharedComponent;
+                sharedComponent.typeIndex = typeIndex;
+                sharedComponent.value = (UnsafeBlock)writer.WriteBlock(value);
+
+                __entities.Add(sharedComponent, entity);
+            }
+
+            public bool RemoveComponent(in Entity entity, in TypeIndex typeIndex)
+            {
+                SharedComponent sharedComponent;
+                sharedComponent.typeIndex = typeIndex;
+                sharedComponent.value = UnsafeBlock.Empty;
+
+                if(__entities.TryGetFirstValue(sharedComponent, out var temp, out var iterator))
+                {
+                    do
+                    {
+                        if(temp == entity)
+                        {
+                            __entities.Remove(iterator);
+
+                            return true;
+                        }
+                    } while (__entities.TryGetNextValue(out temp, ref iterator));
+                }
+
+                return false;
+            }
+
+            public unsafe bool Apply(ref EntityManager entityManager)
+            {
+                if (__entities.IsEmpty)
+                    return false;
+
+                using (var sharedComponents = __entities.GetKeyArray(Allocator.Temp))
+                {
+                    var entities = new NativeList<Entity>(Allocator.Temp);
+                    foreach (var sharedComponent in sharedComponents)
+                    {
+                        entities.Clear();
+                        foreach (var entity in __entities.GetValuesForKey(sharedComponent))
+                            entities.Add(entity);
+
+                        entityManager.SetSharedComponent(entities.AsArray(), sharedComponent.value.GetRangePtr(out _), sharedComponent.typeIndex);
+                    }
+                }
 
                 return true;
             }
-
-            return false;
         }
 
-        public void SetSharedComponentData<T>(Entity entity, T value) where T : struct, ISharedComponentData
-        {
-            int typeIndex = TypeManager.GetTypeIndex<T>();
-            Handler<T> handler;
-            if (__handles.TryGetValue(typeIndex, out var handle))
-                handler = (Handler<T>)handle.Target;
-            else
-            {
-                handler = new Handler<T>();
-                handle = GCHandle.Alloc(handler);
-                __handles[typeIndex] = handle;
-            }
+        [NativeDisableUnsafePtrRestriction]
+        private unsafe Data* __data;
 
-            handler.Set(entity, value);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+        internal AtomicSafetyHandle m_Safety;
+
+        internal static readonly SharedStatic<int> StaticSafetyID = SharedStatic<int>.GetOrCreate<EntitySharedComponentAssigner>();
+#endif
+
+        public unsafe EntitySharedComponentAssigner(in AllocatorManager.AllocatorHandle allocator)
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            m_Safety = CollectionHelper.CreateSafetyHandle(allocator);
+
+            CollectionHelper.SetStaticSafetyId<EntitySharedComponentAssigner>(ref m_Safety, ref StaticSafetyID.Data);
+            AtomicSafetyHandle.SetBumpSecondaryVersionOnScheduleWrite(m_Safety, true);
+#endif
+
+            __data = AllocatorManager.Allocate<Data>(allocator);
+
+            *__data = new Data(allocator);
         }
 
-        public bool RemoveComponent<T>(in Entity entity)
+        public unsafe void Dispose()
         {
-            return __handles.TryGetValue(TypeManager.GetTypeIndex<T>(), out var handle) && ((IHandler)handle.Target).Delete(entity);
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            AtomicSafetyHandle.CheckDeallocateAndThrow(m_Safety);
+            AtomicSafetyHandle.Release(m_Safety);
+#endif
+
+            var allocator = __data->allocator;
+
+            __data->Dispose();
+
+            AllocatorManager.Free(allocator, __data);
         }
 
-        public void Playback(EntityManager entityManager)
+        public unsafe void Clear()
         {
-            if (__handles.IsEmpty)
-                return;
+            __CheckWrite();
 
-            using (var handles = __handles.GetValueArray(Allocator.Temp))
-                __Playback(handles, entityManager);
+            __data->Clear();
         }
 
-        private static void __Playback(in NativeArray<GCHandle> handles, EntityManager entityManager)
+        public unsafe bool TryGetSharedComponentData<T>(in Entity entity, ref T value) where T : struct, ISharedComponentData
         {
-            IHandler handler;
-            foreach (var handle in handles)
-            {
-                handler = (IHandler)handle.Target;
+            __CheckRead();
 
-                handler.Playback(entityManager);
-            }
+            return __data->TryGetSharedComponentData(entity, ref value);
         }
 
-        private static void __Dispose(in NativeArray<GCHandle> handles)
+        public unsafe void SetSharedComponentData<T>(in Entity entity, in T value) where T : struct, ISharedComponentData
         {
-            foreach (var handle in handles)
-                handle.Free();
+            __CheckWrite();
+
+            __data->SetSharedComponent(entity, value);
+        }
+
+        public unsafe bool RemoveComponent<T>(in Entity entity)
+        {
+            __CheckWrite();
+
+            return __data->RemoveComponent(entity, TypeManager.GetTypeIndex<T>());
+        }
+
+        public unsafe bool Apply(ref EntityManager entityManager)
+        {
+            __CheckRead();
+
+            return __data->Apply(ref entityManager);
+        }
+
+        public unsafe void Playback(ref EntityManager entityManager)
+        {
+            __CheckWrite();
+
+            if(__data->Apply(ref entityManager))
+                __data->Clear();
+        }
+
+        [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+        void __CheckRead()
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
+#endif
+        }
+
+        [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
+        void __CheckWrite()
+        {
+#if ENABLE_UNITY_COLLECTIONS_CHECKS
+            AtomicSafetyHandle.CheckWriteAndBumpSecondaryVersion(m_Safety);
+#endif
         }
     }
 }

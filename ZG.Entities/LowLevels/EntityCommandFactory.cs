@@ -102,7 +102,7 @@ namespace ZG
 
             public void Execute()
             {
-                source.AppendTo(destination);
+                source.AppendTo(ref destination);
                 //UnityEngine.Assertions.Assert.IsFalse(result);
             }
         }
@@ -863,7 +863,10 @@ namespace ZG
                 }
 
                 if (stepCount > 0)
-                    prefabAssigner.AsReadOnly().AppendTo(__prefabAssignerBuffer.writer, keys.GetSubArray(0, stepCount));
+                {
+                    var writer = __prefabAssignerBuffer.writer;
+                    prefabAssigner.AsReadOnly().AppendTo(ref writer, keys.GetSubArray(0, stepCount));
+                }
 
                 keys.Dispose();
             }
@@ -952,7 +955,8 @@ namespace ZG
             {
                 var keys = __instanceComponentTypes.GetKeyArray(Unity.Collections.Allocator.Temp);
 
-                instanceAssigner.AsReadOnly().AppendTo(__instanceAssignerBuffer.writer, keys);
+                var writer = __instanceAssignerBuffer.writer;
+                instanceAssigner.AsReadOnly().AppendTo(ref writer, keys);
             }
 
             instanceAssigner.Playback(ref systemState, instancesReader, prefabs);

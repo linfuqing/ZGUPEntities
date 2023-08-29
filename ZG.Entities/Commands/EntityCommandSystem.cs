@@ -16,8 +16,6 @@ namespace ZG
     {
         EntityCommander commander { get; }
 
-        EntitySharedComponentCommander sharedComponentCommander { get; }
-
         EntityManager entityManager { get; }
     }
 
@@ -106,36 +104,10 @@ namespace ZG
         }
     }
 
-    [UpdateInGroup(typeof(EntityCommandSharedSystemGroup))]
-    public partial struct EntitySharedComponentCommanderSystem : ISystem
-    {
-        public EntitySharedComponentCommander value
-        {
-            get;
-
-            private set;
-        }
-
-        public void OnCreate(ref SystemState state)
-        {
-            value = new EntitySharedComponentCommander(Allocator.Persistent);
-        }
-
-        public void OnDestroy(ref SystemState state)
-        {
-            value.Dispose();
-        }
-
-        public void OnUpdate(ref SystemState state)
-        {
-            value.Playback(ref state);
-        }
-    }
-
     [UpdateInGroup(typeof(ManagedSystemGroup)), 
         CreateAfter(typeof(EntityCommandFactorySystem)),
-        CreateAfter(typeof(EntityCommanderSystem)),
-        CreateAfter(typeof(EntitySharedComponentCommanderSystem))]
+        CreateAfter(typeof(EntityCommanderSystem))]
+        //CreateAfter(typeof(EntitySharedComponentCommanderSystem))]
     public partial class EntityCommandSharedSystemGroup : ComponentSystemGroup, IEntityCommandScheduler
     {
         public EntityCommandFactory factory
@@ -146,13 +118,6 @@ namespace ZG
         }
 
         public EntityCommander commander
-        {
-            get;
-
-            private set;
-        }
-
-        public EntitySharedComponentCommander sharedComponentCommander
         {
             get;
 
@@ -171,7 +136,6 @@ namespace ZG
             World world = World;
             factory = world.GetExistingSystemUnmanaged<EntityCommandFactorySystem>().factory;
             commander = world.GetExistingSystemUnmanaged<EntityCommanderSystem>().value;
-            sharedComponentCommander = world.GetExistingSystemUnmanaged<EntitySharedComponentCommanderSystem>().value;
         }
 
         EntityManager IEntityCommandScheduler.entityManager => EntityManager;
@@ -183,8 +147,6 @@ namespace ZG
         private EntityCommandSharedSystemGroup __sharedSystemGroup;
 
         public EntityCommander commander => __sharedSystemGroup.commander;
-
-        public EntitySharedComponentCommander sharedComponentCommander => __sharedSystemGroup.sharedComponentCommander;
 
         protected override void OnCreate()
         {
@@ -212,18 +174,12 @@ namespace ZG
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool AddComponent<T>(this IEntityCommandScheduler scheduler, in Entity entity)
         {
-            if (TypeManager.IsSharedComponentType(TypeManager.GetTypeIndex<T>()))
-                return scheduler.sharedComponentCommander.AddComponent<T>(entity);
-
             return scheduler.commander.AddComponent<T>(entity);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool RemoveComponent<T>(this IEntityCommandScheduler scheduler, in Entity entity)
         {
-            if (TypeManager.IsSharedComponentType(TypeManager.GetTypeIndex<T>()))
-                return scheduler.sharedComponentCommander.RemoveComponent<T>(entity);
-
             return scheduler.commander.RemoveComponent<T>(entity);
         }
 
@@ -248,7 +204,7 @@ namespace ZG
             => scheduler.commander.SetComponentEnabled<T>(entity, value);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void SetSharedComponentData<T>(this IEntityCommandScheduler scheduler, in Entity entity, in T value) where T : struct, ISharedComponentData => scheduler.sharedComponentCommander.SetSharedComponentData(entity, value);
+        public static void SetSharedComponentData<T>(this IEntityCommandScheduler scheduler, in Entity entity, in T value) where T : struct, ISharedComponentData => scheduler.commander.SetSharedComponentData(entity, value);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void SetComponentObject<T>(this IEntityCommandScheduler scheduler, in Entity entity, in EntityObject<T> value) => scheduler.commander.SetComponentObject(entity, value);
@@ -265,7 +221,7 @@ namespace ZG
             where TCollection : IReadOnlyCollection<TValue> => scheduler.commander.AddBuffer<TValue, TCollection>(entity, values);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void AddSharedComponentData<T>(this IEntityCommandScheduler scheduler, in Entity entity, in T value) where T : struct, ISharedComponentData => scheduler.sharedComponentCommander.AddSharedComponentData(entity, value);
+        public static void AddSharedComponentData<T>(this IEntityCommandScheduler scheduler, in Entity entity, in T value) where T : struct, ISharedComponentData => scheduler.commander.AddSharedComponentData(entity, value);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void AddComponentObject<T>(this IEntityCommandScheduler scheduler, in Entity entity, in EntityObject<T> value) => scheduler.commander.AddComponentObject(entity, value);
@@ -307,7 +263,7 @@ namespace ZG
             {
                 value = entityManager.GetSharedComponentManaged<TValue>(entity);
 
-                scheduler.sharedComponentCommander.TryGetSharedComponentData(entity, ref value);
+                scheduler.commander.TryGetSharedComponentData(entity, ref value);
 
                 return true;
             }
@@ -315,7 +271,7 @@ namespace ZG
             {
                 value = default;
 
-                if (scheduler.sharedComponentCommander.TryGetSharedComponentData(entity, ref value))
+                if (scheduler.commander.TryGetSharedComponentData(entity, ref value))
                     return true;
             }
 
@@ -399,13 +355,7 @@ namespace ZG
                 return true;
 
             bool status;
-            if (TypeManager.IsSharedComponentType(componentType.TypeIndex))
-            {
-                var sharedComponentCommander = scheduler.sharedComponentCommander;
-                if (sharedComponentCommander.IsAddOrRemoveComponent(entity, componentType.TypeIndex, out status))
-                    return status;
-            }
-            else if (commander.IsAddOrRemoveComponent(entity, componentType.TypeIndex, out status))
+            if (commander.IsAddOrRemoveComponent(entity, componentType.TypeIndex, out status))
                 return status;
 
             return scheduler.entityManager.HasComponent(entity, componentType);

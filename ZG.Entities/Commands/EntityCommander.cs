@@ -31,7 +31,8 @@ namespace ZG
 
             public void AppendTo(ref EntityCommander instance)
             {
-                __assigner.AppendTo(instance.__assigner.writer);
+                var writer = instance.__assigner.writer;
+                __assigner.AppendTo(ref writer);
 
                 __structChangeCommander.AppendTo(ref instance.__structChangeCommander);
 
@@ -130,11 +131,13 @@ namespace ZG
         }
 
         private EntityComponentAssigner __assigner;
+        private EntitySharedComponentAssigner __sharedComponentAssigner;
         private EntityStructChangeCommander __structChangeCommander;
         private NativeList<Entity> __destroyEntityCommander;
 
 #if ENABLE_PROFILER
         private ProfilerMarker __setComponentProfilerMarker;
+        private ProfilerMarker __setSharedComponentProfilerMarker;
         private ProfilerMarker __destoyEntityProfilerMarker;
 #endif
 
@@ -152,11 +155,13 @@ namespace ZG
         public EntityCommander(Allocator allocator)
         {
             __assigner = new EntityComponentAssigner(allocator);
+            __sharedComponentAssigner = new EntitySharedComponentAssigner(allocator);
             __structChangeCommander = new EntityStructChangeCommander(allocator);
             __destroyEntityCommander = new NativeList<Entity>(allocator);
 
 #if ENABLE_PROFILER
             __setComponentProfilerMarker = new ProfilerMarker("SetComponents");
+            __setSharedComponentProfilerMarker = new ProfilerMarker("SetSharedComponents");
             __destoyEntityProfilerMarker = new ProfilerMarker("DestroyEntities");
 #endif
         }
@@ -164,6 +169,7 @@ namespace ZG
         public void Dispose()
         {
             __assigner.Dispose();
+            __sharedComponentAssigner.Dispose();
             __structChangeCommander.Dispose();
             __destroyEntityCommander.Dispose();
         }
@@ -218,6 +224,11 @@ namespace ZG
             return __assigner.TryGetBuffer<TValue, TList, TWrapper>(entity, ref list, ref wrapper) || __structChangeCommander.HasComponent<TValue>(entity);
         }
 
+        public bool TryGetSharedComponentData<T>(in Entity entity, ref T value) where T : struct, ISharedComponentData
+        {
+            return __sharedComponentAssigner.TryGetSharedComponentData(entity, ref value);
+        }
+
         public bool AddComponent<T>(in Entity entity)
         {
             CompleteDependency();
@@ -236,6 +247,7 @@ namespace ZG
 
             if (__structChangeCommander.RemoveComponent<T>(entity))
             {
+                __sharedComponentAssigner.RemoveComponent<T>(entity);
                 __assigner.RemoveComponent<T>(entity);
 
                 return true;
@@ -270,7 +282,7 @@ namespace ZG
             __assigner.SetBuffer<TValue, TCollection>(true, entity, values);
         }
 
-        public void SetComponentEnabled<T>(in Entity entity, bool value) where T : unmanaged, IEnableableComponent
+        public void SetComponentEnabled<T>(in Entity entity, bool value) where T : struct, IEnableableComponent
         {
             __assigner.SetComponentEnabled<T>(entity, value);
         }
@@ -278,6 +290,11 @@ namespace ZG
         public void SetComponentObject<T>(in Entity entity, in EntityObject<T> value)
         {
             __assigner.SetComponentData(entity, value);
+        }
+
+        public void SetSharedComponentData<T>(in Entity entity, in T value) where T : struct, ISharedComponentData
+        {
+            __sharedComponentAssigner.SetSharedComponentData(entity, value);
         }
 
         public void AddComponentData<T>(in Entity entity, in T value) where T : struct, IComponentData
@@ -327,14 +344,21 @@ namespace ZG
             __assigner.SetComponentData(entity, value);
         }
 
-        public void DestroyEntity(Entity entity)
+        public void AddSharedComponentData<T>(in Entity entity, in T value) where T : struct, ISharedComponentData
+        {
+            AddComponent<T>(entity);
+
+            __sharedComponentAssigner.SetSharedComponentData(entity, value);
+        }
+
+        public void DestroyEntity(in Entity entity)
         {
             CompleteDependency();
 
             __destroyEntityCommander.Add(entity);
         }
 
-        public void DestroyEntity(NativeArray<Entity> entities)
+        public void DestroyEntity(in NativeArray<Entity> entities)
         {
             CompleteDependency();
 
@@ -345,6 +369,8 @@ namespace ZG
         {
             __assigner.Clear();
 
+            __sharedComponentAssigner.Clear();
+
             __destroyEntityCommander.Clear();
             __structChangeCommander.Clear();
         }
@@ -353,24 +379,28 @@ namespace ZG
         {
             CompleteDependency();
 
-            __structChangeCommander.Apply(ref systemState);
+            bool result = __structChangeCommander.Apply(ref systemState);
 
+            var entityManager = systemState.EntityManager;
             if (!__destroyEntityCommander.IsEmpty)
             {
+                result = true;
+
 #if ENABLE_PROFILER
                 using (__destoyEntityProfilerMarker.Auto())
 #endif
-                {
-                    //systemState.CompleteDependency();
-
-                    systemState.EntityManager.DestroyEntity(__destroyEntityCommander.AsArray());
-                }
+                    entityManager.DestroyEntity(__destroyEntityCommander.AsArray());
             }
+
+#if ENABLE_PROFILER
+            using (__setSharedComponentProfilerMarker.Auto())
+#endif
+                result = __sharedComponentAssigner.Apply(ref entityManager) || result;
 
 #if ENABLE_PROFILER
             using (__setComponentProfilerMarker.Auto())
 #endif
-                return __assigner.Apply(ref systemState);
+                return __assigner.Apply(ref systemState) || result;
         }
 
         public void Playback(ref SystemState systemState)
@@ -379,6 +409,7 @@ namespace ZG
 
             __structChangeCommander.Playback(ref systemState);
 
+            var entityManager = systemState.EntityManager;
             if (!__destroyEntityCommander.IsEmpty)
             {
 #if ENABLE_PROFILER
@@ -387,11 +418,16 @@ namespace ZG
                 {
                     //systemState.CompleteDependency();
 
-                    systemState.EntityManager.DestroyEntity(__destroyEntityCommander.AsArray());
+                    entityManager.DestroyEntity(__destroyEntityCommander.AsArray());
                 }
 
                 __destroyEntityCommander.Clear();
             }
+
+#if ENABLE_PROFILER
+            using (__setSharedComponentProfilerMarker.Auto())
+#endif
+                __sharedComponentAssigner.Playback(ref entityManager);
 
 #if ENABLE_PROFILER
             using (__setComponentProfilerMarker.Auto())
