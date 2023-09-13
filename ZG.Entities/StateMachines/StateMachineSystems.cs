@@ -5,17 +5,35 @@ using Unity.Collections;
 
 namespace ZG
 {
-    [UpdateInGroup(typeof(TimeSystemGroup)), UpdateBefore(typeof(StateMachineExecutorGroup))]
-    public class StateMachineSchedulerGroup : ComponentSystemGroup
+    [UpdateInGroup(typeof(TimeSystemGroup))]
+    public struct StateMachineGroup : ISystem
     {
+        private SystemGroup __systemGroup;
 
+        public void OnCreate(ref SystemState state)
+        {
+            __systemGroup = SystemGroupUtility.GetOrCreateSystemGroup(state.World, typeof(StateMachineGroup));
+        }
+
+        [BurstCompile]
+        public void OnDestroy(ref SystemState state)
+        {
+
+        }
+
+        [BurstCompile]
+        public void OnUpdate(ref SystemState state)
+        {
+            var world = state.WorldUnmanaged;
+            __systemGroup.Update(ref world);
+        }
     }
 
-    [UpdateInGroup(typeof(TimeSystemGroup))]
+    /*[UpdateInGroup(typeof(TimeSystemGroup))]
     public class StateMachineExecutorGroup : ComponentSystemGroup
     {
 
-    }
+    }*/
 
     /*public abstract partial class StateMachineSystemBase : SystemBase
     {
@@ -52,7 +70,7 @@ namespace ZG
         }
     }*/
 
-    [UpdateInGroup(typeof(StateMachineSchedulerGroup))]
+    //[UpdateInGroup(typeof(StateMachineSchedulerGroup))]
     public struct StateMachineSchedulerSystemCore// : StateMachineSystemBase
         //where TSystem : StateMachineSchedulerSystem<TSchedulerExit, TSchedulerEntry, TFactoryExit, TFactoryEntry, TSystem>
     {
@@ -120,7 +138,7 @@ namespace ZG
         }
     }
 
-    [UpdateInGroup(typeof(StateMachineExecutorGroup))]
+    //[UpdateInGroup(typeof(StateMachineExecutorGroup))]
     public struct StateMachineExecutorSystemCore
     {
         private SystemHandle __schedulerSystemHandle;
