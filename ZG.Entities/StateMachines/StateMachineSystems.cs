@@ -5,7 +5,7 @@ using Unity.Collections;
 
 namespace ZG
 {
-    [UpdateInGroup(typeof(TimeSystemGroup))]
+    [BurstCompile, UpdateInGroup(typeof(TimeSystemGroup))]
     public struct StateMachineGroup : ISystem
     {
         private SystemGroup __systemGroup;
