@@ -637,7 +637,7 @@ namespace ZG
         }
     }
 
-    [UpdateInGroup(typeof(EntityCommandSharedSystemGroup), OrderFirst = true), 
+    [RequireMatchingQueriesForUpdate, UpdateInGroup(typeof(EntityCommandSharedSystemGroup), OrderFirst = true), 
         UpdateAfter(typeof(GameObjectEntityFactorySystem))]
     public partial class GameObjectEntityInitSystem : SystemBase
     {
