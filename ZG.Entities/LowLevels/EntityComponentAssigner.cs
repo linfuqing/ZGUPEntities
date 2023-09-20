@@ -16,7 +16,7 @@ using UnityEngine.UIElements;
 
 namespace ZG
 {
-    public struct EntityComponentAssigner
+    public struct EntityComponentAssigner : IDisposable
     {
         [BurstCompile]
         private struct AssignJob : IJobParallelFor
