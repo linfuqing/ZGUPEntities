@@ -154,6 +154,23 @@ namespace ZG
 
     public static class EntityDataStreamUtility
     {
+        public static Type[] GetSerializerTypes()
+        {
+            var types = new List<Type>();
+            foreach(var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                foreach(var type in assembly.GetTypes())
+                {
+                    if (!type.IsAbstract && 
+                        type.IsGenericTypeDefinition && 
+                        Array.IndexOf(type.GetInterfaces(), typeof(IEntityDataStreamSerializer)) != -1)
+                        types.Add(type);
+                }
+            }
+
+            return types.ToArray();
+        }
+
         public static void SerializeStream<T>(this ref NativeBuffer.Writer writer, in T value) where T : unmanaged, IComponentData
         {
             writer.Write(typeof(T).AssemblyQualifiedName);
