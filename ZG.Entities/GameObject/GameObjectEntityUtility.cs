@@ -156,6 +156,63 @@ namespace ZG
             }
         }
 
+        public static void AppendBufferUnique<TValue, TCollection>(this IGameObjectEntity gameObjectEntity, TCollection values)
+            where TValue : unmanaged, IBufferElementData
+            where TCollection : IReadOnlyCollection<TValue>
+        {
+            var commandSystem = __GetCommandSystem(gameObjectEntity);
+            if (commandSystem != null)
+            {
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        commandSystem.factory.AppendBufferUnique<TValue, TCollection>(entity, values);
+                        break;
+                    case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
+                        commandSystem.AppendBufferUnique<TValue, TCollection>(entity, values);
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
+            }
+        }
+
+        public static void AppendBufferUnique<T>(this IGameObjectEntity gameObjectEntity, params T[] values)
+            where T : unmanaged, IBufferElementData => AppendBufferUnique<T, T[]>(gameObjectEntity, values);
+
+        public static void RemoveBufferElementSwapBack<TValue, TCollection>(this IGameObjectEntity gameObjectEntity, TCollection values)
+            where TValue : unmanaged, IBufferElementData
+            where TCollection : IReadOnlyCollection<TValue>
+        {
+            var commandSystem = __GetCommandSystem(gameObjectEntity);
+            if (commandSystem != null)
+            {
+                var entity = gameObjectEntity.entity;
+
+                switch (gameObjectEntity.status)
+                {
+                    case GameObjectEntityStatus.Creating:
+                        commandSystem.factory.RemoveBufferElementSwapBack<TValue, TCollection>(entity, values);
+                        break;
+                    case GameObjectEntityStatus.Created:
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
+                        commandSystem.RemoveBufferElementSwapBack<TValue, TCollection>(entity, values);
+                        break;
+                    default:
+                        throw new InvalidOperationException();
+                }
+            }
+        }
+
+        public static void RemoveBufferElementSwapBack<T>(this IGameObjectEntity gameObjectEntity, params T[] values)
+            where T : unmanaged, IBufferElementData =>
+            RemoveBufferElementSwapBack<T, T[]>(gameObjectEntity, values);
+
         public static void RemoveComponent<T>(this IGameObjectEntity gameObjectEntity) where T : struct
         {
             var commandSystem = __GetCommandSystem(gameObjectEntity);

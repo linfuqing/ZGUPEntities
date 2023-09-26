@@ -231,6 +231,16 @@ namespace ZG
             where TValue : unmanaged, IBufferElementData
             where TCollection : IReadOnlyCollection<TValue> => scheduler.commander.AppendBuffer<TValue, TCollection>(entity, values);
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void AppendBufferUnique<TValue, TCollection>(this IEntityCommandScheduler scheduler, in Entity entity, TCollection values)
+            where TValue : unmanaged, IBufferElementData
+            where TCollection : IReadOnlyCollection<TValue> => scheduler.commander.AppendBufferUnique<TValue, TCollection>(entity, values);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void RemoveBufferElementSwapBack<TValue, TCollection>(this IEntityCommandScheduler scheduler, in Entity entity, TCollection values)
+            where TValue : unmanaged, IBufferElementData
+            where TCollection : IReadOnlyCollection<TValue> => scheduler.commander.RemoveBufferElementSwapBack<TValue, TCollection>(entity, values);
+
         public static bool TryGetComponentData<TValue>(this IEntityCommandScheduler scheduler, in Entity entity, ref TValue value, bool isOverride = false) 
             where TValue : unmanaged, IComponentData
         {

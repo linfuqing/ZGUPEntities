@@ -266,20 +266,20 @@ namespace ZG
         public void SetBuffer<T>(in Entity entity, in NativeArray<T> values)
                 where T : struct, IBufferElementData
         {
-            __assigner.SetBuffer(true, entity, values);
+            __assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, values);
         }
 
         public void SetBuffer<T>(in Entity entity, params T[] values)
                 where T : unmanaged, IBufferElementData
         {
-            __assigner.SetBuffer(true, entity, values);
+            __assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, values);
         }
 
         public void SetBuffer<TValue, TCollection>(in Entity entity, in TCollection values)
                 where TValue : struct, IBufferElementData
                 where TCollection : IReadOnlyCollection<TValue>
         {
-            __assigner.SetBuffer<TValue, TCollection>(true, entity, values);
+            __assigner.SetBuffer<TValue, TCollection>(EntityComponentAssigner.BufferOption.Override, entity, values);
         }
 
         public void SetComponentEnabled<T>(in Entity entity, bool value) where T : struct, IEnableableComponent
@@ -308,7 +308,7 @@ namespace ZG
         {
             AddComponent<T>(entity);
 
-            __assigner.SetBuffer(true, entity, values);
+            __assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, values);
         }
 
         public void AddBuffer<TValue, TCollection>(in Entity entity, TCollection values)
@@ -317,7 +317,7 @@ namespace ZG
         {
             AddComponent<TValue>(entity);
 
-            __assigner.SetBuffer<TValue, TCollection>(true, entity, values);
+            __assigner.SetBuffer<TValue, TCollection>(EntityComponentAssigner.BufferOption.Override, entity, values);
         }
 
         public void AppendBuffer<T>(in Entity entity, params T[] values)
@@ -325,7 +325,7 @@ namespace ZG
         {
             AddComponent<T>(entity);
 
-            __assigner.SetBuffer(false, entity, values);
+            __assigner.SetBuffer(EntityComponentAssigner.BufferOption.Append, entity, values);
         }
 
         public void AppendBuffer<TValue, TCollection>(in Entity entity, TCollection values)
@@ -334,7 +334,23 @@ namespace ZG
         {
             AddComponent<TValue>(entity);
 
-            __assigner.SetBuffer<TValue, TCollection>(false, entity, values);
+            __assigner.SetBuffer<TValue, TCollection>(EntityComponentAssigner.BufferOption.Append, entity, values);
+        }
+
+        public void AppendBufferUnique<TValue, TCollection>(in Entity entity, TCollection values)
+            where TValue : unmanaged, IBufferElementData
+            where TCollection : IReadOnlyCollection<TValue>
+        {
+            AddComponent<TValue>(entity);
+
+            __assigner.SetBuffer<TValue, TCollection>(EntityComponentAssigner.BufferOption.AppendUnique, entity, values);
+        }
+
+        public void RemoveBufferElementSwapBack<TValue, TCollection>(in Entity entity, TCollection values)
+            where TValue : unmanaged, IBufferElementData
+            where TCollection : IReadOnlyCollection<TValue>
+        {
+            __assigner.SetBuffer<TValue, TCollection>(EntityComponentAssigner.BufferOption.RemoveSwapBack, entity, values);
         }
 
         public void AddComponentObject<T>(in Entity entity, in EntityObject<T> value)

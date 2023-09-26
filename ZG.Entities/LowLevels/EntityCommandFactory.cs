@@ -620,17 +620,17 @@ namespace ZG
             where TValue : struct, IBufferElementData
             where TCollection : IReadOnlyCollection<TValue>
         {
-            instanceAssigner.SetBuffer<TValue, TCollection>(true, prefab, values);
+            instanceAssigner.SetBuffer<TValue, TCollection>(EntityComponentAssigner.BufferOption.Override, prefab, values);
         }
 
         public void SetBuffer<T>(in Entity prefab, T[] values) where T : unmanaged, IBufferElementData
         {
-            instanceAssigner.SetBuffer(true, prefab, values);
+            instanceAssigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, prefab, values);
         }
 
         public void SetBuffer<T>(in Entity prefab, in NativeArray<T> values) where T : struct, IBufferElementData
         {
-            instanceAssigner.SetBuffer(true, prefab, values);
+            instanceAssigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, prefab, values);
         }
 
         public void SetComponentData<T>(in Entity prefab, in T value) where T : struct, IComponentData
@@ -664,7 +664,7 @@ namespace ZG
         {
             AddComponent<T>(prefab);
 
-            instanceAssigner.SetBuffer(true, prefab, values);
+            instanceAssigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, prefab, values);
         }
 
         public void AddBuffer<TValue, TCollection>(in Entity prefab, TCollection values)
@@ -673,14 +673,14 @@ namespace ZG
         {
             AddComponent<TValue>(prefab);
 
-            instanceAssigner.SetBuffer<TValue, TCollection>(true, prefab, values);
+            instanceAssigner.SetBuffer<TValue, TCollection>(EntityComponentAssigner.BufferOption.Override, prefab, values);
         }
 
         public void AppendBuffer<T>(in Entity prefab, T[] values) where T : unmanaged, IBufferElementData
         {
             AddComponent<T>(prefab);
 
-            instanceAssigner.SetBuffer(false, prefab, values);
+            instanceAssigner.SetBuffer(EntityComponentAssigner.BufferOption.Append, prefab, values);
         }
 
         public void AppendBuffer<TValue, TCollection>(in Entity prefab, TCollection values)
@@ -689,7 +689,25 @@ namespace ZG
         {
             AddComponent<TValue>(prefab);
 
-            instanceAssigner.SetBuffer<TValue, TCollection>(false, prefab, values);
+            instanceAssigner.SetBuffer<TValue, TCollection>(EntityComponentAssigner.BufferOption.Append, prefab, values);
+        }
+
+        public void AppendBufferUnique<TValue, TCollection>(in Entity prefab, TCollection values)
+            where TValue : unmanaged, IBufferElementData
+            where TCollection : IReadOnlyCollection<TValue>
+        {
+            AddComponent<TValue>(prefab);
+
+            instanceAssigner.SetBuffer<TValue, TCollection>(EntityComponentAssigner.BufferOption.AppendUnique, prefab, values);
+        }
+
+        public void RemoveBufferElementSwapBack<TValue, TCollection>(in Entity prefab, TCollection values)
+            where TValue : unmanaged, IBufferElementData
+            where TCollection : IReadOnlyCollection<TValue>
+        {
+            AddComponent<TValue>(prefab);
+
+            instanceAssigner.SetBuffer<TValue, TCollection>(EntityComponentAssigner.BufferOption.RemoveSwapBack, prefab, values);
         }
 
         public void RemoveComponent<T>(in Entity entity) where T : struct

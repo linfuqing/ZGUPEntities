@@ -67,7 +67,7 @@ namespace ZG
         {
             var array = reader.ReadArray<T>(reader.Read<int>());
             if (assigner.isCreated)
-                assigner.SetBuffer(true, entity, array);
+                assigner.SetBuffer(EntityComponentAssigner.BufferOption.Override, entity, array);
         }
     }
 

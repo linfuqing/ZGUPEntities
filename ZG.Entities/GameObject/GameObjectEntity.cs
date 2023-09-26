@@ -770,7 +770,7 @@ namespace ZG
 
             GameObjectEntityHandle handle;
             handle.value = GCHandle.Alloc(this);
-            assigner.SetBuffer(false, __entity, handle);
+            assigner.SetBuffer(EntityComponentAssigner.BufferOption.Append, __entity, handle);
 
             EntityOrigin origin;
             origin.entity = __entity;
@@ -782,7 +782,7 @@ namespace ZG
 
                 EntityParent entityParent;
                 entityParent.entity = _parent.__entity;
-                assigner.SetBuffer(false, __entity, entityParent);
+                assigner.SetBuffer(EntityComponentAssigner.BufferOption.Append, __entity, entityParent);
 
                 assigner.SetComponentEnabled<EntityParent>(__entity, true);
             }

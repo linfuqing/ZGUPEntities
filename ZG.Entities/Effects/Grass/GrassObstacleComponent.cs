@@ -77,7 +77,7 @@ namespace ZG
                 __obstacles.Add(destination);
             }
 
-            assigner.SetBuffer<GrassObstacle, List<GrassObstacle>>(true, entity, __obstacles);
+            assigner.SetBuffer<GrassObstacle, List<GrassObstacle>>(EntityComponentAssigner.BufferOption.Override, entity, __obstacles);
         }
     }
 

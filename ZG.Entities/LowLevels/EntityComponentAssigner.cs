@@ -13,11 +13,21 @@ using UnityEngine;
 using System;
 using NUnit.Framework;
 using UnityEngine.UIElements;
+using static Google.DialogWindow;
 
 namespace ZG
 {
     public struct EntityComponentAssigner : IDisposable
     {
+        public enum BufferOption
+        {
+            Override, 
+            Append,
+            AppendUnique,
+            Remove,
+            RemoveSwapBack
+        }
+
         [BurstCompile]
         private struct AssignJob : IJobParallelFor
         {
@@ -126,8 +136,16 @@ namespace ZG
                 ComponentData,
                 BufferOverride,
                 BufferAppend,
+                BufferAppendUnique,
+                BufferRemove,
+                BufferRemoveSwapBack, 
                 Enable, 
                 Disable
+            }
+
+            public static Type GetBufferType(BufferOption option)
+            {
+                return (Type)((int)option + (int)Type.BufferOverride);
             }
 
             public Type type;
@@ -150,7 +168,7 @@ namespace ZG
             }
         }
 
-        internal struct Value : System.IComparable<Value>
+        internal struct Value : IComparable<Value>
         {
             public int index;
             public Command command;
@@ -545,6 +563,7 @@ namespace ZG
 
                                 break;
                             case Command.Type.BufferAppend:
+                            case Command.Type.BufferAppendUnique:
                                 index = wrapper.GetCount(list);
                                 wrapper.SetCount(ref list, index + length);
                                 for (j = 0; j < length; ++j)
@@ -597,6 +616,7 @@ namespace ZG
                                     indexOffset = length;
                                     break;
                                 case Command.Type.BufferAppend:
+                                case Command.Type.BufferAppendUnique:
                                     indexOffset += length;
                                     break;
                                 default:
@@ -647,11 +667,11 @@ namespace ZG
                 SetComponentData(TypeManager.GetTypeIndex<T>(), entity, value);
             }
 
-            public unsafe void SetBuffer<T>(bool isOverride, in Entity entity, void* values, int length)
+            public unsafe void SetBuffer<T>(BufferOption option, in Entity entity, void* values, int length)
                 where T : struct, IBufferElementData
             {
                 Command command;
-                command.type = isOverride ? Command.Type.BufferOverride : Command.Type.BufferAppend;
+                command.type = Command.GetBufferType(option);
                 if (values == null || length < 1)
                     command.block = UnsafeBlock.Empty;
                 else
@@ -665,12 +685,12 @@ namespace ZG
                 __Set<T>(entity, command);
             }
 
-            public unsafe void SetBuffer<TValue, TCollection>(bool isOverride, in Entity entity, in TCollection values)
+            public unsafe void SetBuffer<TValue, TCollection>(BufferOption option, in Entity entity, in TCollection values)
                 where TValue : struct, IBufferElementData
                 where TCollection : IReadOnlyCollection<TValue>
             {
                 Command command;
-                command.type = isOverride ? Command.Type.BufferOverride : Command.Type.BufferAppend;
+                command.type = Command.GetBufferType(option);
 
                 int count = values == null ? 0 : values.Count;
                 if (count > 0)
@@ -970,39 +990,39 @@ namespace ZG
                 SetComponentData(TypeManager.GetTypeIndex<T>(), entity, value);
             }
 
-            public unsafe void SetBuffer<T>(bool isOverride, in Entity entity, void* values, int length)
+            public unsafe void SetBuffer<T>(BufferOption option, in Entity entity, void* values, int length)
                 where T : struct, IBufferElementData
             {
                 __CheckWrite();
 
-                _info->SetBuffer<T>(isOverride, entity, values, length);
+                _info->SetBuffer<T>(option, entity, values, length);
             }
 
-            public unsafe void SetBuffer<T>(bool isOverride, in Entity entity, in NativeArray<T> values) where T : struct, IBufferElementData => SetBuffer<T>(
-                isOverride, entity, values.GetUnsafeReadOnlyPtr(), values.Length);
+            public unsafe void SetBuffer<T>(BufferOption option, in Entity entity, in NativeArray<T> values) where T : struct, IBufferElementData => SetBuffer<T>(
+                option, entity, values.GetUnsafeReadOnlyPtr(), values.Length);
 
-            public unsafe void SetBuffer<T>(bool isOverride, in Entity entity, in T[] values) where T : unmanaged, IBufferElementData
+            public unsafe void SetBuffer<T>(BufferOption option, in Entity entity, in T[] values) where T : unmanaged, IBufferElementData
             {
                 if (values == null)
                 {
-                    SetBuffer<T>(isOverride, entity, null, 0);
+                    SetBuffer<T>(option, entity, null, 0);
 
                     return;
                 }
 
                 fixed (void* ptr = values)
                 {
-                    SetBuffer<T>(isOverride, entity, ptr, values.Length);
+                    SetBuffer<T>(option, entity, ptr, values.Length);
                 }
             }
 
-            public unsafe void SetBuffer<TValue, TCollection>(bool isOverride, in Entity entity, in TCollection values)
+            public unsafe void SetBuffer<TValue, TCollection>(BufferOption option, in Entity entity, in TCollection values)
                 where TValue : struct, IBufferElementData
                 where TCollection : IReadOnlyCollection<TValue>
             {
                 __CheckWrite();
 
-                _info->SetBuffer<TValue, TCollection>(isOverride, entity, values);
+                _info->SetBuffer<TValue, TCollection>(option, entity, values);
             }
 
             public unsafe void SetComponentEnabled<T>(in Entity entity, bool value) where T : struct, IEnableableComponent
@@ -1266,7 +1286,7 @@ namespace ZG
                 EntityStorageInfo entityStorageInfo;
                 Unity.Entities.LowLevel.Unsafe.UnsafeUntypedBufferAccessor bufferAccessor = default;
                 void* source, destination = null;
-                int blockSize, numValues, elementSize, j;
+                int blockSize, numValues, elementSize, i;
 
                 key.entity = wrapper.isCreated ? wrapper[entity] : entity;
 
@@ -1303,9 +1323,9 @@ namespace ZG
                         values.Sort();
 
                         numValues = values.Length;
-                        for (j = 0; j < numValues; ++j)
+                        for (i = 0; i < numValues; ++i)
                         {
-                            command = values.ElementAt(j).command;
+                            command = values.ElementAt(i).command;
                             if (command.block.isCreated)
                                 source = command.block.GetRangePtr(out blockSize);
                             else
@@ -1327,18 +1347,96 @@ namespace ZG
                                     break;
                                 case Command.Type.BufferOverride:
                                 case Command.Type.BufferAppend:
-                                    //var bufferAccessor = batchInChunk.GetUntypedBufferAccessor(ref dynamicComponentTypeHandle);
-                                    int elementCount = blockSize / elementSize;
-                                    if (command.type == Command.Type.BufferOverride)
+                                case Command.Type.BufferAppendUnique:
+                                    if (source != null)
                                     {
-                                        bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, elementCount);
-                                        destination = bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk);
+                                        //var bufferAccessor = batchInChunk.GetUntypedBufferAccessor(ref dynamicComponentTypeHandle);
+                                        int elementCount = blockSize / elementSize;
+                                        if (command.type == Command.Type.BufferOverride)
+                                        {
+                                            bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, elementCount);
+                                            destination = bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk);
+                                        }
+                                        else
+                                        {
+                                            byte* ptr;
+                                            int originCount = bufferAccessor.GetBufferLength(entityStorageInfo.IndexInChunk);
+                                            if (originCount > 0 && command.type == Command.Type.BufferAppendUnique)
+                                            {
+                                                ptr = (byte*)bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk);
+                                                byte* sourcePtr = (byte*)source, destinationPtr;
+                                                int j, k;
+                                                for (j = 0; j < elementCount; ++j)
+                                                {
+                                                    destinationPtr = ptr;
+                                                    for (k = 0; k < originCount; ++k)
+                                                    {
+                                                        if (UnsafeUtility.MemCmp(destinationPtr, sourcePtr, elementSize) == 0)
+                                                            break;
+
+                                                        destinationPtr += elementSize;
+                                                    }
+
+                                                    if (k < originCount && j < --elementCount)
+                                                        UnsafeUtility.MemMove(sourcePtr, sourcePtr + elementSize, (elementCount - j--) * elementSize);
+
+                                                    sourcePtr += elementSize;
+                                                }
+
+                                                blockSize = elementCount * elementSize;
+                                            }
+
+                                            if (elementCount > 0)
+                                            {
+                                                bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, originCount + elementCount);
+                                                ptr = (byte*)bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk);
+                                                destination = ptr + originCount * elementSize;
+                                            }
+                                            else
+                                                source = null;
+                                        }
                                     }
-                                    else
+                                    break;
+                                case Command.Type.BufferRemove:
+                                case Command.Type.BufferRemoveSwapBack:
+                                    if (source != null)
                                     {
-                                        int originCount = bufferAccessor.GetBufferLength(entityStorageInfo.IndexInChunk);
-                                        bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, originCount + elementCount);
-                                        destination = (byte*)bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk) + originCount * elementSize;
+                                        int bufferLength = bufferAccessor.GetBufferLength(entityStorageInfo.IndexInChunk);
+                                        if (bufferLength > 0)
+                                        {
+                                            byte* ptr = (byte*)bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk), sourcePtr = (byte*)source, destinationPtr;
+                                            int j, k, elementCount = blockSize / elementSize;
+                                            for (j = 0; j < elementCount; ++j)
+                                            {
+                                                destinationPtr = ptr;
+                                                for (k = 0; k < bufferLength; ++k)
+                                                {
+                                                    if (UnsafeUtility.MemCmp(destinationPtr, sourcePtr, elementSize) == 0)
+                                                    {
+                                                        if (k < --bufferLength)
+                                                        {
+                                                            if (command.type == Command.Type.BufferRemoveSwapBack)
+                                                                UnsafeUtility.MemCpy(destinationPtr, destinationPtr + elementSize * bufferLength, elementSize);
+                                                            else
+                                                                UnsafeUtility.MemMove(destinationPtr, destinationPtr + elementSize, (bufferLength - k) * elementSize);
+                                                        }
+
+                                                        break;
+                                                    }
+
+                                                    destinationPtr += elementSize;
+                                                }
+
+                                                if (bufferLength < 1)
+                                                    break;
+
+                                                sourcePtr += elementSize;
+                                            }
+
+                                            bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, bufferLength);
+                                        }
+
+                                        source = null;
                                     }
                                     break;
                                 case Command.Type.Enable:
@@ -1376,11 +1474,11 @@ namespace ZG
 
             public void SetComponentData<T>(in Entity entity, in T value) where T : struct, IComponentData => _container.SetComponentData(entity, value);
 
-            public unsafe void SetBuffer<T>(bool isOverride, in Entity entity, void* values, int length)
-                where T : struct, IBufferElementData => _container.SetBuffer<T>(isOverride, entity, values, length);
+            public unsafe void SetBuffer<T>(BufferOption option, in Entity entity, void* values, int length)
+                where T : struct, IBufferElementData => _container.SetBuffer<T>(option, entity, values, length);
 
-            public unsafe void SetBuffer<T>(bool isOverride, in Entity entity, in NativeArray<T> values) where T : struct, IBufferElementData =>
-                _container.SetBuffer(isOverride, entity, values);
+            public unsafe void SetBuffer<T>(BufferOption option, in Entity entity, in NativeArray<T> values) where T : struct, IBufferElementData =>
+                _container.SetBuffer(option, entity, values);
 
             public void Clear()
             {
@@ -1843,42 +1941,42 @@ namespace ZG
             container.SetComponentData(entity, value);
         }
 
-        public unsafe void SetBuffer<T>(bool isOverride, in Entity entity, void* values, int length)
+        public unsafe void SetBuffer<T>(BufferOption option, in Entity entity, void* values, int length)
             where T : struct, IBufferElementData
         {
             CompleteDependency();
 
-            container.SetBuffer<T>(isOverride, entity, values, length);
+            container.SetBuffer<T>(option, entity, values, length);
         }
 
-        public unsafe void SetBuffer<T>(bool isOverride, in Entity entity, T value)
+        public unsafe void SetBuffer<T>(BufferOption option, in Entity entity, T value)
             where T : struct, IBufferElementData
         {
-            SetBuffer<T>(isOverride, entity, UnsafeUtility.AddressOf(ref value), 1);
+            SetBuffer<T>(option, entity, UnsafeUtility.AddressOf(ref value), 1);
         }
 
-        public void SetBuffer<T>(bool isOverride, in Entity entity, in NativeArray<T> values)
+        public void SetBuffer<T>(BufferOption option, in Entity entity, in NativeArray<T> values)
             where T : struct, IBufferElementData
         {
             CompleteDependency();
 
-            container.SetBuffer(isOverride, entity, values);
+            container.SetBuffer(option, entity, values);
         }
 
-        public void SetBuffer<T>(bool isOverride, in Entity entity, in T[] values) where T : unmanaged, IBufferElementData
+        public void SetBuffer<T>(BufferOption option, in Entity entity, in T[] values) where T : unmanaged, IBufferElementData
         {
             CompleteDependency();
 
-            container.SetBuffer(isOverride, entity, values);
+            container.SetBuffer(option, entity, values);
         }
 
-        public void SetBuffer<TValue, TCollection>(bool isOverride, in Entity entity, in TCollection values)
+        public void SetBuffer<TValue, TCollection>(BufferOption option, in Entity entity, in TCollection values)
             where TValue : struct, IBufferElementData
             where TCollection : IReadOnlyCollection<TValue>
         {
             CompleteDependency();
 
-            container.SetBuffer<TValue, TCollection>(isOverride, entity, values);
+            container.SetBuffer<TValue, TCollection>(option, entity, values);
         }
 
         public void SetComponentEnabled<T>(in Entity entity, bool value) where T : struct, IEnableableComponent
