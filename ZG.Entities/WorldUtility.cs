@@ -15,22 +15,22 @@ namespace ZG
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = true)]
     public class AutoCreateExceptAttribute : Attribute
     {
-        public string worldName { get; private set; }
+        public string name { get; private set; }
 
-        public AutoCreateExceptAttribute(string worldName)
+        public AutoCreateExceptAttribute(string name)
         {
-            this.worldName = worldName;
+            this.name = name;
         }
     }
 
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = true)]
     public class AutoCreateInAttribute : Attribute
     {
-        public string worldName { get; private set; }
+        public string name { get; private set; }
 
-        public AutoCreateInAttribute(string worldName)
+        public AutoCreateInAttribute(string name)
         {
-            this.worldName = worldName;
+            this.name = name;
         }
     }
 
@@ -156,7 +156,7 @@ namespace ZG
             return UpdateInGroup(type, groupType);
         }
 
-        public static bool IsAutoCreateIn(this Type systemType, string worldName)
+        public static bool IsAutoCreateIn(this Type systemType, string[] names)
         {
             bool result = true;
             var autoCreateInAttributes = systemType.GetCustomAttributes<AutoCreateInAttribute>();
@@ -165,7 +165,7 @@ namespace ZG
                 foreach (AutoCreateInAttribute autoCreateInAttribute in autoCreateInAttributes)
                 {
                     result = false;
-                    if (autoCreateInAttribute.worldName == worldName)
+                    if (Array.IndexOf(names, autoCreateInAttribute.name) != -1)
                     {
                         result = true;
 
@@ -177,7 +177,7 @@ namespace ZG
             return result;
         }
 
-        public static List<Type> FilterSystemTypes(List<Type> systems, string worldName)
+        public static List<Type> FilterSystemTypes(List<Type> systems, string[] names)
         {
             bool isContains;
             int count = systems.Count;
@@ -194,7 +194,7 @@ namespace ZG
                 {
                     foreach (var autoCreateExceptAttribute in autoCreateExceptAttributes)
                     {
-                        if (autoCreateExceptAttribute.worldName == worldName)
+                        if (Array.IndexOf(names, autoCreateExceptAttribute.name) != -1)
                         {
                             isContains = false;
 
@@ -210,7 +210,7 @@ namespace ZG
                     {
                         foreach (var autoCreateInAttribute in autoCreateInAttributes)
                         {
-                            if (autoCreateInAttribute.worldName == worldName)
+                            if (Array.IndexOf(names, autoCreateInAttribute.name) != -1)
                             {
                                 isContains = true;
 
@@ -233,7 +233,11 @@ namespace ZG
             return systems;
         }
 
-        public static void Initialize(this World world, WorldSystemFilterFlags systemFilterFlags = WorldSystemFilterFlags.Default, params Type[] maskSystemTypes)
+        public static void Initialize(
+            this World world, 
+            WorldSystemFilterFlags systemFilterFlags = WorldSystemFilterFlags.Default, 
+            Type[] maskSystemTypes = null, 
+            params string[] names)
         {
             var systemTypes = new List<Type>(DefaultWorldInitialization.GetAllSystems(systemFilterFlags));
 
@@ -272,8 +276,8 @@ namespace ZG
 
             }
 
-            string worldName = world.Name;
-            systemTypes = FilterSystemTypes(systemTypes, worldName);
+            //string worldName = world.Name;
+            systemTypes = FilterSystemTypes(systemTypes, names);
 
             var types = new List<Type>();
             //var unmanagedTypes = new List<Type>();
@@ -355,7 +359,7 @@ namespace ZG
         {
             var world = new World(worldName, worldFlags);
 
-            Initialize(world, worldSystemFilterFlags);
+            Initialize(world, worldSystemFilterFlags, null, names);
 
             if (names != null)
             {
