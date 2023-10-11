@@ -4,12 +4,10 @@ using System.Runtime.InteropServices;
 using System.Collections.Generic;
 using Unity.Jobs;
 using Unity.Burst;
-using Unity.Burst.Intrinsics;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
-using UnityEngine;
 using System;
 
 namespace ZG

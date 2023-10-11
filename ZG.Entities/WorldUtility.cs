@@ -347,22 +347,33 @@ namespace ZG
         }
 
         public static World Create(
-            string name,
+            //string name,
             string worldName, 
             WorldFlags worldFlags = WorldFlags.Simulation,
             WorldSystemFilterFlags worldSystemFilterFlags = WorldSystemFilterFlags.Default,
-            params Type[] maskSystemTypes)
+            params string[] names)
         {
             var world = new World(worldName, worldFlags);
 
-            Initialize(world, worldSystemFilterFlags, maskSystemTypes);
+            Initialize(world, worldSystemFilterFlags);
 
-            if (__worlds == null)
-                __worlds = new Dictionary<string, World>();
+            if (names != null)
+            {
+                if (__worlds == null)
+                    __worlds = new Dictionary<string, World>();
 
-            __worlds.Add(name, world);
+                foreach (var name in names)
+                    __worlds.Add(name, world);
+            }
 
             return world;
+        }
+
+        public static World Create(
+            string worldName,
+            params string[] names)
+        {
+            return Create(worldName, WorldFlags.Simulation, WorldSystemFilterFlags.Default, names);
         }
 
         /*public static World GetOrCreateWorld(

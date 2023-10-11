@@ -754,7 +754,7 @@ namespace ZG
 
             UnityEngine.Assertions.Assert.AreEqual(Entity.Null, __entity);
 
-            __entity = __prefab;
+            __entity = _parent == null ? __prefab : Entity.Null;
 
             CreateEntityDefinition(__info, ref __entity, ref factory, out var assigner, ComponentTypeList);
 

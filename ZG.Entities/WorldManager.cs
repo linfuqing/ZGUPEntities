@@ -10,18 +10,18 @@ namespace ZG
         [Serializable]
         public struct WorldConfig
         {
-            public string name;
-
             public string worldName;
             public WorldFlags worldFlags;
             public WorldSystemFilterFlags systemFilterFlags;
 
-            [Type(typeof(ISystem))]
-            public string[] maskSystemTypes;
+            //[Type(typeof(ISystem))]
+            //public string[] maskSystemTypes;
+
+            public string[] names;
 
             public World Create()
             {
-                int numMaskSystemTypes = maskSystemTypes == null ? 0 : maskSystemTypes.Length;
+                /*int numMaskSystemTypes = maskSystemTypes == null ? 0 : maskSystemTypes.Length;
                 List<Type> types;
                 if (numMaskSystemTypes > 0)
                 {
@@ -37,9 +37,9 @@ namespace ZG
                     }
                 }
                 else
-                    types = null;
+                    types = null;*/
 
-                return WorldUtility.Create(name, worldName, worldFlags, systemFilterFlags, types == null ? null : types.ToArray());
+                return WorldUtility.Create(worldName, worldFlags, systemFilterFlags, names/*types == null ? null : types.ToArray()*/);
             }
         }
 
