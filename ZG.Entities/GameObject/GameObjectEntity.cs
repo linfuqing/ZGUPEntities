@@ -1148,7 +1148,7 @@ namespace ZG
             else
             {
                 entityManager.SetComponentData(instance, componentData);
-                entityManager.SetComponentEnabled<TValue>(entity, true);
+                entityManager.SetComponentEnabled<TValue>(instance, true);
             }
         }
 
