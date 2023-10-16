@@ -374,7 +374,7 @@ namespace ZG
                 switch (gameObjectEntity.status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        return __TryGetComponentData(commandSystem, entity, commandSystem.factory, out value);
+                        return __TryGetComponentData(commandSystem, commandSystem.factory, entity, out _, out value);
                     case GameObjectEntityStatus.Created:
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
@@ -461,8 +461,9 @@ namespace ZG
                     case GameObjectEntityStatus.Creating:
                         if (__TryGetComponentData(
                             commandSystem,
-                            entity,
                             commandSystem.factory,
+                            entity,
+                            out _, 
                             out EntityObject<T> target))
                         {
                             value = target.value;
@@ -565,15 +566,16 @@ namespace ZG
 
         private static bool __TryGetComponentData<TValue, TScheduler>(
             in TScheduler entityManager,
-            in Entity entity,
             in EntityCommandFactory factory,
+            in Entity entity,
+            out Entity instance, 
             out TValue value)
             where TValue : unmanaged, IComponentData
             where TScheduler : IEntityCommandScheduler
         {
             value = default;
 
-            bool result = factory.TryGetComponentData(entity, ref value, out Entity instance);
+            bool result = factory.TryGetComponentData(entity, ref value, out instance);
             if (instance != Entity.Null)
                 result = entityManager.TryGetComponentData(instance, ref value, result) || result;
 
