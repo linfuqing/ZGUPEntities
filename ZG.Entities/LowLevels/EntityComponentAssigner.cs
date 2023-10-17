@@ -495,6 +495,45 @@ namespace ZG
                 values.Capacity = math.max(values.Capacity, values.Count() + typeCount);
             }
 
+            public bool IsComponentEnabled(in Entity entity, in TypeIndex typeIndex)
+            {
+                bool result = false;
+                int index = -1;
+
+                Key key;
+                key.entity = entity;
+                key.typeIndex = typeIndex;
+
+                if (values.TryGetFirstValue(key, out var temp, out var iterator))
+                {
+                    do
+                    {
+                        switch(temp.command.type)
+                        {
+                            case Command.Type.Enable:
+                                if(temp.index > index)
+                                {
+                                    index = temp.index;
+
+                                    result = true;
+                                }
+                                break;
+                            case Command.Type.Disable:
+                                if (temp.index > index)
+                                {
+                                    index = temp.index;
+
+                                    result = false;
+                                }
+                                break;
+                        }
+
+                    } while (values.TryGetNextValue(out temp, ref iterator));
+                }
+
+                return result;
+            }
+
             public bool TryGetComponentData<T>(in Entity entity, ref T value) where T : struct, IComponentData
             {
                 int index = -1;
@@ -938,6 +977,13 @@ namespace ZG
             public void Reset(int elementSize, int elementCount, int typeCount)
             {
                 Reset(elementSize * elementCount, typeCount);
+            }
+
+            public unsafe bool IsComponentEnabled(in Entity entity, in TypeIndex typeIndex)
+            {
+                __CheckRead();
+
+                return _info->IsComponentEnabled(entity, typeIndex);
             }
 
             public unsafe bool TryGetComponentData<T>(in Entity entity, ref T value) where T : struct, IComponentData
@@ -1896,6 +1942,13 @@ namespace ZG
 
             var container = this.container;
             return new ParallelWriter(ref container);
+        }
+
+        public bool IsComponentEnabled(in Entity entity, in TypeIndex typeIndex)
+        {
+            CompleteDependency();
+
+            return container.IsComponentEnabled(entity, typeIndex);
         }
 
         public bool TryGetComponentData<T>(in Entity entity, ref T value) where T : struct, IComponentData

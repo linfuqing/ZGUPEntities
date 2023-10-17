@@ -358,6 +358,17 @@ namespace ZG
             return scheduler.commander.TryGetBuffer(entity, index, ref value, indexOffset) || result;
         }
 
+        public static bool IsComponentEnabled(this IEntityCommandScheduler scheduler, in Entity entity, in ComponentType componentType)
+        {
+            var commander = scheduler.commander;
+            if (commander.IsComponentEnabled(entity, componentType.TypeIndex))
+                return true;
+
+            return scheduler.entityManager.IsComponentEnabled(entity, componentType);
+        }
+
+        public static bool IsComponentEnabled<T>(this IEntityCommandScheduler scheduler, in Entity entity) where T :　IEnableableComponent => IsComponentEnabled(scheduler, entity, ComponentType.ReadWrite<T>());
+
         public static bool HasComponent(this IEntityCommandScheduler scheduler, in Entity entity, in ComponentType componentType)
         {
             var commander = scheduler.commander;
@@ -371,7 +382,7 @@ namespace ZG
             return scheduler.entityManager.HasComponent(entity, componentType);
         }
 
-        public static bool HasComponent<TValue>(this IEntityCommandScheduler scheduler, in Entity entity) => HasComponent(scheduler, entity, typeof(TValue));
+        public static bool HasComponent<T>(this IEntityCommandScheduler scheduler, in Entity entity) => HasComponent(scheduler, entity, ComponentType.ReadWrite<T>());
 
         public static void CompleteAll(this ref NativeParallelHashMap<ComponentType, JobHandle> dependency, in JobHandle inputDeps)
         {

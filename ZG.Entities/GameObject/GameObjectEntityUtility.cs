@@ -545,6 +545,24 @@ namespace ZG
             return value;
         }
 
+        public static bool IsComponentEnabled<T>(this IGameObjectEntity gameObjectEntity) where T  : IEnableableComponent
+        {
+            var entity = gameObjectEntity.entity;
+
+            var commandSystem = __GetCommandSystem(gameObjectEntity);
+            switch (gameObjectEntity.status)
+            {
+                case GameObjectEntityStatus.Creating:
+                    return commandSystem.factory.IsComponentEnabled<T>(entity, out _);
+                case GameObjectEntityStatus.Created:
+                    UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+
+                    return commandSystem.IsComponentEnabled<T>(entity);
+                default:
+                    throw new InvalidOperationException();
+            }
+        }
+
         public static bool HasComponent<T>(this IGameObjectEntity gameObjectEntity)
         {
             var entity = gameObjectEntity.entity;

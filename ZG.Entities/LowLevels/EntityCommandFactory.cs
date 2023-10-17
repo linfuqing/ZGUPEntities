@@ -520,9 +520,9 @@ namespace ZG
             return Entity.Null;
         }
 
-        public bool HasComponent<T>(in Entity prefab)
+        public bool HasComponent(in Entity prefab, in TypeIndex destination)
         {
-            var destination = TypeManager.GetTypeIndex<T>();
+            //var destination = TypeManager.GetTypeIndex<T>();
 
             if (__instanceComponentTypes.TryGetFirstValue(prefab, out var source, out var iterator))
             {
@@ -574,6 +574,38 @@ namespace ZG
 
             return false;
         }
+
+        public bool HasComponent<T>(in Entity prefab) => HasComponent(prefab, TypeManager.GetTypeIndex<T>());
+
+        public bool IsComponentEnabled(in Entity prefab, in TypeIndex typeIndex, out Entity entity)
+        {
+            var instances = this.instances;
+            instances.lookupJobManager.CompleteReadOnlyDependency();
+
+            var reader = instances.reader;
+            bool result = reader.TryGetValue(prefab, out entity);
+            if (instanceAssigner.IsComponentEnabled(prefab, typeIndex))
+                return true;
+            else if (result)
+                return false;
+
+            Entity key = prefab;
+            foreach (var pair in __instantiateCommander)
+            {
+                if (pair.Value == prefab)
+                {
+                    key = pair.Key;
+
+                    break;
+                }
+            }
+
+            reader.TryGetValue(key, out entity);
+
+            return prefabAssigner.IsComponentEnabled(key, typeIndex);
+        }
+
+        public bool IsComponentEnabled<T>(in Entity prefab, out Entity entity) where T : IEnableableComponent => IsComponentEnabled(prefab, TypeManager.GetTypeIndex<T>(), out entity);
 
         public void SetComponentEnabled<T>(in Entity prefab, in bool value) where T : struct, IEnableableComponent
         {

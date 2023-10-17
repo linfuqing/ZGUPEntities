@@ -207,6 +207,13 @@ namespace ZG
             return __structChangeCommander.IsAddOrRemoveComponent(entity, componentTypeIndex, out status);
         }
 
+        public bool IsComponentEnabled(in Entity entity, in TypeIndex typeIndex)
+        {
+            CompleteDependency();
+
+            return __assigner.IsComponentEnabled(entity, typeIndex);
+        }
+
         public bool TryGetComponentData<T>(in Entity entity, ref T value) where T : struct, IComponentData
         {
             return __assigner.TryGetComponentData(entity, ref value) || __structChangeCommander.HasComponent<T>(entity);
