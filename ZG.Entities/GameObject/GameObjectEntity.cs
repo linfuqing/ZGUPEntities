@@ -81,7 +81,7 @@ namespace ZG
                     if (head == null)
                         return;
 
-                } while (System.Threading.Interlocked.CompareExchange(ref __head, head.__next, head) != head);
+                } while (Interlocked.CompareExchange(ref __head, head.__next, head) != head);
 
                 head.Execute();
 
@@ -1106,15 +1106,16 @@ namespace ZG
                         entity,
                         ref factory);
                     break;
-                /*case GameObjectEntityStatus.Created:
-                    T componentData = default;
-                    if (commandSystem.TryGetComponentData(entity, ref componentData))
-                    {
-                        componentData.value += value;
-                        commandSystem.SetComponentData(entity, componentData);
-                        commandSystem.SetComponentEnabled<T>(entity, true);
-                    }
-                    break;*/
+                    //以下情况不对因为GameObjectEntityFactorySystem更新顺序在EntityCommanderSystem之前
+                    /*case GameObjectEntityStatus.Created:
+                        T componentData = default;
+                        if (commandSystem.TryGetComponentData(entity, ref componentData))
+                        {
+                            componentData.value += value;
+                            commandSystem.SetComponentData(entity, componentData);
+                            commandSystem.SetComponentEnabled<T>(entity, true);
+                        }
+                        break;*/
             }
         }
 
@@ -1137,13 +1138,21 @@ namespace ZG
             where TValue : unmanaged, IComponentData, IEnableableComponent, IGameObjectEntityStatus
             where TScheduler : IEntityCommandScheduler
         {
-            __TryGetComponentData(entityManager, factory, entity, out TValue componentData);
+            EntityOrigin entityOrigin;
+            entityOrigin.entity = entity;
+            if (!__TryGetComponentData(entityManager, factory, entity, out TValue componentData) && 
+                !entityManager.TryGetComponentData(entity, ref entityOrigin))
+            {
+                Debug.LogError($"Can not add {typeof(TValue)}");
 
+                return;
+            }
+                
             componentData.value += value;
 
             var assigner = factory.instanceAssigner;
-            assigner.SetComponentData(entity, componentData);
-            assigner.SetComponentEnabled<TValue>(entity, true);
+            assigner.SetComponentData(entityOrigin.entity, componentData);
+            assigner.SetComponentEnabled<TValue>(entityOrigin.entity, true);
         }
 
     }
