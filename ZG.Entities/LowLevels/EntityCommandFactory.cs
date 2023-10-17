@@ -847,7 +847,7 @@ namespace ZG
                     collect.prefabs = prefabsWriter;
                     collect.instances = instancesWriter;
                     //systemState.Dependency = collect.Schedule(systemState.Dependency);
-                    collect.Run();
+                    collect.RunByRef();
                 }
             }
             else
@@ -946,7 +946,7 @@ namespace ZG
                     collect.prefabs = prefabsWriter;
                     collect.instances = instancesWriter;
                     //systemState.Dependency = collect.Schedule(systemState.Dependency);
-                    collect.Run();
+                    collect.RunByRef();
 
                     foreach (Entity entity in subEntities)
                     {

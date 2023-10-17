@@ -1098,6 +1098,7 @@ namespace ZG
             switch (status)
             {
                 case GameObjectEntityStatus.Creating:
+                case GameObjectEntityStatus.Created:
                     var factory = commandSystem.factory;
                     _Add<T, EntityCommandSharedSystemGroup>(
                         commandSystem, 
@@ -1105,7 +1106,7 @@ namespace ZG
                         entity,
                         ref factory);
                     break;
-                case GameObjectEntityStatus.Created:
+                /*case GameObjectEntityStatus.Created:
                     T componentData = default;
                     if (commandSystem.TryGetComponentData(entity, ref componentData))
                     {
@@ -1113,7 +1114,7 @@ namespace ZG
                         commandSystem.SetComponentData(entity, componentData);
                         commandSystem.SetComponentEnabled<T>(entity, true);
                     }
-                    break;
+                    break;*/
             }
         }
 
