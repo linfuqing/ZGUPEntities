@@ -1136,7 +1136,7 @@ namespace ZG
             where TValue : unmanaged, IComponentData, IEnableableComponent, IGameObjectEntityStatus
             where TScheduler : IEntityCommandScheduler
         {
-            __TryGetComponentData(entityManager, factory, entity, out _, out TValue componentData);
+            __TryGetComponentData(entityManager, factory, entity, out TValue componentData);
 
             componentData.value += value;
 
