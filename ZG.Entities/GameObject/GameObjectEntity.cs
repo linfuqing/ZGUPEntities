@@ -1136,20 +1136,13 @@ namespace ZG
             where TValue : unmanaged, IComponentData, IEnableableComponent, IGameObjectEntityStatus
             where TScheduler : IEntityCommandScheduler
         {
-            __TryGetComponentData(entityManager, factory, entity, out Entity instance, out TValue componentData);
+            __TryGetComponentData(entityManager, factory, entity, out _, out TValue componentData);
 
             componentData.value += value;
-            if (instance == Entity.Null)
-            {
-                var assigner = factory.instanceAssigner;
-                assigner.SetComponentData(entity, componentData);
-                assigner.SetComponentEnabled<TValue>(entity, true);
-            }
-            else
-            {
-                entityManager.SetComponentData(instance, componentData);
-                entityManager.SetComponentEnabled<TValue>(instance, true);
-            }
+
+            var assigner = factory.instanceAssigner;
+            assigner.SetComponentData(entity, componentData);
+            assigner.SetComponentEnabled<TValue>(entity, true);
         }
 
     }

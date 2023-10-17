@@ -406,18 +406,14 @@ namespace ZG
             out Entity entity, 
             int indexOffset = 0) where T : struct, IBufferElementData
         {
-            if (instanceAssigner.TryGetBuffer(prefab, index, ref value, indexOffset))
-            {
-                entity = Entity.Null;
-
-                return true;
-            }
-
             var instances = this.instances;
             instances.lookupJobManager.CompleteReadOnlyDependency();
 
             var reader = instances.reader;
-            if (reader.TryGetValue(prefab, out entity))
+            bool result = reader.TryGetValue(prefab, out entity);
+            if (instanceAssigner.TryGetBuffer(prefab, index, ref value, indexOffset))
+                return true;
+            else if (result)
                 return false;
 
             Entity key = prefab;
@@ -431,17 +427,9 @@ namespace ZG
                 }
             }
 
-            if (prefabAssigner.TryGetBuffer(key, index, ref value, indexOffset))
-            {
-                entity = Entity.Null;
+            reader.TryGetValue(key, out entity);
 
-                return true;
-            }
-
-            if (!reader.TryGetValue(key, out entity))
-                entity = Entity.Null;
-
-            return false;
+            return prefabAssigner.TryGetBuffer(key, index, ref value, indexOffset);
         }
 
         public bool TryGetBuffer<TValue, TList, TWrapper>(
@@ -452,18 +440,14 @@ namespace ZG
             where TValue : struct, IBufferElementData
             where TWrapper : IWriteOnlyListWrapper<TValue, TList>
         {
-            if (instanceAssigner.TryGetBuffer<TValue, TList, TWrapper>(prefab, ref list, ref wrapper))
-            {
-                entity = Entity.Null;
-
-                return true;
-            }
-
             var instances = this.instances;
             instances.lookupJobManager.CompleteReadOnlyDependency();
 
             var reader = instances.reader;
-            if (reader.TryGetValue(prefab, out entity))
+            bool result = reader.TryGetValue(prefab, out entity);
+            if (instanceAssigner.TryGetBuffer<TValue, TList, TWrapper>(prefab, ref list, ref wrapper))
+                return true;
+            else if(result)
                 return false;
 
             Entity key = prefab;
@@ -477,33 +461,21 @@ namespace ZG
                 }
             }
 
-            if (prefabAssigner.TryGetBuffer<TValue, TList, TWrapper>(key, ref list, ref wrapper))
-            {
-                entity = Entity.Null;
+            reader.TryGetValue(key, out entity);
 
-                return true;
-            }
-
-            if (!reader.TryGetValue(key, out entity))
-                entity = Entity.Null;
-
-            return false;
+            return prefabAssigner.TryGetBuffer<TValue, TList, TWrapper>(key, ref list, ref wrapper);
         }
 
         public bool TryGetComponentData<T>(in Entity prefab, ref T value, out Entity entity) where T : struct, IComponentData
         {
-            if (instanceAssigner.TryGetComponentData(prefab, ref value))
-            {
-                entity = Entity.Null;
-
-                return true;
-            }
-
             var instances = this.instances;
             instances.lookupJobManager.CompleteReadOnlyDependency();
 
             var reader = instances.reader;
-            if (reader.TryGetValue(prefab, out entity))
+            bool result = reader.TryGetValue(prefab, out entity);
+            if (instanceAssigner.TryGetComponentData(prefab, ref value))
+                return true;
+            else if (result)
                 return false;
 
             Entity key = prefab;
@@ -517,17 +489,9 @@ namespace ZG
                 }
             }
 
-            if (prefabAssigner.TryGetComponentData(key, ref value))
-            {
-                entity = Entity.Null;
+            reader.TryGetValue(key, out entity);
 
-                return true;
-            }
-
-            if (!reader.TryGetValue(key, out entity))
-                entity = Entity.Null;
-
-            return false;
+            return prefabAssigner.TryGetComponentData(key, ref value);
         }
 
         public Entity GetEntity(in Entity prefab)

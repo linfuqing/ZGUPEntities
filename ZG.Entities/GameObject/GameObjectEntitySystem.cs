@@ -429,7 +429,7 @@ namespace ZG
 
         /*private NativeList<Entity> __entitiesToEnable;
         private NativeList<Entity> __entitiesToDisable;*/
-        private NativeList<Entity> __entitiesToDestroy;
+        //private NativeList<Entity> __entitiesToDestroy;
 
         public EntityCommandFactory factory
         {
@@ -466,19 +466,19 @@ namespace ZG
             __commander = world.GetExistingSystemUnmanaged<EntityCommanderSystem>().value;
             factory = world.GetExistingSystemUnmanaged<EntityCommandFactorySystem>().factory;
 
-            __entitiesToDestroy = new NativeList<Entity>(Allocator.Persistent);
+            //__entitiesToDestroy = new NativeList<Entity>(Allocator.Persistent);
         }
 
         [BurstCompile]
         public void OnDestroy(ref SystemState state)
         {
-            __entitiesToDestroy.Dispose();
+            //__entitiesToDestroy.Dispose();
         }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            __commander.Playback(ref state);
+            //__commander.Playback(ref state);
 
             var entityManager = __commander.AsParallelWriter(
                 0, 
