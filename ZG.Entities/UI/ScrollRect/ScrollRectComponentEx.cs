@@ -14,6 +14,7 @@ namespace ZG
         public ScrollRectToggle toggleStyle;
 
         private bool __isMoving;
+        private int2 __count;
         private int2 __selectedIndex = IndexNull;
         private ScrollRectToggle[] __toggles;
 
@@ -23,11 +24,11 @@ namespace ZG
         {
             get
             {
-                int2 result = base.count;
+                __count = base.count;
                 if (toggleStyle == null)
-                    return result;
+                    return __count;
 
-                int count = math.max(result.x, result.y);
+                int count = math.max(__count.x, __count.y);
                 if (count > 0)
                 {
                     int i, length;
@@ -42,7 +43,7 @@ namespace ZG
                     {
                         length = __toggles.Length;
                         if (length == count)
-                            return result;
+                            return __count;
 
                         for (i = count; i < length; ++i)
                         {
@@ -109,7 +110,7 @@ namespace ZG
                         onNextChanged.Invoke(false);
                 }
 
-                return result;
+                return __count;
             }
         }
 
@@ -117,7 +118,7 @@ namespace ZG
         {
             get
             {
-                return math.all(__selectedIndex == IndexNull) ? index : math.min(__selectedIndex, count - 1);
+                return math.all(__selectedIndex == IndexNull) ? index : math.min(__selectedIndex, math.max(1, __count) - 1);
             }
         }
 
@@ -208,7 +209,7 @@ namespace ZG
         private void __OnChanged(int2 source)
         {
             bool isNull = math.all(__selectedIndex == IndexNull);
-            if (!isNull && !math.all(math.min(__selectedIndex, count - 1) == source))
+            if (!isNull && !math.all(math.min(__selectedIndex, math.max(1, __count) - 1) == source))
                 return;
 
             int length = __toggles == null ? 0 : __toggles.Length, index = math.clamp(math.max(source.x, source.y), 0, length - 1);

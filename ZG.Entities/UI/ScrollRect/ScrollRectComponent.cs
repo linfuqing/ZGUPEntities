@@ -252,11 +252,13 @@ namespace ZG
 
         public virtual bool UpdateData()
         {
-            __data = data;
+            //__data = data;
 
             //this.SetComponentData(__data);
 
             __EnableNode(float2.zero);
+
+            __info.index = 0;// math.clamp(__info.index, 0, math.max(1, __data.count) - 1);
 
             return true;
         }
@@ -290,9 +292,9 @@ namespace ZG
         {
             if (__node != null)
             {
-                __data = data;
+                //__data = data;
 
-                __info.index = math.clamp(__info.index, 0, __data.count - 1);
+                //__info.index = math.clamp(__info.index, 0, math.max(1, __data.count) - 1);
 
                 var node = __node.Value;
                 if (ScrollRectUtility.Execute(__version, Time.deltaTime, __data, __info, ref node, ref __event))
@@ -331,11 +333,12 @@ namespace ZG
             if (scrollRect == null)
                 return false;
 
-            ScrollRectData data = this.data;
+            __data = data;
+
             ScrollRectNode node;
             node.velocity = scrollRect.velocity;
             node.normalizedPosition = normalizedPosition;// scrollRect.normalizedPosition;
-            node.index = data.GetIndex(normalizedPosition);
+            node.index = __data.GetIndex(normalizedPosition);
 
             __node = node;
             //this.AddComponentData(node);
