@@ -291,7 +291,7 @@ namespace ZG
                 if (ScrollRectUtility.Execute(__version, Time.deltaTime, __data, __info, ref node, ref __event))
                     _Set(__event);
 
-                if(!node.normalizedPosition.Equals(__node.Value.normalizedPosition))
+                if(!node.normalizedPosition.Equals(__node.Value.normalizedPosition) || !((float2)scrollRect.normalizedPosition).Equals(node.normalizedPosition))
                     scrollRect.normalizedPosition = node.normalizedPosition;
 
                 __node = node;
