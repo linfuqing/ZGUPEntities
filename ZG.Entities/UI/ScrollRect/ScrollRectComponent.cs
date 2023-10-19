@@ -287,6 +287,8 @@ namespace ZG
             {
                 __data = data;
 
+                __info.index = math.clamp(__info.index, 0, __data.count - 1);
+
                 var node = __node.Value;
                 if (ScrollRectUtility.Execute(__version, Time.deltaTime, __data, __info, ref node, ref __event))
                     _Set(__event);
@@ -429,6 +431,57 @@ namespace ZG
                 this.node = node;
                 this.result = result;
             }
+
+            public void Execute(float deltaTime)
+            {
+                int2 source = (int2)math.round(node.index),
+                    destination = info.index;// math.clamp(info.index, 0, instance.count - 1);
+                float2 length = instance.length,
+                         cellLength = instance.cellLength,
+                         offset = instance.GetOffset(cellLength),
+                         distance = node.normalizedPosition * length - destination * cellLength + offset;
+
+                if (info.isVail)
+                {
+                    float t = math.pow(instance.decelerationRate, deltaTime);
+                    //t = t * t* (3.0f - (2.0f * t));
+                    node.velocity = math.lerp(node.velocity, distance / instance.elasticity, t);
+
+                    //velocity *= math.pow(instance.decelerationRate, deltaTime);
+
+                    //node.velocity = velocity;
+
+                    //velocity += distance / instance.elasticity;
+
+                    node.normalizedPosition -= math.select(float2.zero, node.velocity / length, length > math.FLT_MIN_NORMAL) * deltaTime;
+
+                    node.index = instance.GetIndex(node.normalizedPosition, length, cellLength, offset);
+                }
+                else
+                    node.normalizedPosition -= math.select(float2.zero, distance / length, length > math.FLT_MIN_NORMAL);
+
+                int2 target = (int2)math.round(node.index);
+
+                ScrollRectEvent.Flag flag = 0;
+                if (!math.all(source == target))
+                    flag |= ScrollRectEvent.Flag.Changed;
+
+                if (info.isVail && math.all(destination == target))
+                {
+                    flag |= ScrollRectEvent.Flag.SameAsInfo;
+
+                    node.velocity = float2.zero;
+                }
+
+                //nodes[index] = node;
+
+                if (flag != 0)
+                {
+                    ++result.version;
+                    result.flag = flag;
+                    result.index = node.index;
+                }
+            }
         }
 
         public static unsafe bool Execute(
@@ -458,53 +511,7 @@ namespace ZG
         [BurstCompile]
         private static unsafe void __Execute(float deltaTime, Data* data)
         {
-            int2 source = (int2)math.round(data->node.index),
-                destination = data->info.index;
-            float2 length = data->instance.length,
-                     cellLength = data->instance.cellLength,
-                     offset = data->instance.GetOffset(cellLength),
-                     distance = data->node.normalizedPosition * length - destination * cellLength + offset;
-
-            if (data->info.isVail)
-            {
-                float t = math.pow(data->instance.decelerationRate, deltaTime);
-                //t = t * t* (3.0f - (2.0f * t));
-                data->node.velocity = math.lerp(data->node.velocity, distance / data->instance.elasticity, t);
-
-                //velocity *= math.pow(instance.decelerationRate, deltaTime);
-
-                //node.velocity = velocity;
-
-                //velocity += distance / instance.elasticity;
-
-                data->node.normalizedPosition -= math.select(float2.zero, data->node.velocity / length, length > math.FLT_MIN_NORMAL) * deltaTime;
-
-                data->node.index = data->instance.GetIndex(data->node.normalizedPosition, length, cellLength, offset);
-            }
-            else
-                data->node.normalizedPosition -= math.select(float2.zero, distance / length, length > math.FLT_MIN_NORMAL);
-
-            int2 target = (int2)math.round(data->node.index);
-
-            ScrollRectEvent.Flag flag = 0;
-            if (!math.all(source == target))
-                flag |= ScrollRectEvent.Flag.Changed;
-
-            if (data->info.isVail && math.all(destination == target))
-            {
-                flag |= ScrollRectEvent.Flag.SameAsInfo;
-
-                data->node.velocity = float2.zero;
-            }
-
-            //nodes[index] = node;
-
-            if (flag != 0)
-            {
-                ++data->result.version;
-                data->result.flag = flag;
-                data->result.index = data->node.index;
-            }
+            data->Execute(deltaTime);
         }
     }
 }
