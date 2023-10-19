@@ -250,7 +250,7 @@ namespace ZG
             return index[(int)axis];
         }
 
-        public virtual bool UpdateData()
+        public virtual void UpdateData()
         {
             //__data = data;
 
@@ -259,24 +259,15 @@ namespace ZG
             __EnableNode(float2.zero);
 
             __info.index = 0;// math.clamp(__info.index, 0, math.max(1, __data.count) - 1);
-
-            return true;
         }
 
-        public virtual bool MoveTo(in int2 index)
+        public virtual void MoveTo(in int2 index)
         {
             ScrollRectInfo info;
             info.isVail = true;
             info.index = index;
             __info = info;
             //this.AddComponentData(info);
-
-            return true;
-        }
-
-        public void UpdateDataWithoutResult()
-        {
-            UpdateData();
         }
 
         protected void Start()
@@ -292,9 +283,9 @@ namespace ZG
         {
             if (__node != null)
             {
-                //__data = data;
+                __data = data;
 
-                //__info.index = math.clamp(__info.index, 0, math.max(1, __data.count) - 1);
+                __info.index = math.clamp(__info.index, 0, math.max(1, __data.count) - 1);
 
                 var node = __node.Value;
                 if (ScrollRectUtility.Execute(__version, Time.deltaTime, __data, __info, ref node, ref __event))

@@ -14,7 +14,6 @@ namespace ZG
         public ScrollRectToggle toggleStyle;
 
         private bool __isMoving;
-        private int2 __count;
         private int2 __selectedIndex = IndexNull;
         private ScrollRectToggle[] __toggles;
 
@@ -24,11 +23,11 @@ namespace ZG
         {
             get
             {
-                __count = base.count;
+                var result = base.count;
                 if (toggleStyle == null)
-                    return __count;
+                    return result;
 
-                int count = math.max(__count.x, __count.y);
+                int count = math.max(result.x, result.y);
                 if (count > 0)
                 {
                     int i, length;
@@ -43,7 +42,7 @@ namespace ZG
                     {
                         length = __toggles.Length;
                         if (length == count)
-                            return __count;
+                            return result;
 
                         for (i = count; i < length; ++i)
                         {
@@ -110,7 +109,7 @@ namespace ZG
                         onNextChanged.Invoke(false);
                 }
 
-                return __count;
+                return result;
             }
         }
 
@@ -118,7 +117,7 @@ namespace ZG
         {
             get
             {
-                return math.all(__selectedIndex == IndexNull) ? index : math.min(__selectedIndex, math.max(1, __count) - 1);
+                return math.all(__selectedIndex == IndexNull) ? index : math.min(__selectedIndex, __toggles == null ? 0 : __toggles.Length - 1);
             }
         }
 
@@ -162,26 +161,26 @@ namespace ZG
 
         public void SetTo(int index) => MoveTo(index);
 
-        public bool Move(int offset)
+        public void Move(int offset)
         {
             int2 index = selectedIndex;
             index[axis] += offset;
 
-            return MoveTo(index);
+            MoveTo(index);
         }
 
-        public bool MoveTo(int index)
+        public void MoveTo(int index)
         {
             int2 result = int2.zero;
             result[axis] = index;
 
-            return MoveTo(result);
+            MoveTo(result);
         }
 
-        public override bool MoveTo(in int2 destination)
+        public override void MoveTo(in int2 destination)
         {
             if (__isMoving)
-                return false;
+                return;
 
             int2 source = selectedIndex;
             /*if (math.all(source == destination))
@@ -191,14 +190,14 @@ namespace ZG
 
             __selectedIndex = destination;
             
-            return base.MoveTo(destination);
+            base.MoveTo(destination);
         }
 
-        public override bool UpdateData()
+        public override void UpdateData()
         {
             __selectedIndex = IndexNull;
 
-            return base.UpdateData();
+            base.UpdateData();
         }
 
         private void __OnChanged(float2 index)
@@ -209,7 +208,7 @@ namespace ZG
         private void __OnChanged(int2 source)
         {
             bool isNull = math.all(__selectedIndex == IndexNull);
-            if (!isNull && !math.all(math.min(__selectedIndex, math.max(1, __count) - 1) == source))
+            if (!isNull && !math.all(math.min(__selectedIndex, __toggles == null ? 0 : __toggles.Length - 1) == source))
                 return;
 
             int length = __toggles == null ? 0 : __toggles.Length, index = math.clamp(math.max(source.x, source.y), 0, length - 1);
