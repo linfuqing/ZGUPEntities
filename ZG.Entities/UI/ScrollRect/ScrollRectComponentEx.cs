@@ -14,10 +14,10 @@ namespace ZG
         public ScrollRectToggle toggleStyle;
 
         private bool __isMoving;
-        private int2 __selectedIndex = __indexNull;
+        private int2 __selectedIndex = IndexNull;
         private ScrollRectToggle[] __toggles;
 
-        private static readonly int2 __indexNull = new int2(-1, -1);
+        private static readonly int2 IndexNull = new int2(-1, -1);
         
         public override int2 count
         {
@@ -117,7 +117,7 @@ namespace ZG
         {
             get
             {
-                return math.all(__selectedIndex == __indexNull) ? index : __selectedIndex;
+                return math.all(__selectedIndex == IndexNull) ? index : math.min(__selectedIndex, count - 1);
             }
         }
 
@@ -195,7 +195,7 @@ namespace ZG
 
         public override bool UpdateData()
         {
-            __selectedIndex = __indexNull;
+            __selectedIndex = IndexNull;
 
             return base.UpdateData();
         }
@@ -207,8 +207,8 @@ namespace ZG
 
         private void __OnChanged(int2 source)
         {
-            bool isNull = math.all(__selectedIndex == __indexNull);
-            if (!isNull && !math.all(__selectedIndex == source))
+            bool isNull = math.all(__selectedIndex == IndexNull);
+            if (!isNull && !math.all(math.min(__selectedIndex, count - 1) == source))
                 return;
 
             int length = __toggles == null ? 0 : __toggles.Length, index = math.clamp(math.max(source.x, source.y), 0, length - 1);
@@ -226,7 +226,7 @@ namespace ZG
                 __Update(math.max(destination.x, destination.y), index);
             }
             else
-                __selectedIndex = __indexNull;
+                __selectedIndex = IndexNull;
         }
 
         private void __Update(int source, int destination)

@@ -272,6 +272,11 @@ namespace ZG
             return true;
         }
 
+        public void UpdateDataWithoutResult()
+        {
+            UpdateData();
+        }
+
         protected void Start()
         {
             __event.version = 0;
