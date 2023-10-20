@@ -1376,6 +1376,11 @@ namespace ZG
                                 blockSize = 0;
                             }
 
+                            /*if (TypeManager.GetTypeName(key.typeIndex)->ToString() == "NetworkIdentity")
+                            {
+                                UnityEngine.Debug.Log($"Assign {entity} : {*(uint*)source}");
+                            }*/
+
                             switch (command.type)
                             {
                                 case Command.Type.ComponentData:
@@ -1389,10 +1394,12 @@ namespace ZG
                                 case Command.Type.BufferOverride:
                                 case Command.Type.BufferAppend:
                                 case Command.Type.BufferAppendUnique:
-                                    if (source != null)
+                                    if (source == null)
+                                        bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, 0);
+                                    else
                                     {
-                                        //var bufferAccessor = batchInChunk.GetUntypedBufferAccessor(ref dynamicComponentTypeHandle);
                                         int elementCount = blockSize / elementSize;
+                                        //var bufferAccessor = batchInChunk.GetUntypedBufferAccessor(ref dynamicComponentTypeHandle);
                                         if (command.type == Command.Type.BufferOverride)
                                         {
                                             bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, elementCount);
@@ -1427,9 +1434,9 @@ namespace ZG
                                                 blockSize = elementCount * elementSize;
                                             }
 
+                                            bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, originCount + elementCount);
                                             if (elementCount > 0)
                                             {
-                                                bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, originCount + elementCount);
                                                 ptr = (byte*)bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk);
                                                 destination = ptr + originCount * elementSize;
                                             }

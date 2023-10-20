@@ -37,7 +37,9 @@ namespace ZG
             }
         }
 
-        public static void AddComponentData<T>(this IGameObjectEntity gameObjectEntity, T value) where T : struct, IComponentData
+        public static void AddComponentData<TGameObjectEntity, TValue>(this TGameObjectEntity gameObjectEntity, in TValue value)
+            where TGameObjectEntity : IGameObjectEntity
+            where TValue : struct, IComponentData
         {
             var commandSystem = __GetCommandSystem(gameObjectEntity);
             if (commandSystem != null)
@@ -236,7 +238,9 @@ namespace ZG
             }
         }
 
-        public static void SetComponentData<T>(this IGameObjectEntity gameObjectEntity, in T value) where T : struct, IComponentData
+        public static void SetComponentData<TGameObjectEntity, TValue>(this TGameObjectEntity gameObjectEntity, in TValue value)
+            where TGameObjectEntity : IGameObjectEntity
+            where TValue : struct, IComponentData
         {
             var commandSystem = __GetCommandSystem(gameObjectEntity);
             if (commandSystem != null)
@@ -259,7 +263,8 @@ namespace ZG
             }
         }
 
-        public static void SetBuffer<T>(this IGameObjectEntity gameObjectEntity, params T[] values) where T : unmanaged, IBufferElementData
+        public static void SetBuffer<T>(this IGameObjectEntity gameObjectEntity, params T[] values)
+            where T : unmanaged, IBufferElementData
         {
             var commandSystem = __GetCommandSystem(gameObjectEntity);
             if (commandSystem != null)
@@ -282,7 +287,9 @@ namespace ZG
             }
         }
 
-        public static void SetBuffer<T>(this IGameObjectEntity gameObjectEntity, in NativeArray<T> values) where T : struct, IBufferElementData
+        public static void SetBuffer<TGameObjectEntity, TValue>(this TGameObjectEntity gameObjectEntity, in NativeArray<TValue> values) 
+            where TGameObjectEntity : IGameObjectEntity
+            where TValue : struct, IBufferElementData
         {
             var commandSystem = __GetCommandSystem(gameObjectEntity);
             if (commandSystem != null)
@@ -364,7 +371,9 @@ namespace ZG
             __GetCommandSystem(gameObjectEntity).SetComponentObject(gameObjectEntity.entity, value);
         }*/
 
-        public static bool TryGetComponentData<T>(this IGameObjectEntity gameObjectEntity, out T value) where T : unmanaged, IComponentData
+        public static bool TryGetComponentData<TGameObjectEntity, TValue>(this TGameObjectEntity gameObjectEntity, out TValue value)
+            where TGameObjectEntity : IGameObjectEntity
+            where TValue : unmanaged, IComponentData
         {
             var commandSystem = __GetCommandSystem(gameObjectEntity);
             if (commandSystem != null)
@@ -390,7 +399,9 @@ namespace ZG
             return false;
         }
 
-        public static bool TryGetBuffer<T>(this IGameObjectEntity gameObjectEntity, int index, out T value) where T : unmanaged, IBufferElementData
+        public static bool TryGetBuffer<TGameObjectEntity, TValue>(this TGameObjectEntity gameObjectEntity, int index, out TValue value)
+            where TGameObjectEntity : IGameObjectEntity
+            where TValue : unmanaged, IBufferElementData
         {
             var commandSystem = __GetCommandSystem(gameObjectEntity);
             if (commandSystem != null)
@@ -400,7 +411,7 @@ namespace ZG
                 switch (gameObjectEntity.status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        return __TryGetBuffer(index, commandSystem, entity, commandSystem.factory, out value);
+                        return __TryGetBuffer(commandSystem, index, entity, commandSystem.factory, out value);
                     case GameObjectEntityStatus.Created:
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
@@ -449,7 +460,8 @@ namespace ZG
             return false;
         }
 
-        public static bool TryGetComponentObject<T>(this IGameObjectEntity gameObjectEntity, out T value)
+        public static bool TryGetComponentObject<TGameObjectEntity, TValue>(this TGameObjectEntity gameObjectEntity, out TValue value)
+            where TGameObjectEntity : IGameObjectEntity
         {
             var commandSystem = __GetCommandSystem(gameObjectEntity);
             if (commandSystem != null)
@@ -463,7 +475,7 @@ namespace ZG
                             commandSystem,
                             commandSystem.factory,
                             entity,
-                            out EntityObject<T> target))
+                            out EntityObject<TValue> target))
                         {
                             value = target.value;
 
@@ -489,7 +501,7 @@ namespace ZG
 
         public static T GetComponentData<T>(this IGameObjectEntity gameObjectEntity) where T : unmanaged, IComponentData
         {
-            bool result = TryGetComponentData<T>(gameObjectEntity, out var value);
+            bool result = TryGetComponentData(gameObjectEntity, out T value);
 
             UnityEngine.Assertions.Assert.IsTrue(result, gameObjectEntity.ToString());
 
@@ -529,7 +541,7 @@ namespace ZG
 
         public static T GetBuffer<T>(this IGameObjectEntity gameObjectEntity, int index) where T : unmanaged, IBufferElementData
         {
-            bool result = TryGetBuffer<T>(gameObjectEntity, index, out var value);
+            bool result = TryGetBuffer(gameObjectEntity, index, out T value);
 
             UnityEngine.Assertions.Assert.IsTrue(result);
 
@@ -599,8 +611,8 @@ namespace ZG
         }
 
         private static bool __TryGetBuffer<TValue, TScheduler>(
-            int index,
             in TScheduler scheduler,
+            int index,
             in Entity entity,
             in EntityCommandFactory factory,
             out TValue value)
@@ -667,7 +679,8 @@ namespace ZG
             return result || factory.HasComponent<TValue>(entity);
         }
 
-        private static EntityCommandSharedSystemGroup __GetCommandSystem(IGameObjectEntity gameObjectEntity) => __GetCommandSystem(gameObjectEntity.world);
+        private static EntityCommandSharedSystemGroup __GetCommandSystem<T>(in T gameObjectEntity) where T : IGameObjectEntity
+            => __GetCommandSystem(gameObjectEntity.world);
 
         private static EntityCommandSharedSystemGroup __GetCommandSystem(World world)
         {

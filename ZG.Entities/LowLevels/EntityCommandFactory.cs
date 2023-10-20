@@ -494,7 +494,7 @@ namespace ZG
             return prefabAssigner.TryGetComponentData(key, ref value);
         }
 
-        public Entity GetEntity(in Entity prefab)
+        public Entity GetEntity(in Entity prefab, bool isInstanceOnly = false)
         {
             var instances = this.instances;
             instances.lookupJobManager.CompleteReadOnlyDependency();
@@ -503,19 +503,22 @@ namespace ZG
             if (reader.TryGetValue(prefab, out Entity entity))
                 return entity;
 
-            Entity key = prefab;
-            foreach (var pair in __instantiateCommander)
+            if (!isInstanceOnly)
             {
-                if (pair.Value == prefab)
+                Entity key = prefab;
+                foreach (var pair in __instantiateCommander)
                 {
-                    key = pair.Key;
+                    if (pair.Value == prefab)
+                    {
+                        key = pair.Key;
 
-                    break;
+                        break;
+                    }
                 }
-            }
 
-            if (reader.TryGetValue(key, out entity))
-                return entity;
+                if (reader.TryGetValue(key, out entity))
+                    return entity;
+            }
 
             return Entity.Null;
         }

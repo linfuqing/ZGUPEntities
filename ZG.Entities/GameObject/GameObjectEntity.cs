@@ -32,14 +32,14 @@ namespace ZG
 
     public struct GameObjectEntityWrapper : IGameObjectEntity
     {
-        public GameObjectEntityStatus status => GameObjectEntityStatus.Created;
-
+        public GameObjectEntityStatus status { get; }
         public Entity entity { get; }
 
         public World world { get; }
 
-        public GameObjectEntityWrapper(Entity entity, World world)
+        public GameObjectEntityWrapper(World world, in Entity entity, GameObjectEntityStatus status = GameObjectEntityStatus.Created)
         {
+            this.status = status;
             this.entity = entity;
             this.world = world;
         }
@@ -941,10 +941,10 @@ namespace ZG
             __GetCommandSystem(gameObjectEntity).AppendBuffer<T, T[]>(entity, values);
         }*/
 
-        /*public static void SetComponentData<T>(this IGameObjectEntity gameObjectEntity, in Entity entity, T value) where T : struct, IComponentData
+        public static void SetComponentData<T>(this IGameObjectEntity gameObjectEntity, in Entity entity, T value) where T : struct, IComponentData
         {
             __GetCommandSystem(gameObjectEntity).SetComponentData(entity, value);
-        }*/
+        }
 
         public static void SetBuffer<TValue, TCollection>(this IGameObjectEntity gameObjectEntity, in Entity entity, TCollection values)
             where TValue : struct, IBufferElementData
@@ -1094,18 +1094,20 @@ namespace ZG
                 return;
 
             var commandSystem = __GetCommandSystem(world);
-
+            Entity origin;
             switch (status)
             {
                 case GameObjectEntityStatus.Creating:
-                case GameObjectEntityStatus.Created:
-                    var factory = commandSystem.factory;
-                    _Add<T, EntityCommandSharedSystemGroup>(
-                        commandSystem, 
-                        value,
-                        entity,
-                        ref factory);
+                    origin = entity;
                     break;
+                case GameObjectEntityStatus.Created:
+                    origin = world.EntityManager.GetComponentData<EntityOrigin>(entity).entity;
+                    break;
+                default:
+                    if(entity == Entity.Null)
+                        return;
+
+                    throw new InvalidOperationException($"{entity} : {status} : {typeof(T)}");
                     //以下情况不对因为GameObjectEntityFactorySystem更新顺序在EntityCommanderSystem之前
                     /*case GameObjectEntityStatus.Created:
                         T componentData = default;
@@ -1117,6 +1119,13 @@ namespace ZG
                         }
                         break;*/
             }
+
+            var factory = commandSystem.factory;
+            _Add<T, EntityCommandSharedSystemGroup>(
+                commandSystem,
+                value,
+                origin,
+                ref factory);
         }
 
         internal static void _Add<T>(
@@ -1138,21 +1147,23 @@ namespace ZG
             where TValue : unmanaged, IComponentData, IEnableableComponent, IGameObjectEntityStatus
             where TScheduler : IEntityCommandScheduler
         {
-            EntityOrigin entityOrigin;
-            entityOrigin.entity = entity;
-            if (!__TryGetComponentData(entityManager, factory, entity, out TValue componentData) && 
-                !entityManager.TryGetComponentData(entity, ref entityOrigin))
+            if (!__TryGetComponentData(entityManager, factory, entity, out TValue componentData))
             {
-                Debug.LogError($"Can not add {typeof(TValue)}");
+                throw new InvalidOperationException($"{entity} : {typeof(TValue)}");
+                /*Debug.LogError($"Can not add {typeof(TValue)}");
 
-                return;
+                return;*/
             }
-                
+            
             componentData.value += value;
 
+            UnityEngine.Assertions.Assert.IsFalse(componentData.value < 0);
+
+            //Debug.Log($"Add {typeof(TValue)} : {componentData.value} : {entityOrigin.entity} : {entity}");
+
             var assigner = factory.instanceAssigner;
-            assigner.SetComponentData(entityOrigin.entity, componentData);
-            assigner.SetComponentEnabled<TValue>(entityOrigin.entity, true);
+            assigner.SetComponentData(entity, componentData);
+            assigner.SetComponentEnabled<TValue>(entity, true);
         }
 
     }
