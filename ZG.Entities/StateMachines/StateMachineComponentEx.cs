@@ -78,7 +78,7 @@ namespace ZG
         {
             //base.OnEnable();
 
-            if (!__isActive && gameObjectEntity.isCreated)
+            if (!__isActive)
             {
                 if (_graph != null)
                     _graph.Enable(this, _groupName);
@@ -91,11 +91,8 @@ namespace ZG
         {
             if (__isActive)
             {
-                if (gameObjectEntity.isCreated)
-                {
-                    if (_graph != null)
-                        _graph.Disable(this, _groupName);
-                }
+                if (_graph != null)
+                    _graph.Disable(this, _groupName);
 
                 __isActive = false;
             }

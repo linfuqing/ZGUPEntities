@@ -401,7 +401,9 @@ namespace ZG
         }
     }
 
-    [AlwaysSynchronizeSystem, CreateAfter(typeof(RollbackCommandSystem)), UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true)/*, UpdateBefore(typeof(BeginTimeSystemGroupEntityCommandSystem))*/]
+    [AlwaysSynchronizeSystem, 
+        CreateAfter(typeof(RollbackCommandSystem)), 
+        UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true)]
     public partial class SyncFrameEventSystem : SystemBase
     {
         public struct RollbackEntryTester : IRollbackEntryTester

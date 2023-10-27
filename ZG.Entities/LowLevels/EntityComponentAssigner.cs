@@ -1215,6 +1215,7 @@ namespace ZG
         }
 
         [NativeContainer]
+        [NativeContainerIsReadOnly]
         public struct ReadOnly
         {
             [NativeDisableUnsafePtrRestriction]
