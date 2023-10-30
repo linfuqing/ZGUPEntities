@@ -753,7 +753,7 @@ namespace ZG
             //command.moveCommands = __moveCommands.AsDeferredJobArray();
             command.frameEntryTypes = __frameEntryTypes;
 
-            jobHandle = command.Schedule(jobHandle);
+            jobHandle = command.ScheduleByRef(jobHandle);
 
             __jobHandle[0] = jobHandle;
 
@@ -1840,6 +1840,8 @@ namespace ZG
             var jobHandle = JobHandle.CombineDependencies(__commander.jobHandle, playbackJobHandle, inputDeps);
 
             jobHandle = command.ScheduleByRef(JobHandle.CombineDependencies(jobHandle, updateJobHandle));
+
+            __commander.jobHandle = jobHandle;
 
             updateJobHandle = jobHandle;
 
