@@ -136,6 +136,8 @@ namespace ZG
                 }
 
                 assigner = factory.instanceAssigner;
+
+                __data.SetComponents(entity, assigner, __components);
             }
 
             if (componentTypes != null)

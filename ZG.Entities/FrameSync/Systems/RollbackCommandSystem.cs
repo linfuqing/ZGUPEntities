@@ -1850,7 +1850,9 @@ namespace ZG
             __commander.Test(tester, minRestoreFrameIndex, innerloopBatchCount, JobHandle.CombineDependencies(updateJobHandle, inputDeps));
     }
 
-    [BurstCompile, UpdateInGroup(typeof(RollbackSystemGroup), OrderLast = true), UpdateAfter(typeof(EndRollbackSystemGroupEntityCommandSystemGroup))]
+    [BurstCompile, 
+        UpdateInGroup(typeof(FrameSyncSystemGroup), OrderFirst = true), /*UpdateInGroup(typeof(RollbackSystemGroup), OrderLast = true), */
+        UpdateAfter(typeof(EndRollbackSystemGroupEntityCommandSystemGroup))]
     public partial struct RollbackCommandSystem : ISystem
     {
         private EntityQuery __frameGroup;

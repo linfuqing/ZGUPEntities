@@ -19,6 +19,12 @@
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.netcode",
+            "expression": "",
+            "define": "USING_NETCODE"
+        }
+    ],
     "noEngineReferences": false
 }

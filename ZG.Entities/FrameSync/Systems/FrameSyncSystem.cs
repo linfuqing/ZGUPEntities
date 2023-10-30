@@ -13,6 +13,9 @@ using ZG;
 namespace ZG
 {
     [BurstCompile, UpdateInGroup(typeof(InitializationSystemGroup))/*, UpdateAfter(typeof(BeginFrameEntityCommandSystem))*/]
+#if !USING_NETCODE
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
+#endif
     public partial struct SyncFrameCallbackSystem : ISystem
     {
         private struct Comparer : IComparer<uint>
@@ -404,6 +407,9 @@ namespace ZG
     [AlwaysSynchronizeSystem, 
         CreateAfter(typeof(RollbackCommandSystem)), 
         UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true)]
+#if !USING_NETCODE
+    [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
+#endif
     public partial class SyncFrameEventSystem : SystemBase
     {
         public struct RollbackEntryTester : IRollbackEntryTester

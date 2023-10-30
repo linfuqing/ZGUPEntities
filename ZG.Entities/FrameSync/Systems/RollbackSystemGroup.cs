@@ -1428,7 +1428,8 @@ public abstract class RollbackSystemEx : RollbackSystem, IRollbackSystem
     }
 #endif
 
-    [BurstCompile, UpdateInGroup(typeof(RollbackSystemGroup), OrderLast = true)]
+    //[BurstCompile, UpdateInGroup(typeof(RollbackSystemGroup), OrderLast = true)]
+    [BurstCompile, UpdateInGroup(typeof(FrameSyncSystemGroup), OrderFirst = true), UpdateAfter(typeof(RollbackSystemGroup))]
     public partial struct EndRollbackSystemGroupEntityCommandSystemGroup : ISystem
     {
         private SystemGroup __systemGroup;
@@ -1511,6 +1512,9 @@ public abstract class RollbackSystemEx : RollbackSystem, IRollbackSystem
     }*/
 
     [BurstCompile, UpdateInGroup(typeof(FrameSyncSystemGroup), OrderFirst = true)]
+#if !USING_NETCODE
+    [WorldSystemFilter(WorldSystemFilterFlags.ClientSimulation)]
+#endif
     public partial struct RollbackSystemGroup : ISystem
     {
         /*private bool __isActive;
