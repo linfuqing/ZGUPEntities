@@ -2072,6 +2072,8 @@ namespace ZG
         private NativeBuffer __buffer;
         private NativeList<Container> __containers;
 
+        public bool isCreated => __buffer.isCreated;
+
         public RollbackContainerManager(in AllocatorManager.AllocatorHandle allocator)
         {
             __buffer = new NativeBuffer(allocator, 1);

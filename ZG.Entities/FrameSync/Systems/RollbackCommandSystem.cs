@@ -1851,6 +1851,7 @@ namespace ZG
     }
 
     [BurstCompile, 
+        CreateAfter(typeof(EndRollbackSystemGroupEntityCommandSystemGroup)), 
         UpdateInGroup(typeof(FrameSyncSystemGroup), OrderFirst = true), /*UpdateInGroup(typeof(RollbackSystemGroup), OrderLast = true), */
         UpdateAfter(typeof(EndRollbackSystemGroupEntityCommandSystemGroup))]
     public partial struct RollbackCommandSystem : ISystem

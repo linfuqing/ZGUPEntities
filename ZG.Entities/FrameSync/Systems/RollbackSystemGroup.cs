@@ -1429,7 +1429,7 @@ public abstract class RollbackSystemEx : RollbackSystem, IRollbackSystem
 #endif
 
     //[BurstCompile, UpdateInGroup(typeof(RollbackSystemGroup), OrderLast = true)]
-    [BurstCompile, UpdateInGroup(typeof(FrameSyncSystemGroup), OrderFirst = true), UpdateAfter(typeof(RollbackSystemGroup))]
+    [BurstCompile, UpdateInGroup(typeof(FrameSyncSystemGroup), OrderFirst = true)]
     public partial struct EndRollbackSystemGroupEntityCommandSystemGroup : ISystem
     {
         private SystemGroup __systemGroup;
@@ -1511,7 +1511,10 @@ public abstract class RollbackSystemEx : RollbackSystem, IRollbackSystem
 
     }*/
 
-    [BurstCompile, UpdateInGroup(typeof(FrameSyncSystemGroup), OrderFirst = true)]
+    [BurstCompile, 
+        CreateBefore(typeof(EndRollbackSystemGroupEntityCommandSystemGroup)), 
+        UpdateInGroup(typeof(FrameSyncSystemGroup), OrderFirst = true), 
+        UpdateBefore(typeof(EndRollbackSystemGroupEntityCommandSystemGroup))]
 #if !USING_NETCODE
     [WorldSystemFilter(WorldSystemFilterFlags.ClientSimulation)]
 #endif
