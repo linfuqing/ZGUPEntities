@@ -404,6 +404,75 @@ namespace ZG
         }
     }
 
+    [UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true)]
+    public partial struct SyncFrameClearSystem : ISystem
+    {
+        private struct Callback
+        {
+            public BufferAccessor<SyncFrameCallback> frameCallbacks;
+
+            public void Execute(int index)
+            {
+                var frameCallbacks = this.frameCallbacks[index];
+                int numFrameCallbacks = frameCallbacks.Length;//, destination = source;
+                for (int i = 0; i < numFrameCallbacks; ++i)
+                    frameCallbacks.ElementAt(i).handle.InvokeAndUnregister(default);
+
+                frameCallbacks.Clear();
+            }
+        }
+
+        private struct CallbackEx : IJobChunk
+        {
+            public BufferTypeHandle<SyncFrameCallback> frameCallbackType;
+
+            public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+            {
+                Callback callback;
+                callback.frameCallbacks = chunk.GetBufferAccessor(ref frameCallbackType);
+
+                var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+                while (iterator.NextEntityIndex(out int i))
+                {
+                    callback.Execute(i);
+
+                    chunk.SetComponentEnabled(ref frameCallbackType, i, false);
+                }
+            }
+        }
+
+        private EntityQuery __group;
+
+        private BufferTypeHandle<SyncFrameCallback> __frameCallbackType;
+
+        [BurstCompile]
+        public void OnCreate(ref SystemState state)
+        {
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __group = builder
+                    .WithAllRW<SyncFrameCallback>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+
+            __frameCallbackType = state.GetBufferTypeHandle<SyncFrameCallback>();
+        }
+
+        [BurstCompile]
+        public void OnDestroy(ref SystemState state)
+        {
+
+        }
+
+        public void OnUpdate(ref SystemState state)
+        {
+            CallbackEx callback;
+            callback.frameCallbackType = __frameCallbackType.UpdateAsRef(ref state);
+            callback.RunByRefWithoutJobs(__group);
+
+            __group.SetEnabledBitsOnAllChunks<SyncFrameCallback>(false);
+        }
+    }
+
     [AlwaysSynchronizeSystem, 
         CreateAfter(typeof(RollbackCommandSystem)), 
         UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true)]
