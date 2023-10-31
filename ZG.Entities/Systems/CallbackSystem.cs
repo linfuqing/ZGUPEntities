@@ -115,7 +115,7 @@ namespace ZG
         public static JobHandle Resize(this ref SharedList<CallbackHandle>.Writer handles, in EntityQuery group, in JobHandle jobHandle)
         {
             ResizeJob resize;
-            resize.count = group.CalculateChunkCountWithoutFiltering();
+            resize.count = group.CalculateEntityCountWithoutFiltering();
             resize.callbackHandles = handles;
             return resize.ScheduleByRef(jobHandle);
         }
