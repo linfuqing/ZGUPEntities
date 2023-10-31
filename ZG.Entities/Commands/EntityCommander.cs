@@ -141,6 +141,8 @@ namespace ZG
         private ProfilerMarker __destoyEntityProfilerMarker;
 #endif
 
+        public bool isCreated => __assigner.isCreated;
+
         public JobHandle jobHandle
         {
             get => __assigner.jobHandle;

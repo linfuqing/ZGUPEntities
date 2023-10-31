@@ -14,6 +14,7 @@ namespace ZG
         public int type;
         public uint frameIndex;
         public CallbackHandle<SyncFrameCallbackData> handle;
+        //public CallbackHandle finalHandle;
     }
 
     public struct SyncFrameEvent : IBufferElementData, IEnableableComponent, IComparable<SyncFrameEvent>
@@ -24,6 +25,8 @@ namespace ZG
         public uint destinationFrameIndex;
 
         public CallbackHandle<SyncFrameCallbackData> handle;
+
+        //public CallbackHandle finalHandle;
 
         public int CompareTo(SyncFrameEvent obj)
         {
