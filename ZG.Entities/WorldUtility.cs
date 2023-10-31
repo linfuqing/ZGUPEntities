@@ -129,6 +129,18 @@ namespace ZG
         }
     }
 
+    public class WorldInstance : World
+    {
+        public Entity TimeSingletonEntity => base.TimeSingleton;
+
+        public WorldInstance(
+            string name,
+            WorldFlags flags) : base(name, flags)
+        {
+
+        }
+    }
+
     public static class WorldUtility
     {
         private struct RootGroups : DefaultWorldInitialization.IIdentifyRootGroups
@@ -141,7 +153,7 @@ namespace ZG
                 type == typeof(ManagedSystemGroup);
         }
 
-        private static Dictionary<string, World> __worlds;
+        private static Dictionary<string, WorldInstance> __worlds;
 
         public static Type UpdateInGroup(this Type systemType, Type groupType)
         {
@@ -350,21 +362,21 @@ namespace ZG
 
         }
 
-        public static World Create(
+        public static WorldInstance Create(
             //string name,
             string worldName, 
             WorldFlags worldFlags = WorldFlags.Simulation,
             WorldSystemFilterFlags worldSystemFilterFlags = WorldSystemFilterFlags.Default,
             params string[] names)
         {
-            var world = new World(worldName, worldFlags);
+            var world = new WorldInstance(worldName, worldFlags);
 
             Initialize(world, worldSystemFilterFlags, null, names);
 
             if (names != null)
             {
                 if (__worlds == null)
-                    __worlds = new Dictionary<string, World>();
+                    __worlds = new Dictionary<string, WorldInstance>();
 
                 foreach (var name in names)
                     __worlds.Add(name, world);
@@ -373,7 +385,7 @@ namespace ZG
             return world;
         }
 
-        public static World Create(
+        public static WorldInstance Create(
             string worldName,
             params string[] names)
         {
@@ -407,7 +419,7 @@ namespace ZG
             return result;
         }*/
 
-        public static World GetWorld(string name)
+        public static WorldInstance GetWorld(string name)
         {
             return __worlds == null || !__worlds.TryGetValue(name, out var world) ? null : world;
             /*World result = null;
