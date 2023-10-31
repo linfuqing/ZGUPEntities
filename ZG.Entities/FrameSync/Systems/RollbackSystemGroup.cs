@@ -1516,7 +1516,7 @@ public abstract class RollbackSystemEx : RollbackSystem, IRollbackSystem
         UpdateInGroup(typeof(FrameSyncSystemGroup), OrderFirst = true), 
         UpdateBefore(typeof(EndRollbackSystemGroupEntityCommandSystemGroup))]
 #if !USING_NETCODE
-    [WorldSystemFilter(WorldSystemFilterFlags.ClientSimulation)]
+    [WorldSystemFilter(WorldSystemFilterFlags.ClientSimulation, WorldSystemFilterFlags.ClientSimulation)]
 #endif
     public partial struct RollbackSystemGroup : ISystem
     {
