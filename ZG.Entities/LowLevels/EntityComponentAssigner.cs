@@ -677,6 +677,7 @@ namespace ZG
 
             public void SetComponentData<T>(in TypeIndex typeIndex, in Entity entity, in T value) where T : struct
             {
+                UnityEngine.Assertions.Assert.IsTrue(typeIndex.IsComponentType);
                 __CheckTypeSize<T>(typeIndex);
 
                 Command command;
@@ -719,10 +720,13 @@ namespace ZG
                 __Set<T>(entity, command);
             }
 
-            public unsafe void SetBuffer<TValue, TCollection>(BufferOption option, in Entity entity, in TCollection values)
-                where TValue : struct, IBufferElementData
+            public unsafe void SetBuffer<TValue, TCollection>(BufferOption option, in TypeIndex typeIndex, in Entity entity, in TCollection values)
+                where TValue : struct
                 where TCollection : IReadOnlyCollection<TValue>
             {
+                UnityEngine.Assertions.Assert.IsTrue(typeIndex.IsBuffer);
+                __CheckTypeSize<TValue>(typeIndex);
+
                 Command command;
                 command.type = Command.GetBufferType(option);
 
@@ -743,7 +747,14 @@ namespace ZG
                 else
                     command.block = UnsafeBlock.Empty;
 
-                __Set<TValue>(entity, command);
+                __Set(typeIndex, entity, command);
+            }
+
+            public unsafe void SetBuffer<TValue, TCollection>(BufferOption option, in Entity entity, in TCollection values)
+                where TValue : struct, IBufferElementData
+                where TCollection : IReadOnlyCollection<TValue>
+            {
+                SetBuffer<TValue, TCollection>(option, TypeManager.GetTypeIndex<TValue>(), entity, values);
             }
 
             public void SetComponentEnabled<T>(in Entity entity, bool value) where T : struct, IEnableableComponent
@@ -1055,6 +1066,15 @@ namespace ZG
                 {
                     SetBuffer<T>(option, entity, ptr, values.Length);
                 }
+            }
+
+            public unsafe void SetBuffer<TValue, TCollection>(BufferOption option, in TypeIndex typeIndex, in Entity entity, in TCollection values)
+                where TValue : struct
+                where TCollection : IReadOnlyCollection<TValue>
+            {
+                __CheckWrite();
+
+                _info->SetBuffer<TValue, TCollection>(option, typeIndex, entity, values);
             }
 
             public unsafe void SetBuffer<TValue, TCollection>(BufferOption option, in Entity entity, in TCollection values)
@@ -2024,6 +2044,15 @@ namespace ZG
             CompleteDependency();
 
             container.SetBuffer(option, entity, values);
+        }
+
+        public void SetBuffer<TValue, TCollection>(BufferOption option, in TypeIndex typeIndex, in Entity entity, in TCollection values)
+            where TValue : struct
+            where TCollection : IReadOnlyCollection<TValue>
+        {
+            CompleteDependency();
+
+            container.SetBuffer<TValue, TCollection>(option, typeIndex, entity, values);
         }
 
         public void SetBuffer<TValue, TCollection>(BufferOption option, in Entity entity, in TCollection values)
