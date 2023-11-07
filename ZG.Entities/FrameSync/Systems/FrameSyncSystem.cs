@@ -7,6 +7,8 @@ using System.Collections;
 using System.Collections.Generic;
 using Unity.Jobs;
 using ZG;
+using System.Runtime.InteropServices;
+using static ZG.SyncFrameUtility;
 
 [assembly: RegisterGenericJobType(typeof(RollbackEntryTest<SyncFrameEventSystem.RollbackEntryTester>))]
 
@@ -16,7 +18,7 @@ namespace ZG
 #if !USING_NETCODE
     [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
 #endif
-    public partial struct SyncFrameCallbackSystem : ISystem
+    public partial struct SyncFrameSystem : ISystem
     {
         private struct Comparer : IComparer<uint>
         {
@@ -404,11 +406,27 @@ namespace ZG
         }
     }
 
-    [UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true)]
-    public partial struct SyncFrameClearSystem : ISystem
+    [BurstCompile, UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true)]
+    public partial struct SyncFrameCallbackSystem : ISystem
     {
+        public FunctionPointer<InvokeDelegate> invokeAndUnregister
+        {
+            get;
+
+            private set;
+        }
+
+        public FunctionPointer<UnregisterDelegate> unregister
+        {
+            get;
+
+            private set;
+        }
+
         private struct Callback
         {
+            public FunctionPointer<InvokeDelegate> invokeAndUnregister;
+
             public BufferAccessor<SyncFrameCallback> frameCallbacks;
 
             public void Execute(int index)
@@ -416,7 +434,7 @@ namespace ZG
                 var frameCallbacks = this.frameCallbacks[index];
                 int numFrameCallbacks = frameCallbacks.Length;//, destination = source;
                 for (int i = 0; i < numFrameCallbacks; ++i)
-                    frameCallbacks.ElementAt(i).handle.InvokeAndUnregister(default);
+                    invokeAndUnregister.Invoke(frameCallbacks.ElementAt(i).handle, default);
 
                 frameCallbacks.Clear();
             }
@@ -424,11 +442,14 @@ namespace ZG
 
         private struct CallbackEx : IJobChunk
         {
+            public FunctionPointer<InvokeDelegate> invokeAndUnregister;
+
             public BufferTypeHandle<SyncFrameCallback> frameCallbackType;
 
             public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
             {
                 Callback callback;
+                callback.invokeAndUnregister = invokeAndUnregister;
                 callback.frameCallbacks = chunk.GetBufferAccessor(ref frameCallbackType);
 
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -445,7 +466,10 @@ namespace ZG
 
         private BufferTypeHandle<SyncFrameCallback> __frameCallbackType;
 
-        [BurstCompile]
+        private GCHandle __invokeAndUnregisterHandle;
+        private GCHandle __unregisterHandle;
+
+        //[BurstCompile]
         public void OnCreate(ref SystemState state)
         {
             using (var builder = new EntityQueryBuilder(Allocator.Temp))
@@ -455,17 +479,32 @@ namespace ZG
                     .Build(ref state);
 
             __frameCallbackType = state.GetBufferTypeHandle<SyncFrameCallback>();
+
+            invokeAndUnregister = FunctionWrapperUtility.CompileManagedFunctionPointer<InvokeDelegate>(InvokeAndUnregister, out __invokeAndUnregisterHandle);
+
+            unregister = FunctionWrapperUtility.CompileManagedFunctionPointer<UnregisterDelegate>(Unregister, out __unregisterHandle);
+        }
+
+        //[BurstCompile]
+        public void OnDestroy(ref SystemState state)
+        {
+            invokeAndUnregister = default;
+            __invokeAndUnregisterHandle.Free();
+
+            unregister = default;
+            __unregisterHandle.Free();
         }
 
         [BurstCompile]
-        public void OnDestroy(ref SystemState state)
-        {
-
-        }
-
         public void OnUpdate(ref SystemState state)
         {
+            if (__group.IsEmpty)
+                return;
+
+            state.CompleteDependency();
+
             CallbackEx callback;
+            callback.invokeAndUnregister = invokeAndUnregister;
             callback.frameCallbackType = __frameCallbackType.UpdateAsRef(ref state);
             callback.RunByRefWithoutJobs(__group);
 
@@ -473,13 +512,14 @@ namespace ZG
         }
     }
 
-    [AlwaysSynchronizeSystem, 
-        CreateAfter(typeof(RollbackCommandSystem)), 
+    [BurstCompile,
+        CreateAfter(typeof(RollbackCommandSystem)),
+        CreateAfter(typeof(SyncFrameCallbackSystem)), 
         UpdateInGroup(typeof(TimeSystemGroup), OrderFirst = true)]
 #if !USING_NETCODE
     [WorldSystemFilter(WorldSystemFilterFlags.ServerSimulation)]
 #endif
-    public partial class SyncFrameEventSystem : SystemBase
+    public partial struct SyncFrameEventSystem : ISystem
     {
         public struct RollbackEntryTester : IRollbackEntryTester
         {
@@ -491,6 +531,9 @@ namespace ZG
 
         private struct Callback
         {
+            public FunctionPointer<UnregisterDelegate> unregister;
+            public FunctionPointer<InvokeDelegate> invokeAndUnregister;
+
             [ReadOnly]
             public NativeArray<Entity> entityArray;
             [ReadOnly]
@@ -513,7 +556,7 @@ namespace ZG
                         continue;*/
 
                     if (frameEvent.destinationFrameIndex == 0)
-                        frameEvent.handle.Unregister();
+                        unregister.Invoke(frameEvent.handle);
                     else
                     {
                         //UnityEngine.Assertions.Assert.AreEqual(frameIndex, frameEvent.destinationFrameIndex);
@@ -526,7 +569,7 @@ namespace ZG
 
                         //UnityEngine.Debug.Log($"Invoke {frameEvent.sourceFrameIndex} : {frameEvent.destinationFrameIndex}");
 
-                        frameEvent.handle.InvokeAndUnregister(callbackData);
+                        invokeAndUnregister.Invoke(frameEvent.handle, callbackData);
                     }
 
                     //frameEvents[i--] = frameEvents[--destination];
@@ -536,6 +579,9 @@ namespace ZG
 
         private struct CallbackEx : IJobChunk
         {
+            public FunctionPointer<UnregisterDelegate> unregister;
+            public FunctionPointer<InvokeDelegate> invokeAndUnregister;
+
             [ReadOnly]
             public EntityTypeHandle entityType;
             [ReadOnly]
@@ -546,6 +592,8 @@ namespace ZG
             public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
             {
                 Callback callback;
+                callback.unregister = unregister;
+                callback.invokeAndUnregister = invokeAndUnregister;
                 callback.entityArray = chunk.GetNativeArray(entityType);
                 callback.frameEvents = chunk.GetBufferAccessor(ref eventType);
                 callback.commander = commander;
@@ -560,10 +608,14 @@ namespace ZG
 
         private EntityQuery __group;
 
-        private RollbackCommanderManaged __commander;
-
         private EntityTypeHandle __entityType;
         private BufferTypeHandle<SyncFrameEvent> __eventType;
+
+        private RollbackCommanderManaged __commander;
+
+        private FunctionPointer<InvokeDelegate> __invokeAndUnregister;
+
+        private FunctionPointer<UnregisterDelegate> __unregister;
 
         /*private EntityCommandPool<Entity>.Context __context;
 
@@ -573,42 +625,46 @@ namespace ZG
         { 
             __context = new EntityCommandPool<Entity>.Context(Allocator.Persistent);
         }*/
-
-        protected override void OnCreate()
+        [BurstCompile]
+        public void OnCreate(ref SystemState state)
         {
-            base.OnCreate();
-
-            //BurstUtility.InitializeJobParalledForDefer<RollbackEntryTest<RollbackEntryTester>>();
-
-            __rollbackFrameGroup = RollbackFrame.GetEntityQuery(ref this.GetState());
+            __rollbackFrameGroup = RollbackFrame.GetEntityQuery(ref state);
 
             using (var builder = new EntityQueryBuilder(Allocator.Temp))
                 __group = builder
                         .WithAll<SyncFrameEvent>()
                         .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
-                        .Build(this);
+                        .Build(ref state);
 
-            __commander = World.GetExistingSystemUnmanaged<RollbackCommandSystem>().commander;
+            __entityType = state.GetEntityTypeHandle();
+            __eventType = state.GetBufferTypeHandle<SyncFrameEvent>(true);
 
-            __entityType = GetEntityTypeHandle();
-            __eventType = GetBufferTypeHandle<SyncFrameEvent>(true);
+            var world = state.WorldUnmanaged;
+            __commander = world.GetExistingSystemUnmanaged<RollbackCommandSystem>().commander;
+
+            ref var callbackSystem = ref world.GetExistingSystemUnmanaged<SyncFrameCallbackSystem>();
+
+            __unregister = callbackSystem.unregister;
+            __invokeAndUnregister = callbackSystem.invokeAndUnregister;
         }
 
-        /*protected override void OnDestroy()
+        [BurstCompile]
+        public void OnDestroy(ref SystemState state)
         {
-            __context.Dispose();
 
-            base.OnDestroy();
-        }*/
+        }
 
-        protected override void OnUpdate()
+        [BurstCompile]
+        public void OnUpdate(ref SystemState state)
         {
             if (__group.IsEmpty)
                 return;
 
-            ref var state = ref this.GetState();
+            state.CompleteDependency();
 
             CallbackEx callback;
+            callback.unregister = __unregister;
+            callback.invokeAndUnregister = __invokeAndUnregister;
             callback.entityType = __entityType.UpdateAsRef(ref state);
             callback.eventType = __eventType.UpdateAsRef(ref state);
             callback.commander = __commander;
@@ -617,10 +673,27 @@ namespace ZG
             __group.SetEnabledBitsOnAllChunks<SyncFrameEvent>(false);
 
             uint frameIndex = __rollbackFrameGroup.GetSingleton<RollbackFrame>().index + 1;
-            var jobHandle = __commander.Update(frameIndex, Dependency);
+            var jobHandle = __commander.Update(frameIndex, state.Dependency);
 
             RollbackEntryTester tester;
-            Dependency = __commander.Test(tester, frameIndex, 1, jobHandle);
+            state.Dependency = __commander.Test(tester, frameIndex, 1, jobHandle);
         }
+    }
+
+    public static class SyncFrameUtility
+    {
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate void InvokeDelegate(in CallbackHandle<SyncFrameCallbackData> value, in SyncFrameCallbackData data);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate void UnregisterDelegate(in CallbackHandle<SyncFrameCallbackData> value);
+
+        [MonoPInvokeCallback(typeof(InvokeDelegate))]
+        public static void InvokeAndUnregister(in CallbackHandle<SyncFrameCallbackData> value, in SyncFrameCallbackData data)
+            => value.InvokeAndUnregister(data);
+
+        [MonoPInvokeCallback(typeof(UnregisterDelegate))]
+        public static void Unregister(in CallbackHandle<SyncFrameCallbackData> value)
+            => value.Unregister();
     }
 }

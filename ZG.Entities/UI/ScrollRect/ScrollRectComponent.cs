@@ -68,7 +68,7 @@ namespace ZG
         public bool isVail;
         public int2 index;
     }
-    
+
     public struct ScrollRectNode
     {
         public float2 velocity;
@@ -115,16 +115,48 @@ namespace ZG
 
                 if (__submitHandlers == null)
                     __submitHandlers = new List<ISubmitHandler>();
-                else
-                    __submitHandlers.Clear();
 
+                bool isChanged = false;
+                int index = 0;
+                ISubmitHandler submitHandler;
                 GameObject gameObject;
                 foreach (Transform child in content)
                 {
                     gameObject = child.gameObject;
                     if (gameObject != null && gameObject.activeSelf)
-                        __submitHandlers.Add(gameObject.GetComponent<ISubmitHandler>());
+                    {
+                        submitHandler = gameObject.GetComponent<ISubmitHandler>();
+
+                        if (index < __submitHandlers.Count)
+                        {
+                            if (submitHandler != __submitHandlers[index])
+                            {
+                                __submitHandlers[index] = submitHandler;
+
+                                isChanged = true;
+                            }
+                        }
+                        else
+                        {
+                            __submitHandlers.Add(submitHandler);
+
+                            isChanged = true;
+                        }
+
+                        ++index;
+                    }
                 }
+
+                int numSubmitHandlers = __submitHandlers.Count;
+                if (index < numSubmitHandlers)
+                {
+                    __submitHandlers.RemoveRange(index, numSubmitHandlers - index);
+
+                    isChanged = true;
+                }
+
+                if (isChanged)
+                    ++__version;
 
                 RectTransform.Axis axis = scrollRect.horizontal ? RectTransform.Axis.Horizontal : RectTransform.Axis.Vertical;
                 int2 result = int2.zero;
@@ -155,7 +187,7 @@ namespace ZG
 
                 result.count = count;
 
-                Canvas.ForceUpdateCanvases();
+                //Canvas.ForceUpdateCanvases();
 
                 RectTransform content = scrollRect.content;
                 result.contentLength = content == null ? float2.zero : (float2)content.rect.size;
@@ -177,7 +209,7 @@ namespace ZG
                 return __scrollRect;
             }
         }
-        
+
         public static Vector2 GetSize(RectTransform rectTransform, bool isHorizontal, bool isVertical)
         {
             /*if (rectTransform == null)
@@ -285,14 +317,20 @@ namespace ZG
             {
                 __data = data;
 
-                __info.index = math.clamp(__info.index, 0, math.max(1, __data.count) - 1);
+                var index = math.clamp(__info.index, 0, math.max(1, __data.count) - 1);
+                if (!index.Equals(__info.index))
+                {
+                    __info.index = index;
+
+                    ++__version;
+                }
 
                 var node = __node.Value;
                 if (ScrollRectUtility.Execute(__version, Time.deltaTime, __data, __info, ref node, ref __event))
                     _Set(__event);
 
                 //if(!node.normalizedPosition.Equals(__node.Value.normalizedPosition) || !((float2)scrollRect.normalizedPosition).Equals(node.normalizedPosition))
-                    scrollRect.normalizedPosition = node.normalizedPosition;
+                scrollRect.normalizedPosition = node.normalizedPosition;
 
                 __node = node;
             }
@@ -377,7 +415,7 @@ namespace ZG
 
             float2 source = __data.GetIndex(scrollRect.normalizedPosition);
             int2 destination = (int2)math.round(source);
-            if(math.any(destination != this.index))
+            if (math.any(destination != this.index))
             {
                 __OnChanged(source, destination);
 
@@ -484,7 +522,7 @@ namespace ZG
         }
 
         public static unsafe bool Execute(
-            int version, 
+            int version,
             float deltaTime,
             in ScrollRectData instance,
             in ScrollRectInfo info,
