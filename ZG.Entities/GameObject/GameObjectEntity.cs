@@ -163,23 +163,6 @@ namespace ZG
 
         private readonly static List<ComponentType> ComponentTypeList = new List<ComponentType>();
 
-        private static ComponentType[] ComponentTypes = new ComponentType[]
-        {
-            ComponentType.ReadOnly<GameObjectEntityHandle>(),
-            ComponentType.ReadOnly<GameObjectEntityInstanceCount>(),
-            ComponentType.ReadOnly<GameObjectEntityActiveCount>(),
-            ComponentType.ReadOnly<EntityOrigin>()
-        };
-
-        private static ComponentType[] ComponentTypesWithParent = new ComponentType[]
-        {
-            ComponentType.ReadOnly<GameObjectEntityHandle>(),
-            ComponentType.ReadOnly<GameObjectEntityInstanceCount>(),
-            ComponentType.ReadOnly<GameObjectEntityActiveCount>(),
-            ComponentType.ReadOnly<EntityOrigin>(),
-            ComponentType.ReadOnly<EntityParent>()
-        };
-
         //private static ConcurrentDictionary<int, GameObjectEntityInfo> __infos = new ConcurrentDictionary<int, GameObjectEntityInfo>();
         //private static Dictionary<Scene, LinkedList<GameObjectEntity>> __sceneEntities = null;
         //private LinkedListNode<GameObjectEntity> __sceneLinkedListNode;
@@ -809,16 +792,16 @@ namespace ZG
                     _parent = parent.GetComponentInParent<GameObjectEntity>(true);
             }
 
-            if(_parent == null)
+            if (_parent == null)
                 __info.Rebuild(
                     isPrefab, 
                     data,
-                    ComponentTypes);
+                    GameObjectEntityUtility.ComponentTypes);
             else
                 __info.Rebuild(
                     isPrefab, 
                     data,
-                    ComponentTypesWithParent);
+                    GameObjectEntityUtility.ComponentTypesWithParent);
 
             /*if(isPrefab)
                 __infos[GetInstanceID()] = __info;*/
@@ -910,6 +893,23 @@ namespace ZG
 
     public static partial class GameObjectEntityUtility
     {
+        internal static ComponentType[] ComponentTypes = new ComponentType[]
+        {
+            ComponentType.ReadOnly<GameObjectEntityHandle>(),
+            ComponentType.ReadOnly<GameObjectEntityInstanceCount>(),
+            ComponentType.ReadOnly<GameObjectEntityActiveCount>(),
+            ComponentType.ReadOnly<EntityOrigin>()
+        };
+
+        internal static ComponentType[] ComponentTypesWithParent = new ComponentType[]
+        {
+            ComponentType.ReadOnly<GameObjectEntityHandle>(),
+            ComponentType.ReadOnly<GameObjectEntityInstanceCount>(),
+            ComponentType.ReadOnly<GameObjectEntityActiveCount>(),
+            ComponentType.ReadOnly<EntityOrigin>(),
+            ComponentType.ReadOnly<EntityParent>()
+        };
+
         public static ref readonly Unity.Core.TimeData GetTimeData(this IGameObjectEntity gameObjectEntity)
         {
             return ref  __GetCommandSystem(gameObjectEntity).World.Time;
