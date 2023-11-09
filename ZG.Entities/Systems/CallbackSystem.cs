@@ -19,6 +19,10 @@ namespace ZG
         public delegate void Delegate(in CallbackHandle value);
 
         [MonoPInvokeCallback(typeof(Delegate))]
+        public static void Invoke(in CallbackHandle value)
+            => value.Invoke();
+
+        [MonoPInvokeCallback(typeof(Delegate))]
         public static void InvokeAndUnregister(in CallbackHandle value)
             => value.InvokeAndUnregister();
 
@@ -26,11 +30,20 @@ namespace ZG
         public static void Unregister(in CallbackHandle value)
             => value.Unregister();
 
+        private FunctionPointer<Delegate> __invoke;
         private FunctionPointer<Delegate> __invokeAndUnregister;
         private FunctionPointer<Delegate> __unregister;
 
+        private GCHandle __invokeHandle;
         private GCHandle __invokeAndUnregisterHandle;
         private GCHandle __unregisterHandle;
+
+        public SharedList<CallbackHandle> handlesToInvoke
+        {
+            get;
+
+            private set;
+        }
 
         public SharedList<CallbackHandle> handlesToInvokeAndUnregister
         {
@@ -49,9 +62,13 @@ namespace ZG
         //[BurstCompile]
         public void OnCreate(ref SystemState state)
         {
+            __invoke = FunctionWrapperUtility.CompileManagedFunctionPointer<Delegate>(Invoke, out __invokeHandle);
+
             __invokeAndUnregister = FunctionWrapperUtility.CompileManagedFunctionPointer<Delegate>(InvokeAndUnregister, out __invokeAndUnregisterHandle);
 
             __unregister = FunctionWrapperUtility.CompileManagedFunctionPointer<Delegate>(Unregister, out __unregisterHandle);
+
+            handlesToInvoke = new SharedList<CallbackHandle>(Allocator.Persistent);
 
             handlesToInvokeAndUnregister = new SharedList<CallbackHandle>(Allocator.Persistent);
 
@@ -61,11 +78,16 @@ namespace ZG
         //[BurstCompile]
         public void OnDestroy(ref SystemState state)
         {
+            __invoke = default;
+            __invokeHandle.Free();
+
             __invokeAndUnregister = default;
             __invokeAndUnregisterHandle.Free();
 
             __unregister = default;
             __unregisterHandle.Free();
+
+            handlesToInvoke.Dispose();
 
             handlesToInvokeAndUnregister.Dispose();
 
@@ -75,11 +97,21 @@ namespace ZG
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
+            var handlesToInvoke = this.handlesToInvoke;
+            handlesToInvoke.lookupJobManager.CompleteReadWriteDependency();
+
+            var handlesToInvokeWriter = handlesToInvoke.writer;
+            int length = handlesToInvokeWriter.length;
+            for (int i = 0; i < length; ++i)
+                __invoke.Invoke(handlesToInvokeWriter[i]);
+
+            handlesToInvokeWriter.Clear();
+
             var handlesToInvokeAndUnregister = this.handlesToInvokeAndUnregister;
             handlesToInvokeAndUnregister.lookupJobManager.CompleteReadWriteDependency();
 
             var handlesToInvokeAndUnregisterWriter = handlesToInvokeAndUnregister.writer;
-            int length = handlesToInvokeAndUnregisterWriter.length;
+            length = handlesToInvokeAndUnregisterWriter.length;
             for(int i = 0; i < length; ++i)
                 __invokeAndUnregister.Invoke(handlesToInvokeAndUnregisterWriter[i]);
 
