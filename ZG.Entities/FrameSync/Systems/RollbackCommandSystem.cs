@@ -463,23 +463,25 @@ namespace ZG
                 if (index > 0)
                     __moveCommands.RemoveRange(0, index);*/
 
-                int numDirtyFrames = __keys.Length, j;
+                int numDirtyFrames = __keys.Length, entryIndex, j;
                 for(int i = 0; i < numDirtyFrames; ++i)
                 {
                     ref var sourceKey = ref __keys.ElementAt(i);
                     if(sourceKey.frameIndex < frameIndex)
                     {
+                        entryIndex = sourceKey.entryIndex;
+
                         __keys.RemoveAtSwapBack(i--);
 
-                        --numDirtyFrames;
+                        __values.RemoveAtSwapBack(entryIndex);
 
-                        __values.RemoveAtSwapBack(sourceKey.entryIndex);
+                        --numDirtyFrames;
 
                         for (j = 0; j < numDirtyFrames; ++j)
                         {
                             ref var destinationKey = ref __keys.ElementAt(j);
                             if (destinationKey.entryIndex == numDirtyFrames)
-                                destinationKey.entryIndex = sourceKey.entryIndex;
+                                destinationKey.entryIndex = entryIndex;
                         }
                     }
                 }
