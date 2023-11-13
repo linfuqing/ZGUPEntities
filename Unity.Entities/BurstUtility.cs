@@ -33,25 +33,6 @@ namespace Unity.Entities
 
 namespace ZG
 {
-    public enum ScheduleGranularity
-    {
-        /// <summary>
-        /// Entities are distributed to worker threads at the granularity of entire chunks. This is generally the
-        /// safest and highest-performance approach, and is the default mode unless otherwise specified. The
-        /// entities within the chunk can be processed in a a cache-friendly manner, and job queue contention is
-        /// minimized.
-        /// </summary>
-        Chunk = 0,
-        /// <summary>
-        /// Entities are distributed to worker threads individually. This increases scheduling overhead and
-        /// eliminates the cache-friendly benefits of chunk-level processing. However, it can lead to better
-        /// load-balancing in cases where the number of entities being processed is relatively low, and the cost of
-        /// processing each entity is high, as it allows the entities within a chunk to be distributed evenly across
-        /// available worker threads.
-        /// </summary>
-        Entity = 1,
-    }
-
     public static partial class BurstUtility
     {
         [BurstCompile]
@@ -75,6 +56,19 @@ namespace ZG
 
         internal static void InitializeJobParallelFor<T>() where T : struct, IJobParallelFor
         {
+        }
+
+        public static int CountBits(in this v128 u)
+        {
+            return EnabledBitUtility.countbits(u);
+        }
+
+        public static v128 Negate(in this v128 u)
+        {
+            if (X86.Sse2.IsSse2Supported)
+                return X86.Sse2.xor_si128(u, new v128(0xFFFFFFFF));
+            
+            return new v128(~u.ULong0, ~u.ULong1);
         }
 
         public static JobHandle CalculateEntityCountAsync(this in EntityQuery group, NativeArray<int> counter, in JobHandle inputDeps)

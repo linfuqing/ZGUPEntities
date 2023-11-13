@@ -412,6 +412,26 @@ namespace ZG
             }
         }
 
+        /*[BurstCompile]
+        private struct Flush
+        {
+            public NativeArray<uint> frameIndices;
+            public NativeList<RollbackEntry> values;
+            public NativeList<RollbackEntryKey> keys;
+
+            public void Execute()
+            {
+                uint commandFrameIndex = frameIndices[(int)RollbackFrameIndexType.Command];
+                foreach(var key in keys)
+                    commandFrameIndex = math.min(commandFrameIndex, key.frameIndex);
+
+                frameIndices[(int)RollbackFrameIndexType.Command] = commandFrameIndex;
+
+                keys.Clear();
+                values.Clear();
+            }
+        }*/
+
         public struct Writer
         {
             private NativeArray<uint> __frameIndices;
@@ -443,14 +463,24 @@ namespace ZG
                 if (index > 0)
                     __moveCommands.RemoveRange(0, index);*/
 
-                int numDirtyFrames = __keys.Length;
+                int numDirtyFrames = __keys.Length, j;
                 for(int i = 0; i < numDirtyFrames; ++i)
                 {
-                    if(__keys[i].frameIndex < frameIndex)
+                    ref var sourceKey = ref __keys.ElementAt(i);
+                    if(sourceKey.frameIndex < frameIndex)
                     {
                         __keys.RemoveAtSwapBack(i--);
 
                         --numDirtyFrames;
+
+                        __values.RemoveAtSwapBack(sourceKey.entryIndex);
+
+                        for (j = 0; j < numDirtyFrames; ++j)
+                        {
+                            ref var destinationKey = ref __keys.ElementAt(j);
+                            if (destinationKey.entryIndex == numDirtyFrames)
+                                destinationKey.entryIndex = sourceKey.entryIndex;
+                        }
                     }
                 }
 
@@ -826,6 +856,8 @@ namespace ZG
                 EntityCommander this[int commandIndex] { get; }
 
                 EntityCommander Alloc(out int commanderIndex);
+
+                void Free(int commanderIndex);
             }
 
             private struct FrameCommander : IComparable<FrameCommander>
@@ -1035,6 +1067,38 @@ namespace ZG
                     return commander.Apply(ref systemState);
                 }
 
+                /*public void Playback<T>(
+                    ref SystemState systemState,
+                    ref T commanderManager) where T : ICommanderManagerWrapper
+                {
+                    var commander = commanderManager.Alloc(out int commanderIndex);
+
+                    int frameCommanderIndex;
+                    foreach (var frameIndex in __frameIndices)
+                    {
+                        frameCommanderIndex = frameIndex.Value;
+                        commanderManager[frameCommanderIndex].AsReadOnly().AppendTo(ref commander);
+
+                        commanderManager.Free(frameCommanderIndex);
+                    }
+
+                    __frameIndices.Clear();
+
+                    foreach (var frameCommander in __frameCommanders)
+                    {
+                        frameCommanderIndex = frameCommander.Value.index;
+
+                        UnityEngine.Assertions.Assert.AreNotEqual(commanderIndex, frameCommanderIndex);
+
+                        commanderManager[frameCommanderIndex].AsReadOnly().AppendTo(ref commander);
+
+                        commanderManager.Free(frameCommanderIndex);
+                    }
+
+                    commander.Playback(ref systemState);
+
+                    commanderManager.Free(commanderIndex);
+                }*/
             }
 
             private struct Data : ICommanderManagerWrapper
@@ -1099,6 +1163,11 @@ namespace ZG
                 {
                     return _frameManager.Apply(isInitOnly, frameIndex, ref systemState, ref this);
                 }
+
+                /*public void Playback(ref SystemState systemState)
+                {
+                    _frameManager.Playback(ref systemState, ref this);
+                }*/
 
                 public void Flush(int capacity)
                 {
@@ -1384,6 +1453,13 @@ namespace ZG
 
                 return commander.Apply(ref systemState);*/
             }
+
+            /*public unsafe void Playback(ref SystemState systemState)
+            {
+                __CheckWrite();
+
+                __data->Playback(ref systemState);
+            }*/
 
             [Conditional("ENABLE_UNITY_COLLECTIONS_CHECKS")]
             void __CheckWrite()
@@ -1823,6 +1899,19 @@ namespace ZG
 
             return false;
         }
+
+        /*public void Playback(ref SystemState systemState)
+        {
+            updateJobHandle.Complete();
+
+            __commanderPool.Playback(ref systemState);
+
+            uint frameIndex = __commander.commandFrameIndex;
+
+            __commander.Clear();
+
+            __commander.commandFrameIndex = frameIndex;
+        }*/
 
         public JobHandle Update(uint minFrameIndex, in JobHandle inputDeps)
         {
