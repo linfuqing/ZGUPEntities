@@ -839,11 +839,18 @@ namespace ZG
 
         void ISerializationCallbackReceiver.OnAfterDeserialize()
         {
+#if UNITY_EDITOR
+            for (var deserializedEntity = __deserializedEntities; deserializedEntity != null; deserializedEntity = deserializedEntity.__next)
+            {
+                if (deserializedEntity == this)
+                    return;
+            }
+
             switch (status)
             {
                 case GameObjectEntityStatus.None:
                     break;
-                case GameObjectEntityStatus.Deserializing:
+                /*case GameObjectEntityStatus.Deserializing:
                     for (var deserializedEntity = __deserializedEntities; deserializedEntity != null; deserializedEntity = deserializedEntity.__next)
                     {
                         if (deserializedEntity == this)
@@ -851,8 +858,7 @@ namespace ZG
                     }
 
                     __next = null;
-
-                    break;
+                    break;*/
                 case GameObjectEntityStatus.Creating:
                 case GameObjectEntityStatus.Created:
                     if (__info != null && __info.isValid)
@@ -861,6 +867,11 @@ namespace ZG
                 default:
                     return;
             }
+#else
+            if(GameObjectEntityStatus.None != status)
+                return;
+#endif
+
 
             status = GameObjectEntityStatus.Deserializing;
 

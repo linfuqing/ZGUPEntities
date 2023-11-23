@@ -771,22 +771,30 @@ namespace ZG
 
         public static EntityDataSerializationSystemCore Create<T>(ref SystemState state) where T : struct
         {
-            EntityDataSerializationSystemCore result;
+            return new EntityDataSerializationSystemCore(ComponentType.ReadOnly<T>(), ref state);
+        }
+
+        public unsafe EntityDataSerializationSystemCore(in ComponentType componentType, ref SystemState state)
+        {
             using (var builder = new EntityQueryBuilder(Allocator.Temp))
-                result.__group = builder
-                    .WithAll<EntityDataIdentity, EntityDataSerializable, T>()
+            using (var componentTypes = new NativeList<ComponentType>(Allocator.Temp)
+            {
+                ComponentType.ReadOnly<EntityDataIdentity>(),
+                ComponentType.ReadOnly<EntityDataSerializable>(),
+                componentType, 
+            })
+                __group = builder
+                    .WithAll(componentTypes.GetUnsafePtr(), componentTypes.Length)
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
 
-            result.__identityType = state.GetComponentTypeHandle<EntityDataIdentity>(true);
+            __identityType = state.GetComponentTypeHandle<EntityDataIdentity>(true);
 
             ref var system = ref state.WorldUnmanaged.GetExistingSystemUnmanaged<EntityDataSerializationInitializationSystem>();
-            result.__entityIndices = system.entityIndices;
-            result.__bufferManager = system.bufferManager;
+            __entityIndices = system.entityIndices;
+            __bufferManager = system.bufferManager;
 
-            result.__typeHandle = new EntityDataSerializationTypeHandle(ref state);
-
-            return result;
+            __typeHandle = new EntityDataSerializationTypeHandle(ref state);
         }
 
         public void Dispose()

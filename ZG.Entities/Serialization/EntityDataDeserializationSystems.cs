@@ -1345,28 +1345,33 @@ namespace ZG
 
         public static EntityDataDeserializationSystemCore Create<T>(ref SystemState state) where T : struct
         {
-            EntityDataDeserializationSystemCore result;
+            return new EntityDataDeserializationSystemCore(ComponentType.ReadWrite<T>(), ref state);
+        }
+
+        public unsafe EntityDataDeserializationSystemCore(in ComponentType componentType, ref SystemState state)
+        {
             using (var builder = new EntityQueryBuilder(Allocator.Temp))
-                result.__group = builder
-                        .WithAll<EntityDataIdentity, EntityDataDeserializable>()
-                        .WithAllRW<T>()
+            using (var componentTypes = new NativeList<ComponentType>(Allocator.Temp)
+            {
+                ComponentType.ReadOnly<EntityDataIdentity>(),
+                ComponentType.ReadOnly<EntityDataDeserializable>(),
+                componentType,
+            })
+                __group = builder
+                        .WithAll(componentTypes.GetUnsafePtr(), componentTypes.Length)
                         .WithOptions(EntityQueryOptions.IncludeDisabledEntities | EntityQueryOptions.IgnoreComponentEnabledState)
                         .Build(ref state);
 
-            result.__typeHandle = new EntityDataDeserializationTypeHandle(ref state);
+            __typeHandle = new EntityDataDeserializationTypeHandle(ref state);
 
-            result.__deserializableType = state.GetComponentTypeHandle<EntityDataDeserializable>(true);
+            __deserializableType = state.GetComponentTypeHandle<EntityDataDeserializable>(true);
 
-            result.__identityType = state.GetComponentTypeHandle<EntityDataIdentity>(true);
+            __identityType = state.GetComponentTypeHandle<EntityDataIdentity>(true);
 
             var world = state.WorldUnmanaged;
-            result.__identityGUIDIndices = world.GetExistingSystemUnmanaged<EntityDataDeserializationInitializationSystem>().identityGUIDIndices;
+            __identityGUIDIndices = world.GetExistingSystemUnmanaged<EntityDataDeserializationInitializationSystem>().identityGUIDIndices;
 
-            result.__identityBlocks = world.GetExistingSystemUnmanaged<EntityDataDeserializationComponentSystem>()._identityBlocks;
-
-            //result.__blocks = new NativeReference<UnsafeHashMap<int, UnsafeBlock>>(Allocator.Persistent);
-
-            return result;
+            __identityBlocks = world.GetExistingSystemUnmanaged<EntityDataDeserializationComponentSystem>()._identityBlocks;
         }
 
         public void Dispose()

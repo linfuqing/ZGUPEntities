@@ -369,6 +369,30 @@ namespace ZG
 
     public struct EntityAddDataQueue
     {
+        public struct Writer
+        {
+            private EntityCommandQueue<EntityCommandStructChange>.Writer __addComponentQueue;
+            private EntityComponentAssigner.Writer __assigner;
+
+            public Writer(
+                EntityCommandQueue<EntityCommandStructChange>.Writer addComponentQueue,
+                EntityComponentAssigner.Writer assigner)
+            {
+                __addComponentQueue = addComponentQueue;
+                __assigner = assigner;
+            }
+
+            public void AddComponentData<T>(in Entity entity, in T value) where T : struct, IComponentData
+            {
+                EntityCommandStructChange command;
+                command.entity = entity;
+                command.componentType = ComponentType.ReadWrite<T>();
+                __addComponentQueue.Enqueue(command);
+
+                __assigner.SetComponentData(entity, value);
+            }
+        }
+
         public struct ParallelWriter
         {
             private EntityCommandQueue<EntityCommandStructChange>.ParallelWriter __addComponentQueue;
@@ -395,6 +419,8 @@ namespace ZG
 
         private EntityCommandQueue<EntityCommandStructChange> __addComponentQueue;
         private EntityComponentAssigner __assigner;
+
+        public Writer writer => new Writer(__addComponentQueue.writer, __assigner.writer);
 
         public EntityAddDataQueue(
             EntityCommandQueue<EntityCommandStructChange> addComponentQueue,
