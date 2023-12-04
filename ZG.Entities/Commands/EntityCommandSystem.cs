@@ -358,19 +358,21 @@ namespace ZG
             return scheduler.commander.TryGetBuffer(entity, index, ref value, indexOffset) || result;
         }
 
-        public static bool IsComponentEnabled(this IEntityCommandScheduler scheduler, in Entity entity, in ComponentType componentType)
+        public static bool IsComponentEnabled(this IEntityCommandScheduler scheduler, in Entity entity, in ComponentType componentType, out bool isOverride)
         {
             var commander = scheduler.commander;
-            if (commander.IsComponentEnabled(entity, componentType.TypeIndex))
+            if (commander.IsComponentEnabled(entity, componentType.TypeIndex, out isOverride))
                 return true;
 
             return scheduler.entityManager.IsComponentEnabled(entity, componentType);
         }
 
-        public static bool IsComponentEnabled<T>(this IEntityCommandScheduler scheduler, in Entity entity) where T :　IEnableableComponent => IsComponentEnabled(scheduler, entity, ComponentType.ReadWrite<T>());
+        public static bool IsComponentEnabled<T>(this IEntityCommandScheduler scheduler, in Entity entity, out bool isOverride) where T :　IEnableableComponent => IsComponentEnabled(scheduler, entity, ComponentType.ReadWrite<T>(), out isOverride);
 
-        public static bool HasComponent(this IEntityCommandScheduler scheduler, in Entity entity, in ComponentType componentType)
+        public static bool HasComponent(this IEntityCommandScheduler scheduler, in Entity entity, in ComponentType componentType, out bool isOverride)
         {
+            isOverride = true;
+
             var commander = scheduler.commander;
             if (!commander.IsExists(entity))
                 return true;
@@ -379,12 +381,14 @@ namespace ZG
             if (commander.IsAddOrRemoveComponent(entity, componentType.TypeIndex, out status))
                 return status;
 
+            isOverride = false;
+
             return scheduler.entityManager.HasComponent(entity, componentType);
         }
 
-        public static bool HasComponent<T>(this IEntityCommandScheduler scheduler, in Entity entity) => HasComponent(scheduler, entity, ComponentType.ReadWrite<T>());
+        public static bool HasComponent<T>(this IEntityCommandScheduler scheduler, in Entity entity, out bool isOverride) => HasComponent(scheduler, entity, ComponentType.ReadWrite<T>(), out isOverride);
 
-        public static void CompleteAll(this ref NativeParallelHashMap<ComponentType, JobHandle> dependency, in JobHandle inputDeps)
+        /*public static void CompleteAll(this ref NativeParallelHashMap<ComponentType, JobHandle> dependency, in JobHandle inputDeps)
         {
             inputDeps.Complete();
 
@@ -395,6 +399,6 @@ namespace ZG
                 JobHandle.CompleteAll(jobHandles);
 
             dependency.Clear();
-        }
+        }*/
     }
 }

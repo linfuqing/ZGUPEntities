@@ -495,7 +495,7 @@ namespace ZG
                 values.Capacity = math.max(values.Capacity, values.Count() + typeCount);
             }
 
-            public bool IsComponentEnabled(in Entity entity, in TypeIndex typeIndex)
+            public bool IsComponentEnabled(in Entity entity, in TypeIndex typeIndex, out bool isOverride)
             {
                 bool result = false;
                 int index = -1;
@@ -530,6 +530,8 @@ namespace ZG
 
                     } while (values.TryGetNextValue(out temp, ref iterator));
                 }
+
+                isOverride = index != -1;
 
                 return result;
             }
@@ -990,11 +992,11 @@ namespace ZG
                 Reset(elementSize * elementCount, typeCount);
             }
 
-            public unsafe bool IsComponentEnabled(in Entity entity, in TypeIndex typeIndex)
+            public unsafe bool IsComponentEnabled(in Entity entity, in TypeIndex typeIndex, out bool isOverride)
             {
                 __CheckRead();
 
-                return _info->IsComponentEnabled(entity, typeIndex);
+                return _info->IsComponentEnabled(entity, typeIndex, out isOverride);
             }
 
             public unsafe bool TryGetComponentData<T>(in Entity entity, ref T value) where T : struct, IComponentData
@@ -1972,11 +1974,11 @@ namespace ZG
             return new ParallelWriter(ref container);
         }
 
-        public bool IsComponentEnabled(in Entity entity, in TypeIndex typeIndex)
+        public bool IsComponentEnabled(in Entity entity, in TypeIndex typeIndex, out bool isOverride)
         {
             CompleteDependency();
 
-            return container.IsComponentEnabled(entity, typeIndex);
+            return container.IsComponentEnabled(entity, typeIndex, out isOverride);
         }
 
         public bool TryGetComponentData<T>(in Entity entity, ref T value) where T : struct, IComponentData

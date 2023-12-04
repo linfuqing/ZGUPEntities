@@ -580,14 +580,14 @@ namespace ZG
 
         public bool HasComponent<T>(in Entity prefab) => HasComponent(prefab, TypeManager.GetTypeIndex<T>());
 
-        public bool IsComponentEnabled(in Entity prefab, in TypeIndex typeIndex, out Entity entity)
+        public bool IsComponentEnabled(in Entity prefab, in TypeIndex typeIndex, out Entity entity, out bool isOverride)
         {
             var instances = this.instances;
             instances.lookupJobManager.CompleteReadOnlyDependency();
 
             var reader = instances.reader;
             bool result = reader.TryGetValue(prefab, out entity);
-            if (instanceAssigner.IsComponentEnabled(prefab, typeIndex))
+            if (instanceAssigner.IsComponentEnabled(prefab, typeIndex, out isOverride))
                 return true;
             else if (result)
                 return false;
@@ -605,10 +605,10 @@ namespace ZG
 
             reader.TryGetValue(key, out entity);
 
-            return prefabAssigner.IsComponentEnabled(key, typeIndex);
+            return prefabAssigner.IsComponentEnabled(key, typeIndex, out isOverride);
         }
 
-        public bool IsComponentEnabled<T>(in Entity prefab, out Entity entity) where T : IEnableableComponent => IsComponentEnabled(prefab, TypeManager.GetTypeIndex<T>(), out entity);
+        public bool IsComponentEnabled<T>(in Entity prefab, out Entity entity, out bool isOverride) where T : IEnableableComponent => IsComponentEnabled(prefab, TypeManager.GetTypeIndex<T>(), out entity, out isOverride);
 
         public void SetComponentEnabled<T>(in Entity prefab, in bool value) where T : struct, IEnableableComponent
         {

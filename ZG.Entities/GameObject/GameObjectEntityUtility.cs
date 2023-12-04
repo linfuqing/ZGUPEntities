@@ -21,12 +21,25 @@ namespace ZG
             {
                 var entity = gameObjectEntity.entity;
 
-                switch (gameObjectEntity.status)
+                var status = gameObjectEntity.status;
+                switch (status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        commandSystem.factory.AddComponent<T>(entity);
-                        break;
                     case GameObjectEntityStatus.Created:
+                        if (status == GameObjectEntityStatus.Creating)
+                        {
+                            var factory = commandSystem.factory;
+                            var instance = factory.GetEntity(entity, true);
+                            if (instance == Entity.Null)
+                            {
+                                factory.AddComponent<T>(entity);
+
+                                break;
+                            }
+
+                            entity = instance;
+                        }
+
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.AddComponent<T>(entity);
@@ -46,12 +59,25 @@ namespace ZG
             {
                 var entity = gameObjectEntity.entity;
 
-                switch (gameObjectEntity.status)
+                var status = gameObjectEntity.status;
+                switch (status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        commandSystem.factory.AddComponentData(entity, value);
-                        break;
                     case GameObjectEntityStatus.Created:
+                        if (status == GameObjectEntityStatus.Creating)
+                        {
+                            var factory = commandSystem.factory;
+                            var instance = factory.GetEntity(entity, true);
+                            if (instance == Entity.Null)
+                            {
+                                factory.AddComponentData(entity, value);
+
+                                break;
+                            }
+
+                            entity = instance;
+                        }
+
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.AddComponentData(entity, value);
@@ -69,12 +95,25 @@ namespace ZG
             {
                 var entity = gameObjectEntity.entity;
 
-                switch (gameObjectEntity.status)
+                var status = gameObjectEntity.status;
+                switch (status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        commandSystem.factory.AddBuffer(entity, values);
-                        break;
                     case GameObjectEntityStatus.Created:
+                        if (status == GameObjectEntityStatus.Creating)
+                        {
+                            var factory = commandSystem.factory;
+                            var instance = factory.GetEntity(entity, true);
+                            if (instance == Entity.Null)
+                            {
+                                factory.AddBuffer(entity, values); 
+                                
+                                break;
+                            }
+
+                            entity = instance;
+                        }
+
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.AddBuffer(entity, values);
@@ -94,12 +133,25 @@ namespace ZG
             {
                 var entity = gameObjectEntity.entity;
 
-                switch (gameObjectEntity.status)
+                var status = gameObjectEntity.status;
+                switch (status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        commandSystem.factory.AddBuffer<TValue, TCollection>(entity, values);
-                        break;
                     case GameObjectEntityStatus.Created:
+                        if (status == GameObjectEntityStatus.Creating)
+                        {
+                            var factory = commandSystem.factory;
+                            var instance = factory.GetEntity(entity, true);
+                            if (instance == Entity.Null)
+                            {
+                                factory.AddBuffer<TValue, TCollection>(entity, values);
+
+                                break;
+                            }
+
+                            entity = instance;
+                        }
+
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.AddBuffer<TValue, TCollection>(entity, values);
@@ -117,12 +169,25 @@ namespace ZG
             {
                 var entity = gameObjectEntity.entity;
 
-                switch (gameObjectEntity.status)
+                var status = gameObjectEntity.status;
+                switch (status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        commandSystem.factory.AppendBuffer(entity, values);
-                        break;
                     case GameObjectEntityStatus.Created:
+                        if (status == GameObjectEntityStatus.Creating)
+                        {
+                            var factory = commandSystem.factory;
+                            var instance = factory.GetEntity(entity, true);
+                            if (instance == Entity.Null)
+                            {
+                                factory.AppendBuffer(entity, values);
+
+                                break;
+                            }
+
+                            entity = instance;
+                        }
+
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.AppendBuffer<T, T[]>(entity, values);
@@ -142,12 +207,25 @@ namespace ZG
             {
                 var entity = gameObjectEntity.entity;
 
-                switch (gameObjectEntity.status)
+                var status = gameObjectEntity.status;
+                switch (status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        commandSystem.factory.AppendBuffer<TValue, TCollection>(entity, values);
-                        break;
                     case GameObjectEntityStatus.Created:
+                        if (status == GameObjectEntityStatus.Creating)
+                        {
+                            var factory = commandSystem.factory;
+                            var instance = factory.GetEntity(entity, true);
+                            if (instance == Entity.Null)
+                            {
+                                factory.AppendBuffer<TValue, TCollection>(entity, values);
+
+                                break;
+                            }
+
+                            entity = instance;
+                        }
+
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.AppendBuffer<TValue, TCollection>(entity, values);
@@ -167,12 +245,25 @@ namespace ZG
             {
                 var entity = gameObjectEntity.entity;
 
-                switch (gameObjectEntity.status)
+                var status = gameObjectEntity.status;
+                switch (status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        commandSystem.factory.AppendBufferUnique<TValue, TCollection>(entity, values);
-                        break;
                     case GameObjectEntityStatus.Created:
+                        if (status == GameObjectEntityStatus.Creating)
+                        {
+                            var factory = commandSystem.factory;
+                            var instance = factory.GetEntity(entity, true);
+                            if (instance == Entity.Null)
+                            {
+                                factory.AppendBufferUnique<TValue, TCollection>(entity, values);
+
+                                break;
+                            }
+
+                            entity = instance;
+                        }
+
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.AppendBufferUnique<TValue, TCollection>(entity, values);
@@ -195,12 +286,25 @@ namespace ZG
             {
                 var entity = gameObjectEntity.entity;
 
-                switch (gameObjectEntity.status)
+                var status = gameObjectEntity.status;
+                switch (status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        commandSystem.factory.RemoveBufferElementSwapBack<TValue, TCollection>(entity, values);
-                        break;
                     case GameObjectEntityStatus.Created:
+                        if (status == GameObjectEntityStatus.Creating)
+                        {
+                            var factory = commandSystem.factory;
+                            var instance = factory.GetEntity(entity, true);
+                            if (instance == Entity.Null)
+                            {
+                                factory.RemoveBufferElementSwapBack<TValue, TCollection>(entity, values);
+
+                                break;
+                            }
+
+                            entity = instance;
+                        }
+
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.RemoveBufferElementSwapBack<TValue, TCollection>(entity, values);
@@ -222,12 +326,25 @@ namespace ZG
             {
                 var entity = gameObjectEntity.entity;
 
-                switch (gameObjectEntity.status)
+                var status = gameObjectEntity.status;
+                switch (status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        commandSystem.factory.RemoveComponent<T>(entity);
-                        break;
                     case GameObjectEntityStatus.Created:
+                        if (status == GameObjectEntityStatus.Creating)
+                        {
+                            var factory = commandSystem.factory;
+                            var instance = factory.GetEntity(entity, true);
+                            if (instance == Entity.Null)
+                            {
+                                factory.RemoveComponent<T>(entity);
+
+                                break;
+                            }
+
+                            entity = instance;
+                        }
+
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.RemoveComponent<T>(entity);
@@ -247,12 +364,25 @@ namespace ZG
             {
                 var entity = gameObjectEntity.entity;
 
-                switch (gameObjectEntity.status)
+                var status = gameObjectEntity.status;
+                switch (status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        commandSystem.factory.SetComponentData(entity, value);
-                        break;
                     case GameObjectEntityStatus.Created:
+                        if (status == GameObjectEntityStatus.Creating)
+                        {
+                            var factory = commandSystem.factory;
+                            var instance = factory.GetEntity(entity, true);
+                            if (instance == Entity.Null)
+                            {
+                                factory.SetComponentData(entity, value);
+
+                                break;
+                            }
+
+                            entity = instance;
+                        }
+
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.SetComponentData(entity, value);
@@ -271,12 +401,25 @@ namespace ZG
             {
                 var entity = gameObjectEntity.entity;
 
-                switch (gameObjectEntity.status)
+                var status = gameObjectEntity.status;
+                switch (status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        commandSystem.factory.SetBuffer(entity, values);
-                        break;
                     case GameObjectEntityStatus.Created:
+                        if (status == GameObjectEntityStatus.Creating)
+                        {
+                            var factory = commandSystem.factory;
+                            var instance = factory.GetEntity(entity, true);
+                            if (instance == Entity.Null)
+                            {
+                                factory.SetBuffer(entity, values);
+
+                                break;
+                            }
+
+                            entity = instance;
+                        }
+
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.SetBuffer(entity, values);
@@ -296,12 +439,25 @@ namespace ZG
             {
                 var entity = gameObjectEntity.entity;
 
-                switch (gameObjectEntity.status)
+                var status = gameObjectEntity.status;
+                switch (status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        commandSystem.factory.SetBuffer(entity, values);
-                        break;
                     case GameObjectEntityStatus.Created:
+                        if (status == GameObjectEntityStatus.Creating)
+                        {
+                            var factory = commandSystem.factory;
+                            var instance = factory.GetEntity(entity, true);
+                            if (instance == Entity.Null)
+                            {
+                                factory.SetBuffer(entity, values);
+
+                                break;
+                            }
+
+                            entity = instance;
+                        }
+
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.SetBuffer(entity, values);
@@ -321,12 +477,25 @@ namespace ZG
             {
                 var entity = gameObjectEntity.entity;
 
-                switch (gameObjectEntity.status)
+                var status = gameObjectEntity.status;
+                switch (status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        commandSystem.factory.SetBuffer<TValue, TCollection>(entity, values);
-                        break;
                     case GameObjectEntityStatus.Created:
+                        if (status == GameObjectEntityStatus.Creating)
+                        {
+                            var factory = commandSystem.factory;
+                            var instance = factory.GetEntity(entity, true);
+                            if (instance == Entity.Null)
+                            {
+                                factory.SetBuffer<TValue, TCollection>(entity, values);
+
+                                break;
+                            }
+
+                            entity = instance;
+                        }
+
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.SetBuffer<TValue, TCollection>(entity, values);
@@ -345,12 +514,25 @@ namespace ZG
             {
                 var entity = gameObjectEntity.entity;
 
-                switch (gameObjectEntity.status)
+                var status = gameObjectEntity.status;
+                switch (status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        commandSystem.factory.SetComponentEnabled<T>(entity, value);
-                        break;
                     case GameObjectEntityStatus.Created:
+                        if (status == GameObjectEntityStatus.Creating)
+                        {
+                            var factory = commandSystem.factory;
+                            var instance = factory.GetEntity(entity, true);
+                            if (instance == Entity.Null)
+                            {
+                                factory.SetComponentEnabled<T>(entity, value);
+
+                                break;
+                            }
+
+                            entity = instance;
+                        }
+
                         UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.SetComponentEnabled<T>(entity, value);
@@ -565,11 +747,19 @@ namespace ZG
             switch (gameObjectEntity.status)
             {
                 case GameObjectEntityStatus.Creating:
-                    return commandSystem.factory.IsComponentEnabled<T>(entity, out _);
+                    bool result = commandSystem.factory.IsComponentEnabled<T>(entity, out Entity instance, out bool isOverride);
+                    if(instance != Entity.Null)
+                    {
+                        bool resultInstance = commandSystem.IsComponentEnabled<T>(instance, out bool isOverrideInstance);
+                        if (isOverrideInstance || !isOverride)
+                            return resultInstance;
+                    }
+
+                    return result;
                 case GameObjectEntityStatus.Created:
                     UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
-                    return commandSystem.IsComponentEnabled<T>(entity);
+                    return commandSystem.IsComponentEnabled<T>(entity, out _);
                 default:
                     throw new InvalidOperationException();
             }
@@ -580,14 +770,28 @@ namespace ZG
             var entity = gameObjectEntity.entity;
 
             var commandSystem = __GetCommandSystem(gameObjectEntity);
-            switch (gameObjectEntity.status)
+            var status = gameObjectEntity.status;
+            switch (status)
             {
                 case GameObjectEntityStatus.Creating:
-                    return commandSystem.factory.HasComponent<T>(entity);
                 case GameObjectEntityStatus.Created:
+                    if (status == GameObjectEntityStatus.Creating)
+                    {
+                        var factory = commandSystem.factory;
+                        var instance = factory.GetEntity(entity, true);
+                        if (instance == Entity.Null)
+                            return factory.HasComponent<T>(entity);
+
+                        bool result = commandSystem.HasComponent<T>(entity, out bool isOverride);
+                        if (isOverride)
+                            return result;
+
+                        return result || factory.HasComponent<T>(entity);
+                    }
+
                     UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
-                    return commandSystem.HasComponent<T>(entity);
+                    return commandSystem.HasComponent<T>(entity, out _);
                 default:
                     throw new InvalidOperationException();
             }
