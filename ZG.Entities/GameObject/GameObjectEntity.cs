@@ -1066,7 +1066,7 @@ namespace ZG
 
         public static bool HasComponent<T>(this IGameObjectEntity gameObjectEntity, Entity entity)
         {
-            return __GetCommandSystem(gameObjectEntity).HasComponent<T>(entity);
+            return __GetCommandSystem(gameObjectEntity).HasComponent<T>(entity, out _);
         }
 
         internal static void Execute(this GameObjectEntity.DestroiedEntity destroiedEntity)
