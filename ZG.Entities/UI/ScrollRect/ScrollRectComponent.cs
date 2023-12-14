@@ -302,12 +302,15 @@ namespace ZG
             //this.AddComponentData(info);
         }
 
-        protected void Start()
+        protected void OnEnable()
         {
             __event.version = 0;
             __event.flag = 0;
             __event.index = math.int2(-1, -1);
+        }
 
+        protected void Start()
+        {
             UpdateData();
         }
 
@@ -322,7 +325,7 @@ namespace ZG
                 {
                     __info.index = index;
 
-                    ++__version;
+                    --__version;
                 }
 
                 var node = __node.Value;
@@ -538,6 +541,7 @@ namespace ZG
             if (version != data.result.version)
             {
                 result = data.result;
+                result.flag |= ScrollRectEvent.Flag.Changed;
 
                 return true;
             }
