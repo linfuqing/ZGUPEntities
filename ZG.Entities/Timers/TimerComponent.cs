@@ -31,10 +31,10 @@ namespace ZG
 
         private World __world;
 
-        private SharedTimeManager __timeManager;
+        private SharedTimeManager<CallbackHandle> __timeManager;
         private TimeEventHandle __timeEventHandle;
 
-        public SharedTimeManager timeManager
+        public SharedTimeManager<CallbackHandle> timeManager
         {
             get
             {

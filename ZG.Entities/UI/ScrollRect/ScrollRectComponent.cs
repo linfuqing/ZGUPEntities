@@ -2,9 +2,11 @@
 using System.Collections.Generic;
 using Unity.Burst;
 using Unity.Mathematics;
+using Unity.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using CellLengths = Unity.Collections.FixedList512Bytes<Unity.Mathematics.float2>;
 
 namespace ZG
 {
@@ -13,7 +15,7 @@ namespace ZG
         public float decelerationRate;
         public float elasticity;
 
-        public int2 count;
+        //public int2 count;
         public float2 contentLength;
         public float2 viewportLength;
 
@@ -25,41 +27,78 @@ namespace ZG
             }
         }
 
-        public float2 cellLength
+        /*public float2 cellLength
         {
             get
             {
                 return new float2(count.x > 0 ? contentLength.x / count.x : contentLength.x, count.y > 0 ? contentLength.y / count.y : contentLength.y);
             }
+        }*/
+
+        public float2 GetCellLength(in int2 count)
+        {
+            return new float2(count.x > 0 ? contentLength.x / count.x : contentLength.x, count.y > 0 ? contentLength.y / count.y : contentLength.y);
         }
 
-        public float2 offset
+        public float2 GetOffset(in float2 cellLength, float scale)
         {
-            get
+            return (cellLength - viewportLength) * scale;
+        }
+
+        public float2 GetIndex(
+            in int2 count, 
+            in float2 normalizedPosition, 
+            in float2 length, 
+            in float2 cellLength, 
+            in float2 offset)
+        {
+            return math.clamp((normalizedPosition * length - offset) / cellLength, 0.0f, new float2(count.x > 0 ? count.x - 1 : 0, count.y > 0 ? count.y - 1 : 0));
+        }
+
+        public float2 GetIndex(
+            in float2 normalizedPosition,
+            in float2 length,
+            in float2 offset,
+            in CellLengths cellLengths)
+        {
+            float2 positionLength = normalizedPosition * length - offset, result = float2.zero;
+            foreach(var cellLength in cellLengths)
             {
-                return GetOffset(cellLength);
+                if(positionLength.x < cellLength.x && positionLength.y < cellLength.y)
+                {
+                    result += math.float2(positionLength.x / cellLength.x, positionLength.y / cellLength.y);
+
+                    break;
+                }
+
+                if (positionLength.x > cellLength.x)
+                {
+                    positionLength.x -= cellLength.x;
+
+                    result.x += 1.0f;
+                }
+
+                if (positionLength.y > cellLength.y)
+                {
+                    positionLength.y -= cellLength.y;
+
+                    result.y += 1.0f;
+                }
             }
+
+            return result;
         }
 
-        public float2 GetOffset(float2 cellLength)
+        public float2 GetIndex(float offsetScale, in float2 position, in float2 length, in int2 count)
         {
-            return (cellLength - viewportLength) * 0.5f;
+            float2 cellLength = GetCellLength(count);
+
+            return GetIndex(count, position, length, cellLength, GetOffset(cellLength, offsetScale));
         }
 
-        public float2 GetIndex(float2 position, float2 length, float2 cellLength, float2 offset)
+        public float2 GetIndex(float offsetScale, in float2 position, in int2 count)
         {
-            return math.clamp((position * length - offset) / cellLength, 0.0f, new float2(count.x > 0 ? count.x - 1 : 0, count.y > 0 ? count.y - 1 : 0));
-        }
-
-        public float2 GetIndex(float2 position, float2 length)
-        {
-            float2 cellLength = this.cellLength;
-            return GetIndex(position, length, cellLength, GetOffset(cellLength));
-        }
-
-        public float2 GetIndex(float2 position)
-        {
-            return GetIndex(position, length);
+            return GetIndex(offsetScale, position, length, count);
         }
     }
 
@@ -96,6 +135,7 @@ namespace ZG
 
         private int __version = 0;
 
+        private int2 __count;
         private ScrollRectData __data;
         private ScrollRectInfo __info;
         private ScrollRectNode? __node;
@@ -103,6 +143,8 @@ namespace ZG
 
         private ScrollRect __scrollRect;
         private List<ISubmitHandler> __submitHandlers;
+
+        public virtual float offsetScale => 0.5f;
 
         public virtual int2 count
         {
@@ -185,7 +227,7 @@ namespace ZG
                 result.decelerationRate = scrollRect.decelerationRate;
                 result.elasticity = scrollRect.elasticity;
 
-                result.count = count;
+                //result.count = count;
 
                 //Canvas.ForceUpdateCanvases();
 
@@ -290,7 +332,8 @@ namespace ZG
 
             __EnableNode(float2.zero);
 
-            __info.index = 0;// math.clamp(__info.index, 0, math.max(1, __data.count) - 1);
+            //任务会SB
+            //__info.index = 0;// math.clamp(__info.index, 0, math.max(1, __data.count) - 1);
         }
 
         public virtual void MoveTo(in int2 index)
@@ -320,7 +363,9 @@ namespace ZG
             {
                 __data = data;
 
-                var index = math.clamp(__info.index, 0, math.max(1, __data.count) - 1);
+                __count = count;
+
+                var index = math.clamp(__info.index, 0, math.max(1, __count) - 1);
                 if (!index.Equals(__info.index))
                 {
                     __info.index = index;
@@ -329,7 +374,7 @@ namespace ZG
                 }
 
                 var node = __node.Value;
-                if (ScrollRectUtility.Execute(__version, Time.deltaTime, __data, __info, ref node, ref __event))
+                if (ScrollRectUtility.Execute(__version, Time.deltaTime, offsetScale, __count, __data, __info, ref node, ref __event))
                     _Set(__event);
 
                 //if(!node.normalizedPosition.Equals(__node.Value.normalizedPosition) || !((float2)scrollRect.normalizedPosition).Equals(node.normalizedPosition))
@@ -366,11 +411,12 @@ namespace ZG
                 return false;
 
             __data = data;
+            __count = count;
 
             ScrollRectNode node;
             node.velocity = scrollRect.velocity;
             node.normalizedPosition = normalizedPosition;// scrollRect.normalizedPosition;
-            node.index = __data.GetIndex(normalizedPosition);
+            node.index = __data.GetIndex(offsetScale, normalizedPosition, __count);
 
             __node = node;
             //this.AddComponentData(node);
@@ -416,7 +462,7 @@ namespace ZG
             if (scrollRect == null)
                 return;
 
-            float2 source = __data.GetIndex(scrollRect.normalizedPosition);
+            float2 source = __data.GetIndex(offsetScale, scrollRect.normalizedPosition, count);
             int2 destination = (int2)math.round(source);
             if (math.any(destination != this.index))
             {
@@ -472,13 +518,13 @@ namespace ZG
                 this.result = result;
             }
 
-            public void Execute(float deltaTime)
+            public void Execute(float deltaTime, float offsetScale, in int2 count)
             {
                 int2 source = (int2)math.round(node.index),
                     destination = info.index;// math.clamp(info.index, 0, instance.count - 1);
                 float2 length = instance.length,
-                         cellLength = instance.cellLength,
-                         offset = instance.GetOffset(cellLength),
+                         cellLength = instance.GetCellLength(count),
+                         offset = instance.GetOffset(cellLength, offsetScale),
                          distance = node.normalizedPosition * length - destination * cellLength + offset;
 
                 if (info.isVail)
@@ -495,7 +541,65 @@ namespace ZG
 
                     node.normalizedPosition -= math.select(float2.zero, node.velocity / length, length > math.FLT_MIN_NORMAL) * deltaTime;
 
-                    node.index = instance.GetIndex(node.normalizedPosition, length, cellLength, offset);
+                    node.index = instance.GetIndex(count, node.normalizedPosition, length, cellLength, offset);
+                }
+                else
+                    node.normalizedPosition -= math.select(float2.zero, distance / length, length > math.FLT_MIN_NORMAL);
+
+                int2 target = (int2)math.round(node.index);
+
+                ScrollRectEvent.Flag flag = 0;
+                if (!math.all(source == target))
+                    flag |= ScrollRectEvent.Flag.Changed;
+
+                if (info.isVail && math.all(destination == target))
+                {
+                    flag |= ScrollRectEvent.Flag.SameAsInfo;
+
+                    node.velocity = float2.zero;
+                }
+
+                //nodes[index] = node;
+
+                if (flag != 0)
+                {
+                    ++result.version;
+                    result.flag = flag;
+                    result.index = node.index;
+                }
+            }
+
+            public void Execute(
+                int width, 
+                float offsetScale, 
+                float deltaTime, 
+                in CellLengths cellLengths)
+            {
+                int index = math.min(width * info.index.y + info.index.x + 1, cellLengths.Length);
+                int2 source = (int2)math.round(node.index),
+                    destination = info.index;// math.clamp(info.index, 0, instance.count - 1);
+                float2 length = instance.length,
+                    offset = instance.GetOffset(cellLengths[index - 1], offsetScale), 
+                         distance = node.normalizedPosition * length + offset;// - destination * cellLength + offset;
+
+                for(int i = 0; i < index; ++i)
+                    distance -= cellLengths[i];
+
+                if (info.isVail)
+                {
+                    float t = math.pow(instance.decelerationRate, deltaTime);
+                    //t = t * t* (3.0f - (2.0f * t));
+                    node.velocity = math.lerp(node.velocity, distance / instance.elasticity, t);
+
+                    //velocity *= math.pow(instance.decelerationRate, deltaTime);
+
+                    //node.velocity = velocity;
+
+                    //velocity += distance / instance.elasticity;
+
+                    node.normalizedPosition -= math.select(float2.zero, node.velocity / length, length > math.FLT_MIN_NORMAL) * deltaTime;
+
+                    node.index = instance.GetIndex(node.normalizedPosition, length, offset, cellLengths);
                 }
                 else
                     node.normalizedPosition -= math.select(float2.zero, distance / length, length > math.FLT_MIN_NORMAL);
@@ -527,6 +631,8 @@ namespace ZG
         public static unsafe bool Execute(
             int version,
             float deltaTime,
+            float offsetScale, 
+            in int2 count, 
             in ScrollRectData instance,
             in ScrollRectInfo info,
             ref ScrollRectNode node,
@@ -534,14 +640,18 @@ namespace ZG
         {
             var data = new Data(instance, info, ref node, ref result);
 
-            __Execute(deltaTime, (Data*)Unity.Collections.LowLevel.Unsafe.UnsafeUtility.AddressOf(ref data));
+            __Execute(deltaTime, offsetScale, count, (Data*)Unity.Collections.LowLevel.Unsafe.UnsafeUtility.AddressOf(ref data));
 
             node = data.node;
 
             if (version != data.result.version)
             {
                 result = data.result;
-                result.flag |= ScrollRectEvent.Flag.Changed;
+                if (result.flag == 0)
+                {
+                    result.flag |= ScrollRectEvent.Flag.Changed;
+                    result.index = node.index;
+                }
 
                 return true;
             }
@@ -550,9 +660,9 @@ namespace ZG
         }
 
         [BurstCompile]
-        private static unsafe void __Execute(float deltaTime, Data* data)
+        private static unsafe void __Execute(float deltaTime, float offsetScale, in int2 count, Data* data)
         {
-            data->Execute(deltaTime);
+            data->Execute(deltaTime, offsetScale, count);
         }
     }
 }

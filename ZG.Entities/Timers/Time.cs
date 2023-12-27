@@ -163,13 +163,18 @@ namespace ZG
             return updateEvents.ScheduleByRef(inputDeps);
         }
 
+        public NativeRBTreeEnumerator<TimeEvent<T>> GetEnumerator()
+        {
+            return __events.GetEnumerator();
+        }
+
         /*public JobHandle ScheduleParallel<U>(ref U job, int innerloopBatchCount, in JobHandle inputDeps) where U : struct, IJobParallelForDefer
         {
             return job.ScheduleByRef(__values, innerloopBatchCount, inputDeps);
         }*/
     }
 
-    public struct SharedTimeManager : IComponentData
+    public struct SharedTimeManager<T> where T : unmanaged
     {
         private unsafe LookupJobManager* __lookupJobManager;
 
@@ -177,7 +182,7 @@ namespace ZG
 
         public unsafe ref LookupJobManager lookupJobManager => ref *__lookupJobManager;
 
-        public TimeManager<CallbackHandle> value
+        public TimeManager<T> value
         {
             get;
 
@@ -189,7 +194,7 @@ namespace ZG
             __lookupJobManager = AllocatorManager.Allocate<LookupJobManager>(allocator);
             *__lookupJobManager = new LookupJobManager();
 
-            value = new TimeManager<CallbackHandle>(allocator);
+            value = new TimeManager<T>(allocator);
         }
 
         public unsafe void Dispose()
@@ -199,27 +204,6 @@ namespace ZG
             __lookupJobManager = null;
 
             value.Dispose();
-        }
-
-        public TimeEventHandle Invoke(Action handler, double time)
-        {
-            var callbackHandle = handler.Register();
-
-            lookupJobManager.CompleteReadWriteDependency();
-
-            TimeEventHandle result;
-            result._value = value.writer.Invoke(time, callbackHandle);
-
-            return result;
-        }
-
-        public bool Cannel(in TimeEventHandle handle)
-        {
-            lookupJobManager.CompleteReadWriteDependency();
-
-            var callbackHandle = handle.callbackHandle;
-
-            return value.writer.Cannel(handle._value) && callbackHandle.Unregister();
         }
 
         /*public void Playback()
@@ -233,7 +217,7 @@ namespace ZG
             __instance.Flush();
         }*/
 
-        public JobHandle Update(double time, ref NativeList<CallbackHandle> values, in JobHandle inputDeps)
+        public JobHandle Update(double time, ref NativeList<T> values, in JobHandle inputDeps)
         {
             var jobHandle = value.Schedule(time, ref values, JobHandle.CombineDependencies(lookupJobManager.readWriteJobHandle, inputDeps));
 
@@ -248,7 +232,7 @@ namespace ZG
     {
         private SharedList<CallbackHandle> __callbackHandles;
 
-        public SharedTimeManager manager
+        public SharedTimeManager<CallbackHandle> manager
         {
             get;
 
@@ -259,7 +243,7 @@ namespace ZG
         public void OnCreate(ref SystemState state)
         {
             __callbackHandles = state.WorldUnmanaged.GetExistingSystemUnmanaged<CallbackSystem>().handlesToInvokeAndUnregister;
-            manager = new SharedTimeManager(Allocator.Persistent);
+            manager = new SharedTimeManager<CallbackHandle>(Allocator.Persistent);
         }
 
         [BurstCompile]
@@ -282,6 +266,32 @@ namespace ZG
 
             state.Dependency = jobHandle;
         }
+    }
+
+    public static class TimeUtility
+    {
+        
+        public static TimeEventHandle Invoke(this SharedTimeManager<CallbackHandle> timeManager, Action handler, double time)
+        {
+            var callbackHandle = handler.Register();
+
+            timeManager.lookupJobManager.CompleteReadWriteDependency();
+
+            TimeEventHandle result;
+            result._value = timeManager.value.writer.Invoke(time, callbackHandle);
+
+            return result;
+        }
+
+        public static bool Cannel(this SharedTimeManager<CallbackHandle> timeManager, in TimeEventHandle handle)
+        {
+            timeManager.lookupJobManager.CompleteReadWriteDependency();
+
+            var callbackHandle = handle.callbackHandle;
+
+            return timeManager.value.writer.Cannel(handle._value) && callbackHandle.Unregister();
+        }
+
     }
 
     /*public static class Time
