@@ -412,7 +412,10 @@ namespace ZG
         private void __EnableNode(in float2 velocity, in float2 normalizedPosition)
         {
             __data = data;
+
+            int version = this.version;
             __count = count;
+            bool isChanged = version != this.version;
 
             ScrollRectNode node;
             node.velocity = velocity;
@@ -423,7 +426,7 @@ namespace ZG
             //this.AddComponentData(node);
 
             int2 index = (int2)math.round(node.index);
-            if (math.any(index != this.index))
+            if (isChanged || math.any(index != this.index))
             {
                 __OnChanged(node.index, index);
 
