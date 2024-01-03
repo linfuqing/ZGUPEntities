@@ -133,8 +133,6 @@ namespace ZG
     {
         public event Action<float2> onChanged;
 
-        private int __version = 0;
-
         private int2 __count;
         private ScrollRectData __data;
         private ScrollRectInfo __info;
@@ -143,6 +141,13 @@ namespace ZG
 
         private ScrollRect __scrollRect;
         private List<ISubmitHandler> __submitHandlers;
+
+        public int version
+        {
+            get;
+
+            private set;
+        }
 
         public virtual float offsetScale => 0.5f;
 
@@ -198,7 +203,7 @@ namespace ZG
                 }
 
                 if (isChanged)
-                    ++__version;
+                    --version;
 
                 RectTransform.Axis axis = scrollRect.horizontal ? RectTransform.Axis.Horizontal : RectTransform.Axis.Vertical;
                 int2 result = int2.zero;
@@ -330,7 +335,7 @@ namespace ZG
 
             //this.SetComponentData(__data);
 
-            __EnableNode(float2.zero);
+            __EnableNode();
 
             //任务会SB
             //__info.index = 0;// math.clamp(__info.index, 0, math.max(1, __data.count) - 1);
@@ -370,11 +375,11 @@ namespace ZG
                 {
                     __info.index = index;
 
-                    --__version;
+                    --version;
                 }
 
                 var node = __node.Value;
-                if (ScrollRectUtility.Execute(__version, Time.deltaTime, offsetScale, __count, __data, __info, ref node, ref __event))
+                if (ScrollRectUtility.Execute(version, Time.deltaTime, offsetScale, __count, __data, __info, ref node, ref __event))
                     _Set(__event);
 
                 //if(!node.normalizedPosition.Equals(__node.Value.normalizedPosition) || !((float2)scrollRect.normalizedPosition).Equals(node.normalizedPosition))
@@ -386,10 +391,10 @@ namespace ZG
 
         internal void _Set(in ScrollRectEvent result)
         {
-            if (__version == result.version)
+            if (version == result.version)
                 return;
 
-            __version = result.version;
+            version = result.version;
 
             if ((result.flag & ScrollRectEvent.Flag.Changed) == ScrollRectEvent.Flag.Changed)
             {
@@ -404,17 +409,13 @@ namespace ZG
                 __info.isVail = false;//this.RemoveComponent<ScrollRectInfo>();
         }
 
-        private bool __EnableNode(in float2 normalizedPosition)
+        private void __EnableNode(in float2 velocity, in float2 normalizedPosition)
         {
-            ScrollRect scrollRect = this.scrollRect;
-            if (scrollRect == null)
-                return false;
-
             __data = data;
             __count = count;
 
             ScrollRectNode node;
-            node.velocity = scrollRect.velocity;
+            node.velocity = velocity;
             node.normalizedPosition = normalizedPosition;// scrollRect.normalizedPosition;
             node.index = __data.GetIndex(offsetScale, normalizedPosition, __count);
 
@@ -428,7 +429,27 @@ namespace ZG
 
                 this.index = index;
             }
+        }
 
+        private bool __EnableNode(in float2 normalizedPosition)
+        {
+            ScrollRect scrollRect = this.scrollRect;
+            if (scrollRect == null)
+                return false;
+
+            __EnableNode(scrollRect.velocity, normalizedPosition);
+
+            return true;
+        }
+
+        private bool __EnableNode()
+        {
+            ScrollRect scrollRect = this.scrollRect;
+            if (scrollRect == null)
+                return false;
+
+            __EnableNode(scrollRect.velocity, scrollRect.normalizedPosition);
+            
             return true;
         }
 
@@ -540,12 +561,12 @@ namespace ZG
                     //velocity += distance / instance.elasticity;
 
                     node.normalizedPosition -= math.select(float2.zero, node.velocity / length, length > math.FLT_MIN_NORMAL) * deltaTime;
-
-                    node.index = instance.GetIndex(count, node.normalizedPosition, length, cellLength, offset);
                 }
                 else
                     node.normalizedPosition -= math.select(float2.zero, distance / length, length > math.FLT_MIN_NORMAL);
 
+                node.index = instance.GetIndex(count, node.normalizedPosition, length, cellLength, offset);
+                
                 int2 target = (int2)math.round(node.index);
 
                 ScrollRectEvent.Flag flag = 0;
@@ -598,12 +619,12 @@ namespace ZG
                     //velocity += distance / instance.elasticity;
 
                     node.normalizedPosition -= math.select(float2.zero, node.velocity / length, length > math.FLT_MIN_NORMAL) * deltaTime;
-
-                    node.index = instance.GetIndex(node.normalizedPosition, length, offset, cellLengths);
                 }
                 else
                     node.normalizedPosition -= math.select(float2.zero, distance / length, length > math.FLT_MIN_NORMAL);
 
+                node.index = instance.GetIndex(node.normalizedPosition, length, offset, cellLengths);
+                
                 int2 target = (int2)math.round(node.index);
 
                 ScrollRectEvent.Flag flag = 0;

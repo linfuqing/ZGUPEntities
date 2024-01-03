@@ -23,8 +23,9 @@ namespace ZG
         {
             get
             {
+                int version = base.version;
                 var result = base.count;
-                if (toggleStyle == null)
+                if (version == base.version || toggleStyle == null)
                     return result;
 
                 int count = math.max(result.x, result.y);
@@ -41,9 +42,6 @@ namespace ZG
                     else
                     {
                         length = __toggles.Length;
-                        if (length == count)
-                            return result;
-
                         for (i = count; i < length; ++i)
                         {
                             toggle = __toggles[i];
