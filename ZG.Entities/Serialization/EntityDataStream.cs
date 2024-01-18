@@ -25,9 +25,9 @@ namespace ZG
 
     public interface IEntityDataStreamDeserializer
     {
-        ComponentTypeSet componentTypeSet { get; }
+        ComponentTypeSet GetComponentTypeSet(in NativeArray<byte> userData);
 
-        void Deserialize(ref UnsafeBlock.Reader reader, ref EntityComponentAssigner assigner, in Entity entity);
+        void Deserialize(ref UnsafeBlock.Reader reader, ref EntityComponentAssigner assigner, in Entity entity, in NativeArray<byte> userData);
     }
 
     public struct EntityComponentStreamSerializer<T> : IEntityComponentStreamSerializer<T> where T : unmanaged, IComponentData
@@ -49,9 +49,9 @@ namespace ZG
 
     public struct EntityComponentDeserializer<T> : IEntityDataStreamDeserializer where T : unmanaged, IComponentData
     {
-        public ComponentTypeSet componentTypeSet => new ComponentTypeSet(ComponentType.ReadWrite<T>());
+        public ComponentTypeSet GetComponentTypeSet(in NativeArray<byte> userData) => new ComponentTypeSet(ComponentType.ReadWrite<T>());
 
-        public void Deserialize(ref UnsafeBlock.Reader reader, ref EntityComponentAssigner assigner, in Entity entity)
+        public void Deserialize(ref UnsafeBlock.Reader reader, ref EntityComponentAssigner assigner, in Entity entity, in NativeArray<byte> userData)
         {
             var value = reader.Read<T>();
             if (assigner.isCreated)
@@ -61,9 +61,9 @@ namespace ZG
 
     public struct EntityBufferDeserializer<T> : IEntityDataStreamDeserializer where T : unmanaged, IBufferElementData
     {
-        public ComponentTypeSet componentTypeSet => new ComponentTypeSet(ComponentType.ReadWrite<T>());
+        public ComponentTypeSet GetComponentTypeSet(in NativeArray<byte> userData) => new ComponentTypeSet(ComponentType.ReadWrite<T>());
 
-        public void Deserialize(ref UnsafeBlock.Reader reader, ref EntityComponentAssigner assigner, in Entity entity)
+        public void Deserialize(ref UnsafeBlock.Reader reader, ref EntityComponentAssigner assigner, in Entity entity, in NativeArray<byte> userData)
         {
             var array = reader.ReadArray<T>(reader.Read<int>());
             if (assigner.isCreated)
@@ -217,7 +217,8 @@ namespace ZG
             this ref UnsafeBlock.Reader reader,
             ref T factory,
             ref EntityComponentAssigner assigner, 
-            in Entity entity) where T : IEntityDataStreamFactory
+            in Entity entity, 
+            in NativeArray<byte> userData) where T : IEntityDataStreamFactory
         {
             //int i, numComponentTypes;
             //ComponentTypeSet componentTypeSet;
@@ -237,9 +238,9 @@ namespace ZG
                     {
                         deserializer = (IEntityDataStreamDeserializer)Activator.CreateInstance(attribute.deserializerType);
 
-                        factory.AddComponents(entity, deserializer.componentTypeSet);
+                        factory.AddComponents(entity, deserializer.GetComponentTypeSet(userData));
 
-                        deserializer.Deserialize(ref reader, ref assigner, entity);
+                        deserializer.Deserialize(ref reader, ref assigner, entity, userData);
 
                         /*if (componentTypes.IsCreated)
                         {
@@ -256,35 +257,37 @@ namespace ZG
         public static void DeserializeStream(
             this ref UnsafeBlock.Reader reader,
             ref EntityComponentAssigner assigner,
-            in Entity entity)
+            in Entity entity, 
+            in NativeArray<byte> userData)
         {
             EntityDataStreamFactory factory;
 
-            DeserializeStream(ref reader, ref factory, ref assigner, entity);
+            DeserializeStream(ref reader, ref factory, ref assigner, entity, userData);
         }
 
         public static void DeserializeStream(
             this ref UnsafeBlock.Reader reader,
             ref EntityManager entityManager,
             ref EntityComponentAssigner assigner,
-            in Entity entity)
+            in Entity entity, 
+            in NativeArray<byte> userData)
         {
             var factory = new EntityDataStreamManager(ref entityManager);
 
-            DeserializeStream(ref reader, ref factory, ref assigner, entity);
+            DeserializeStream(ref reader, ref factory, ref assigner, entity, userData);
         }
 
-        public static void DeserializeStream<T>(this ref UnsafeBlock.Reader reader, ref T factory) where T : IEntityDataStreamFactory
+        public static void DeserializeStream<T>(this ref UnsafeBlock.Reader reader, ref T factory, in NativeArray<byte> userData) where T : IEntityDataStreamFactory
         {
             EntityComponentAssigner assigner = default;
-            DeserializeStream(ref reader, ref factory, ref assigner, Entity.Null);
+            DeserializeStream(ref reader, ref factory, ref assigner, Entity.Null, userData);
         }
 
-        public static void DeserializeStream(this ref UnsafeBlock.Reader reader, ref NativeList<ComponentType> componentTypes)
+        public static void DeserializeStream(this ref UnsafeBlock.Reader reader, ref NativeList<ComponentType> componentTypes, in NativeArray<byte> userData)
         {
             var factory = new EntityDataStreamList(ref componentTypes);
 
-            DeserializeStream(ref reader, ref factory);
+            DeserializeStream(ref reader, ref factory, userData);
         }
     }
 }
