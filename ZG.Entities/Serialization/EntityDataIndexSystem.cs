@@ -378,7 +378,7 @@ namespace ZG
 
         protected abstract EntityDataIndexContainerSerializationSystem _GetOrCreateContainerSystem();
     }*/
-    public interface IEntityDataIndexReadWriteWrapper<T> : IEntityDataIndexReadOnlyWrapper<T>, IEntityDataSerializationIndexWrapper<T>, IEntityDataDeserializationIndexWrapper<T>
+    public interface IEntityDataIndexReadWriteWrapper<T> : IEntityDataIndexReadOnlyWrapper<T>//, IEntityDataSerializationIndexWrapper<T>, IEntityDataDeserializationIndexWrapper<T>
     {
         void Invail(ref T data);
 
