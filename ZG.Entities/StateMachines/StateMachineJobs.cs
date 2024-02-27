@@ -36,14 +36,16 @@ namespace ZG
 
     public interface IStateMachineFactory<T> where T : struct
     {
-        T Create(int index, in ArchetypeChunk chunk);
+        bool Create(int unfilteredChunkIndex, in ArchetypeChunk chunk, out T value);
     }
 
     public struct StateMachineFactory<T> : IStateMachineFactory<T> where T : struct
     {
-        public T Create(int index, in ArchetypeChunk chunk)
+        public bool Create(int unfilteredChunkIndex, in ArchetypeChunk chunk, out T value)
         {
-            return default;
+            value = default;
+
+            return true;
         }
     }
 
@@ -103,7 +105,7 @@ namespace ZG
             StateMachineStatus status;
             StateMachineInfo info;
             int length, j;
-            bool isExit = false, isEntry = false;
+            bool isExit = false, isEntry = false, canExit = true, canEntry = true;
             var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
             while (iterator.NextEntityIndex(out int i))
             {
@@ -127,11 +129,11 @@ namespace ZG
                     if(!isExit)
                     {
                         isExit = true;
-
-                        schedulerExit = factoryExit.Create(unfilteredChunkIndex, chunk);
+                        
+                        canExit = factoryExit.Create(unfilteredChunkIndex, chunk, out schedulerExit);
                     }
 
-                    if (!schedulerExit.Execute(
+                    if (!canExit || !schedulerExit.Execute(
                         status.value,
                         status.systemHandle,
                         info.systemHandle,
@@ -155,10 +157,10 @@ namespace ZG
                     {
                         isEntry = true;
 
-                        schedulerEntry = factoryEntry.Create(unfilteredChunkIndex, chunk);
+                        canEntry = factoryEntry.Create(unfilteredChunkIndex, chunk, out schedulerEntry);
                     }
 
-                    if (!schedulerEntry.Execute(
+                    if (!canEntry || !schedulerEntry.Execute(
                         status.value,
                         status.systemHandle,
                         info.systemHandle,
@@ -232,7 +234,8 @@ namespace ZG
                     {
                         isCreated = true;
 
-                        escaper = factory.Create(unfilteredChunkIndex, chunk);
+                        if (!factory.Create(unfilteredChunkIndex, chunk, out escaper))
+                            break;
                     }
 
                     if (escaper.Execute(
@@ -316,9 +319,10 @@ namespace ZG
                 {
                     isCreated = true;
 
-                    executor = factory.Create(unfilteredChunkIndex, chunk);
+                    if (!factory.Create(unfilteredChunkIndex, chunk, out executor))
+                        break;
                 }
-
+                
                 if (j < length)
                     status.value = executor.Execute(false, i);
                 else

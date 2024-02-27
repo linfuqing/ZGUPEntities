@@ -73,7 +73,8 @@ namespace ZG
 
                     int2 temp = selectedIndex;
                     int min = 0, max = count - 1, index = math.clamp(math.max(temp.x, temp.y), min, max);
-                    toggle = __toggles[index];
+                    __Update(index, index);
+                    /*toggle = __toggles[index];
                     if (toggle != null && toggle.onSelected != null)
                     {
                         __isMoving = true;
@@ -85,7 +86,7 @@ namespace ZG
                         onPreviousChanged.Invoke(index > min);
 
                     if (onNextChanged != null)
-                        onNextChanged.Invoke(index < max);
+                        onNextChanged.Invoke(index < max);*/
                 }
                 else
                 {
@@ -209,17 +210,9 @@ namespace ZG
             if (!isNull && !math.all(math.min(__selectedIndex, __toggles == null ? 0 : __toggles.Length - 1) == source))
                 return;
 
-            int length = __toggles == null ? 0 : __toggles.Length, index = math.clamp(math.max(source.x, source.y), 0, length - 1);
-            ScrollRectToggle toggle = length > 0 ? __toggles[index] : null;
-            if (toggle != null && toggle.onSelected != null)
-            {
-                __isMoving = true;
-                toggle.onSelected.Invoke();
-                __isMoving = false;
-            }
-
             if (isNull)
             {
+                int length = __toggles == null ? 0 : __toggles.Length, index = math.clamp(math.max(source.x, source.y), 0, length - 1);
                 int2 destination = base.index;
                 __Update(math.max(destination.x, destination.y), index);
             }
@@ -230,6 +223,14 @@ namespace ZG
         private void __Update(int source, int destination)
         {
             int length = __toggles == null ? 0 : __toggles.Length, min = 0, max = length - 1;
+            ScrollRectToggle toggle = length > destination ? __toggles[destination] : null;
+            if (toggle != null && toggle.onSelected != null)
+            {
+                __isMoving = true;
+                toggle.onSelected.Invoke();
+                __isMoving = false;
+            }
+
             if (destination <= min)
             {
                 if (onPreviousChanged != null)
