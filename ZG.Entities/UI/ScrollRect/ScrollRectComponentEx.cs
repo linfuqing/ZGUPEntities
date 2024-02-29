@@ -73,8 +73,7 @@ namespace ZG
 
                     int2 temp = selectedIndex;
                     int min = 0, max = count - 1, index = math.clamp(math.max(temp.x, temp.y), min, max);
-                    __Update(index, index);
-                    /*toggle = __toggles[index];
+                    toggle = __toggles[index];
                     if (toggle != null && toggle.onSelected != null)
                     {
                         __isMoving = true;
@@ -86,7 +85,7 @@ namespace ZG
                         onPreviousChanged.Invoke(index > min);
 
                     if (onNextChanged != null)
-                        onNextChanged.Invoke(index < max);*/
+                        onNextChanged.Invoke(index < max);
                 }
                 else
                 {
