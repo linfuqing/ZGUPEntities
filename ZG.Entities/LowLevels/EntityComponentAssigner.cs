@@ -1340,6 +1340,15 @@ namespace ZG
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
 #endif
+                if (!entityStorageInfoLookup.Exists(entity))
+                {
+                    UnityEngine.Debug.LogError($"{entity} has already been destroyed or was never created");
+                    
+                    return;
+                }
+
+                var entityStorageInfo = entityStorageInfoLookup[entity];
+                
                 var values = new NativeList<Value>(Allocator.Temp);
                 DynamicComponentTypeHandle dynamicComponentTypeHandle;
                 NativeParallelMultiHashMapIterator<Entity> entityIterator;
@@ -1347,7 +1356,6 @@ namespace ZG
                 Key key;
                 Value value;
                 Command command;
-                EntityStorageInfo entityStorageInfo;
                 Unity.Entities.LowLevel.Unsafe.UnsafeUntypedBufferAccessor bufferAccessor = default;
                 void* source, destination = null;
                 int blockSize, numValues, elementSize, i;
@@ -1358,7 +1366,6 @@ namespace ZG
                 {
                     do
                     {
-                        entityStorageInfo = entityStorageInfoLookup[entity];
                         dynamicComponentTypeHandle = types[typeHandleIndicess[key.typeIndex]];
                         dynamicComponentTypeHandle.m_TypeLookupCache = (short)key.typeIndex;
 

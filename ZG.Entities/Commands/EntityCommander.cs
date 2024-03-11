@@ -138,7 +138,7 @@ namespace ZG
 #if ENABLE_PROFILER
         private ProfilerMarker __setComponentProfilerMarker;
         private ProfilerMarker __setSharedComponentProfilerMarker;
-        private ProfilerMarker __destoyEntityProfilerMarker;
+        private ProfilerMarker __destroyEntityProfilerMarker;
 #endif
 
         public bool isCreated => __assigner.isCreated;
@@ -164,7 +164,7 @@ namespace ZG
 #if ENABLE_PROFILER
             __setComponentProfilerMarker = new ProfilerMarker("SetComponents");
             __setSharedComponentProfilerMarker = new ProfilerMarker("SetSharedComponents");
-            __destoyEntityProfilerMarker = new ProfilerMarker("DestroyEntities");
+            __destroyEntityProfilerMarker = new ProfilerMarker("DestroyEntities");
 #endif
         }
 
@@ -412,7 +412,7 @@ namespace ZG
                 result = true;
 
 #if ENABLE_PROFILER
-                using (__destoyEntityProfilerMarker.Auto())
+                using (__destroyEntityProfilerMarker.Auto())
 #endif
                     entityManager.DestroyEntity(__destroyEntityCommander.AsArray());
             }
@@ -438,7 +438,7 @@ namespace ZG
             if (!__destroyEntityCommander.IsEmpty)
             {
 #if ENABLE_PROFILER
-                using (__destoyEntityProfilerMarker.Auto())
+                using (__destroyEntityProfilerMarker.Auto())
 #endif
                 {
                     //systemState.CompleteDependency();

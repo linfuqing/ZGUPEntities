@@ -162,17 +162,21 @@ namespace ZG
         public LayerMask transparentLayerMask;
         public LayerMask opaqueLayerMask;
 
-        private Material __material;
+        public Shader shader;
+
+        //private Material __material;
         private TransparentRenderPass __transparentRenderPass;
         private OpaqueRenderPass __opaquerRenderPass;
 
         /// <inheritdoc/>
         public override void Create()
         {
-            __material = new Material(Shader.Find("ZG/FilterEffectURP"));
+            //__material = new Material(Shader.Find("ZG/FilterEffectURP"));
+            if (shader == null)
+                return;
 
             __transparentRenderPass = transparentLayerMask.value == 0 ? null : new TransparentRenderPass(transparentLayerMask);
-            __opaquerRenderPass = opaqueLayerMask.value == 0 ? null : new OpaqueRenderPass(opaqueLayerMask, __material);
+            __opaquerRenderPass = opaqueLayerMask.value == 0 ? null : new OpaqueRenderPass(opaqueLayerMask, CoreUtils.CreateEngineMaterial(shader));
         }
 
         // Here you can inject one or multiple render passes in the renderer.
