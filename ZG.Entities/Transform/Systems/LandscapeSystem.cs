@@ -7,8 +7,6 @@ using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using Unity.Transforms;
-using ZG.Mathematics;
-using UnityEngine.UIElements;
 
 namespace ZG
 {
@@ -173,7 +171,7 @@ namespace ZG
         public float3 position;
     }
 
-    public struct LandscapeManager
+    /*public struct LandscapeManager
     {
         public enum CompleteType
         {
@@ -449,7 +447,7 @@ namespace ZG
 
         public struct World
         {
-            private UnsafeList<Layer> __layers;
+            private UnsafeList<LandscapeLoader<int3>> __layers;
 
             public int countToLoad
             {
@@ -477,10 +475,10 @@ namespace ZG
 
             public World(int layerCount, in AllocatorManager.AllocatorHandle allocator)
             {
-                __layers = new UnsafeList<Layer>(layerCount, allocator);
+                __layers = new UnsafeList<LandscapeLoader<int3>>(layerCount, allocator);
                 __layers.Resize(layerCount, NativeArrayOptions.UninitializedMemory);
                 for (int i = 0; i < layerCount; ++i)
-                    __layers[i] = new Layer(allocator);
+                    __layers[i] = new LandscapeLoader<int3>(allocator);
             }
 
             public void Dispose()
@@ -588,7 +586,7 @@ namespace ZG
                 return false;
             }
 
-            public CompleteType Complete(bool isLoading, int layerIndex, in int3 position)
+            public LandscapeLoaderCompleteType Complete(bool isLoading, int layerIndex, in int3 position)
             {
                 return __layers[layerIndex].Complete(isLoading, position);
             }
@@ -599,7 +597,8 @@ namespace ZG
                 in LandscapeSection section,
                 in NativeArray<float3> positions)
             {
-                __layers[layerIndex].Apply(layer, section, positions);
+                var value = new Layer(layer, section, positions);
+                __layers[layerIndex].Apply(ref value);
             }
 
             public void Restore()
@@ -610,11 +609,38 @@ namespace ZG
             }
         }
 
+        private struct Wrapper : ILandscapeWrapper<int3>
+        {
+            private LandscapeLayer __value;
+            private LandscapeSection __section;
+            private NativeArray<float3> __positions;
+
+            public Wrapper(in LandscapeLayer value, in LandscapeSection section, in NativeArray<float3> positions)
+            {
+                __value = value;
+                __section = section;
+                __positions = positions;
+            }
+            
+            public void FindNeighbor(
+                in UnsafeParallelHashSet<int3> origins,
+                ref UnsafeParallelHashMap<int3, int> addList,
+                ref UnsafeParallelHashMap<int3, int> removeList)
+            {
+                __value.FindNeighbor(
+                    __section, 
+                    __positions, 
+                    origins, 
+                    ref addList, 
+                    ref removeList);
+            }
+        }
+
         public struct Writer
         {
             public readonly AllocatorManager.AllocatorHandle Allocator;
 
-            private SharedHashMap<BlobAssetReference<LandscapeDefinition>, World>.Writer __value;
+            private SharedHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeWorld<int3>>.Writer __value;
 
             public Writer(ref LandscapeManager manager)
             {
@@ -651,8 +677,9 @@ namespace ZG
                         var positionList = new NativeList<float3>(Unity.Collections.Allocator.Temp);
 
                         NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput>.Enumerator enumerator;
+                        LandscapeWorld<int3> world;
                         LandscapeInput value;
-                        World world;
+                        Wrapper wrapper;
                         int i, j, numLayers, count = keys.ConvertToUniqueArray();
                         for (i = 0; i < count; ++i)
                         {
@@ -662,7 +689,7 @@ namespace ZG
                             numLayers = definition.layers.Length;
                             if (!__value.TryGetValue(key, out world))
                             {
-                                world = new World(numLayers, Allocator);
+                                world = new LandscapeWorld<int3>(numLayers, Allocator);
 
                                 __value[key] = world;
                             }
@@ -680,7 +707,8 @@ namespace ZG
                                         positionList.Add(value.position);
                                 }
 
-                                world.Apply(j, definition.layers[j], level.sections[j], positionList.AsArray());
+                                wrapper = new Wrapper(definition.layers[j], level.sections[j], positionList.AsArray());
+                                world.Apply(j, ref wrapper);
                             }
                         }
 
@@ -690,7 +718,7 @@ namespace ZG
             }
         }
 
-        private SharedHashMap<BlobAssetReference<LandscapeDefinition>, World> __worlds;
+        private SharedHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeWorld<int3>> __worlds;
 
         public bool isCreated => __worlds.isCreated;
 
@@ -700,7 +728,7 @@ namespace ZG
 
         public LandscapeManager(Allocator allocator)
         {
-            __worlds = new SharedHashMap<BlobAssetReference<LandscapeDefinition>, World>(allocator);
+            __worlds = new SharedHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeWorld<int3>>(allocator);
         }
 
         public void Dispose()
@@ -831,7 +859,7 @@ namespace ZG
             return false;
         }
 
-        public CompleteType Complete(
+        public LandscapeLoaderCompleteType Complete(
             in BlobAssetReference<LandscapeDefinition> key, 
             bool isLoading, 
             int layerIndex, 
@@ -843,9 +871,9 @@ namespace ZG
             if (writer.TryGetValue(key, out var world))
                 return world.Complete(isLoading, layerIndex, position);
 
-            return CompleteType.Error;
+            return LandscapeLoaderCompleteType.Error;
         }
-    }
+    }*/
 
     public struct LandscapeData : IComponentData//, ISharedComponentData
     {
@@ -861,6 +889,33 @@ namespace ZG
     [BurstCompile]
     public partial struct LandscapeSystem : ISystem
     {
+        private struct Wrapper : ILandscapeWrapper<int3>
+        {
+            private LandscapeLayer __value;
+            private LandscapeSection __section;
+            private NativeArray<float3> __positions;
+
+            public Wrapper(in LandscapeLayer value, in LandscapeSection section, in NativeArray<float3> positions)
+            {
+                __value = value;
+                __section = section;
+                __positions = positions;
+            }
+            
+            public void FindNeighbor(
+                in UnsafeParallelHashSet<int3> origins,
+                ref UnsafeParallelHashMap<int3, int> addList,
+                ref UnsafeParallelHashMap<int3, int> removeList)
+            {
+                __value.FindNeighbor(
+                    __section, 
+                    __positions, 
+                    origins, 
+                    ref addList, 
+                    ref removeList);
+            }
+        }
+
         private struct Collect
         {
             [ReadOnly]
@@ -913,17 +968,62 @@ namespace ZG
             //[ReadOnly]
             public NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput> positions;
 
-            public LandscapeManager.Writer manager;
+            public LandscapeManager<BlobAssetReference<LandscapeDefinition>, int3>.Writer manager;
 
             public void Execute()
             {
-                manager.Apply(levelIndex, positions);
+                
+                manager.Restore();
 
-                positions.Clear();
+                if (!positions.IsEmpty)
+                {
+                    using (var keys = positions.GetKeyArray(Allocator.Temp))
+                    {
+                        var positionList = new NativeList<float3>(Allocator.Temp);
+
+                        NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput>.Enumerator
+                            enumerator;
+                        LandscapeWorld<int3> world;
+                        BlobAssetReference<LandscapeDefinition> key;
+                        LandscapeInput value;
+                        Wrapper wrapper;
+                        int i, j, numLayers, count = keys.ConvertToUniqueArray();
+                        for (i = 0; i < count; ++i)
+                        {
+                            key = keys[i];
+
+                            ref var definition = ref key.Value;
+                            numLayers = definition.layers.Length;
+                            world = manager.GetOrCreate(key, numLayers);
+
+                            ref var level =
+                                ref definition.levels[math.clamp(levelIndex, 0, definition.levels.Length - 1)];
+                            for (j = 0; j < numLayers; ++j)
+                            {
+                                positionList.Clear();
+
+                                enumerator = positions.GetValuesForKey(key);
+                                while (enumerator.MoveNext())
+                                {
+                                    value = enumerator.Current;
+                                    if ((value.layerMask & (1 << j)) != 0)
+                                        positionList.Add(value.position);
+                                }
+
+                                wrapper = new Wrapper(definition.layers[j], level.sections[j], positionList.AsArray());
+                                world.Apply(j, ref wrapper);
+                            }
+                        }
+
+                        positionList.Dispose();
+                    }
+
+                    positions.Clear();
+                }
             }
         }
 
-        public LandscapeManager manager
+        public LandscapeManager<BlobAssetReference<LandscapeDefinition>, int3> manager
         {
             get;
 
@@ -934,29 +1034,24 @@ namespace ZG
         private EntityQuery __group;
         private NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput> __values;
 
+        [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
-            BurstUtility.InitializeJob<Apply>();
+            //BurstUtility.InitializeJob<Apply>();
 
-            state.SetAlwaysUpdateSystem(true);
+            //state.SetAlwaysUpdateSystem(true);
 
             __levelGroup = state.GetEntityQuery(ComponentType.ReadOnly<LandscapeLevel>());
 
-            __group = state.GetEntityQuery(
-                new EntityQueryDesc()
-                {
-                    All =
-                        new ComponentType[]
-                        {
-                            ComponentType.ReadOnly<LandscapeData>(),
-                            ComponentType.ReadOnly<Translation>()
-                        },
-                    Options = EntityQueryOptions.IncludeDisabledEntities
-                });
-
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                __group = builder
+                    .WithAll<LandscapeData, Translation>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+            
             __values = new NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput>(1, Allocator.Persistent);
 
-            manager = new LandscapeManager(Allocator.Persistent);
+            manager = new LandscapeManager<BlobAssetReference<LandscapeDefinition>, int3>(Allocator.Persistent);
         }
 
         public void OnDestroy(ref SystemState state)
