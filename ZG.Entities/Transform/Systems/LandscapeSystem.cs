@@ -37,13 +37,49 @@ namespace ZG
         public void FindNeighbor(
             in LandscapeSection section,
             in NativeArray<float3> positions,
+            ref UnsafeParallelHashMap<int3, int> addList)
+        {
+            addList.Clear();
+
+            int numPositions = positions.Length;
+            float3 position;
+            int3 result;
+            if (section.isVail)
+            {
+                int3 min = int3.zero, max = segments - 1;
+                for (int i = 0; i < numPositions; ++i)
+                {
+                    position = positions[i];
+                    if (!GetPosition(ref position, out result))
+                        continue;
+
+                    FindNeighbor(
+                        section,
+                        result,
+                        segments,
+                        ref addList);
+
+                    position -= 0.5f;
+
+                    FindNeighbor(
+                        result,
+                        math.clamp((int3)math.floor(position), min, max),
+                        math.clamp((int3)math.ceil(position), min, max),
+                        ref addList);
+                }
+            }
+        }
+
+        /*public void FindNeighbor(
+            in LandscapeSection section,
+            in NativeArray<float3> positions,
             in UnsafeParallelHashSet<int3> origins,
             ref UnsafeParallelHashMap<int3, int> addList,
             ref UnsafeParallelHashMap<int3, int> removeList)
         {
             addList.Clear();
 
-            int numPositions = positions.Length; 
+            int numPositions = positions.Length;
             float3 position;
             int3 result;
             if (section.isVail)
@@ -114,7 +150,7 @@ namespace ZG
 
                 //addList.ExceptWith(origins);
             }
-        }
+        }*/
 
         public static void FindNeighbor(
             in LandscapeSection section,
@@ -891,28 +927,41 @@ namespace ZG
     {
         private struct Wrapper : ILandscapeWrapper<int3>
         {
-            private LandscapeLayer __value;
-            private LandscapeSection __section;
+            private LandscapeLayer __layer;
             private NativeArray<float3> __positions;
+            private UnsafeParallelHashMap<int3, int>.Enumerator __enumerator;
 
-            public Wrapper(in LandscapeLayer value, in LandscapeSection section, in NativeArray<float3> positions)
+            public int3 Current => __enumerator.Current.Key;
+
+            public Wrapper(in LandscapeLayer layer, in NativeArray<float3> positions, UnsafeParallelHashMap<int3, int>.Enumerator enumerator)
             {
-                __value = value;
-                __section = section;
+                __layer = layer;
                 __positions = positions;
+                __enumerator = enumerator;
             }
-            
-            public void FindNeighbor(
-                in UnsafeParallelHashSet<int3> origins,
-                ref UnsafeParallelHashMap<int3, int> addList,
-                ref UnsafeParallelHashMap<int3, int> removeList)
+
+            public bool MoveNext() => __enumerator.MoveNext();
+
+            public float DistanceTo(in int3 key)
             {
-                __value.FindNeighbor(
-                    __section, 
-                    __positions, 
-                    origins, 
-                    ref addList, 
-                    ref removeList);
+                int minLength = int.MaxValue, numPositions = __positions.Length, length;
+                int3 distance, result;
+                float3 position;
+                for (int i = 0; i < numPositions; ++i)
+                {
+                    position = __positions[i];
+                    if (!__layer.GetPosition(ref position, out result))
+                        continue;
+
+                    distance = math.abs(result - key);
+
+                    length = distance.x * distance.x + distance.y * distance.y + distance.z * distance.z;
+
+                    if (length < minLength)
+                        minLength = length;
+                }
+
+                return minLength;
             }
         }
 
@@ -972,20 +1021,21 @@ namespace ZG
 
             public void Execute()
             {
-                
                 manager.Restore();
 
                 if (!positions.IsEmpty)
                 {
                     using (var keys = positions.GetKeyArray(Allocator.Temp))
                     {
+                        var addList = new UnsafeParallelHashMap<int3, int>(1, Allocator.Temp);
                         var positionList = new NativeList<float3>(Allocator.Temp);
-
+                        NativeArray<float3> positions;
                         NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput>.Enumerator
                             enumerator;
                         LandscapeWorld<int3> world;
                         BlobAssetReference<LandscapeDefinition> key;
                         LandscapeInput value;
+                        LandscapeLayer layer;
                         Wrapper wrapper;
                         int i, j, numLayers, count = keys.ConvertToUniqueArray();
                         for (i = 0; i < count; ++i)
@@ -1002,7 +1052,7 @@ namespace ZG
                             {
                                 positionList.Clear();
 
-                                enumerator = positions.GetValuesForKey(key);
+                                enumerator = this.positions.GetValuesForKey(key);
                                 while (enumerator.MoveNext())
                                 {
                                     value = enumerator.Current;
@@ -1010,12 +1060,17 @@ namespace ZG
                                         positionList.Add(value.position);
                                 }
 
-                                wrapper = new Wrapper(definition.layers[j], level.sections[j], positionList.AsArray());
+                                positions = positionList.AsArray();
+
+                                layer = definition.layers[j];
+                                layer.FindNeighbor(level.sections[j], positions, ref addList);
+                                wrapper = new Wrapper(definition.layers[j], positions, addList.GetEnumerator());
                                 world.Apply(j, ref wrapper);
                             }
                         }
 
                         positionList.Dispose();
+                        addList.Dispose();
                     }
 
                     positions.Clear();

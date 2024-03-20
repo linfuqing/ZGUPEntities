@@ -1,8 +1,6 @@
 using System;
-using Unity.Entities;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
-using Unity.Mathematics;
 
 namespace ZG
 {
@@ -15,10 +13,75 @@ namespace ZG
 
     public interface ILandscapeWrapper<T> where T : unmanaged, IEquatable<T>
     {
-        void FindNeighbor(
-            in UnsafeParallelHashSet<T> origins,
-            ref UnsafeParallelHashMap<T, int> addList,
-            ref UnsafeParallelHashMap<T, int> removeList);
+        T Current { get; }
+        
+        bool MoveNext();
+
+        float DistanceTo(in T value);
+    }
+
+    public interface ILandscapeWorld<T> where T : unmanaged, IEquatable<T>
+    {
+        int countToLoad { get; }
+
+        int countToUnload { get; }
+
+        int GetCountToLoad(int layerIndex, float minDistance = float.MinValue);
+
+        int GetCountToUnload(int layerIndex, float maxDistance = float.MaxValue);
+
+        float GetMaxDistanceToUnload(out int layerIndex, out T position, float maxDistance = float.MinValue);
+
+        float GetMinDistanceToLoad(out int layerIndex, out T position, float minDistance = int.MaxValue);
+
+        bool Load(int layerIndex, out T position, float minDistance = float.MaxValue);
+
+        bool Load(out int layerIndex, out T position, float minDistance = float.MaxValue);
+
+        bool Unload(int layerIndex, out T position, float maxDistance = float.MinValue);
+
+        bool Unload(out int layerIndex, out T position, float maxDistance = float.MinValue);
+
+        LandscapeLoaderCompleteType Complete(bool isLoading, int layerIndex, in T position);
+    }
+    
+    public interface ILandscapeManager<TKey, TValue>
+        where TKey : unmanaged, IEquatable<TKey>
+        where TValue : unmanaged, IEquatable<TValue>
+    {
+        int CountToLoad(in TKey key);
+
+        int CountToUnload(in TKey key);
+
+        int GetCountToLoad(in TKey key, int layerIndex,
+            float minDistance = float.MinValue);
+
+        int GetCountToUnload(in TKey key, int layerIndex,
+            float maxDistance = float.MaxValue);
+
+        float GetMaxDistanceToUnload(in TKey key, out int layerIndex,
+            out TValue position, float maxDistance = float.MinValue);
+
+        float GetMinDistanceToLoad(in TKey key, out int layerIndex,
+            out TValue position, float minDistance = int.MaxValue);
+
+        bool Load(in TKey key, int layerIndex, out TValue position,
+            float minDistance = float.MaxValue);
+
+        bool Load(in TKey key, out int layerIndex, out TValue position,
+            float minDistance = float.MaxValue);
+
+        bool Unload(in TKey key, int layerIndex, out TValue position,
+            float maxDistance = float.MinValue);
+
+        bool Unload(in TKey key, out int layerIndex, out TValue position,
+            float maxDistance = float.MinValue);
+
+        LandscapeLoaderCompleteType Complete(
+            in TKey key,
+            bool isLoading,
+            int layerIndex,
+            in TValue position);
     }
 
     public struct LandscapeLayer<T> where T : unmanaged, IEquatable<T>
@@ -32,9 +95,11 @@ namespace ZG
         }
 
         private UnsafeParallelHashMap<T, Status> __states;
-        private UnsafeParallelHashMap<T, int> __addList;
-        private UnsafeParallelHashMap<T, int> __removeList;
+        private UnsafeParallelHashMap<T, float> __addList;
+        private UnsafeParallelHashMap<T, float> __removeList;
         private UnsafeParallelHashSet<T> __origins;
+
+        public bool isCreated => __states.IsCreated;
 
         public bool isEmpty => __states.IsEmpty && __addList.IsEmpty && __removeList.IsEmpty && __origins.IsEmpty;
 
@@ -42,7 +107,7 @@ namespace ZG
 
         public int countToUnload => __removeList.Count();
 
-        public int GetCountToLoad(int minDistance = int.MaxValue)
+        public int GetCountToLoad(float minDistance = int.MaxValue)
         {
             int count = 0;
             var enumerator = __addList.GetEnumerator();
@@ -55,7 +120,7 @@ namespace ZG
             return count;
         }
 
-        public int GetCountToUnload(int maxDistance = int.MinValue)
+        public int GetCountToUnload(float maxDistance = int.MinValue)
         {
             int count = 0;
             var enumerator = __addList.GetEnumerator();
@@ -71,8 +136,8 @@ namespace ZG
         public LandscapeLayer(in AllocatorManager.AllocatorHandle allocator)
         {
             __states = new UnsafeParallelHashMap<T, Status>(1, allocator);
-            __addList = new UnsafeParallelHashMap<T, int>(1, allocator);
-            __removeList = new UnsafeParallelHashMap<T, int>(1, allocator);
+            __addList = new UnsafeParallelHashMap<T, float>(1, allocator);
+            __removeList = new UnsafeParallelHashMap<T, float>(1, allocator);
             __origins = new UnsafeParallelHashSet<T>(1, allocator);
         }
 
@@ -84,12 +149,12 @@ namespace ZG
             __removeList.Dispose();
         }
 
-        public int GetMinDistanceToLoad(out T position, int minDistance = int.MaxValue)
+        public float GetMinDistanceToLoad(out T position, float minDistance = float.MaxValue)
         {
             position = default;
 
-            int distance;
-            KeyValue<T, int> keyValue;
+            float distance;
+            KeyValue<T, float> keyValue;
             var enumerator = __addList.GetEnumerator();
             while (enumerator.MoveNext())
             {
@@ -106,12 +171,12 @@ namespace ZG
             return minDistance;
         }
 
-        public int GetMaxDistanceToUnload(out T position, int maxDistance = int.MinValue)
+        public float GetMaxDistanceToUnload(out T position, float maxDistance = float.MinValue)
         {
             position = default;
 
-            int distance;
-            KeyValue<T, int> keyValue;
+            float distance;
+            KeyValue<T, float> keyValue;
             var enumerator = __removeList.GetEnumerator();
             while (enumerator.MoveNext())
             {
@@ -279,9 +344,30 @@ namespace ZG
             }
         }
 
-        public void Apply<TWrapper>(ref TWrapper layer) where TWrapper : ILandscapeWrapper<T>
+        public void Apply<TWrapper>(ref TWrapper wrapper) where TWrapper : ILandscapeWrapper<T>
         {
-            layer.FindNeighbor(__origins, ref __addList, ref __removeList);
+            __addList.Clear();
+
+            T value;
+            while (wrapper.MoveNext())
+            {
+                value = wrapper.Current;
+
+                __addList[value] = wrapper.DistanceTo(value);
+            }
+
+            __removeList.Clear();
+
+            if (__origins.IsCreated)
+            {
+                foreach (var source in __origins)
+                {
+                    if(__addList.Remove(source))
+                        continue;
+                    
+                    __removeList[source] = wrapper.DistanceTo(source);
+                }
+            }
         }
     }
 
@@ -289,13 +375,18 @@ namespace ZG
     {
         private UnsafeList<LandscapeLayer<T>> __layers;
 
+        public bool isCreated => __layers.IsCreated;
+
+        public int layerCount => __layers.Length;
+
         public int countToLoad
         {
             get
             {
+                LandscapeLayer<T> layer;
                 int count = 0, numLayers = __layers.Length;
                 for (int i = 0; i < numLayers; ++i)
-                    count += __layers[i].countToLoad;
+                    count += __ReadOnly(i, out layer) ? layer.countToLoad : 0;
 
                 return count;
             }
@@ -305,20 +396,19 @@ namespace ZG
         {
             get
             {
+                LandscapeLayer<T> layer;
                 int count = 0, numLayers = __layers.Length;
                 for (int i = 0; i < numLayers; ++i)
-                    count += __layers[i].countToUnload;
+                    count += __ReadOnly(i, out layer) ? layer.countToUnload : 0;
 
                 return count;
             }
         }
 
-        public LandscapeWorld(int layerCount, in AllocatorManager.AllocatorHandle allocator)
+        public LandscapeWorld(in AllocatorManager.AllocatorHandle allocator, int layerCount = 0)
         {
             __layers = new UnsafeList<LandscapeLayer<T>>(layerCount, allocator);
-            __layers.Resize(layerCount, NativeArrayOptions.UninitializedMemory);
-            for (int i = 0; i < layerCount; ++i)
-                __layers[i] = new LandscapeLayer<T>(allocator);
+            __layers.Resize(layerCount, NativeArrayOptions.ClearMemory);
         }
 
         public void Dispose()
@@ -330,27 +420,40 @@ namespace ZG
             __layers.Dispose();
         }
 
-        public int GetCountToLoad(int layerIndex, int minDistance = int.MaxValue)
+        public void Reset(int layerCount)
         {
-            return __layers[layerIndex].GetCountToLoad(minDistance);
+            int length = __layers.Length;
+            if (length > layerCount)
+                return;
+            
+            __layers.Resize(layerCount, NativeArrayOptions.ClearMemory);
         }
 
-        public int GetCountToUnload(int layerIndex, int maxDistance = int.MinValue)
+        public int GetCountToLoad(int layerIndex, float minDistance = int.MaxValue)
         {
-            return __layers[layerIndex].GetCountToUnload(maxDistance);
+            return __ReadOnly(layerIndex, out var layer) ? layer.GetCountToLoad(minDistance) : 0;
         }
 
-        public int GetMaxDistanceToUnload(out int layerIndex, out T layerPosition, int maxDistance = int.MinValue)
+        public int GetCountToUnload(int layerIndex, float maxDistance = int.MinValue)
+        {
+            return __ReadOnly(layerIndex, out var layer) ? layer.GetCountToUnload(maxDistance) : 0;
+        }
+
+        public float GetMaxDistanceToUnload(out int layerIndex, out T layerPosition, float maxDistance = int.MinValue)
         {
             layerIndex = -1;
             layerPosition = default;
 
-            int numLayers = __layers.Length, distance, i;
+            int numLayers = __layers.Length, i;
+            float distance;
             T position;
 
             for (i = 0; i < numLayers; ++i)
             {
                 ref var layer = ref __layers.ElementAt(i);
+                if(!layer.isCreated)
+                    continue;
+                
                 distance = layer.GetMaxDistanceToUnload(out position, maxDistance);
                 if (distance > maxDistance)
                 {
@@ -365,17 +468,21 @@ namespace ZG
             return maxDistance;
         }
 
-        public int GetMinDistanceToLoad(out int layerIndex, out T layerPosition, int minDistance = int.MaxValue)
+        public float GetMinDistanceToLoad(out int layerIndex, out T layerPosition, float minDistance = int.MaxValue)
         {
             layerIndex = -1;
             layerPosition = default;
 
-            int numLayers = __layers.Length, distance, i;
+            int numLayers = __layers.Length, i;
+            float distance;
             T position;
 
             for (i = 0; i < numLayers; ++i)
             {
                 ref var layer = ref __layers.ElementAt(i);
+                if(!layer.isCreated)
+                    continue;
+
                 distance = layer.GetMinDistanceToLoad(out position, minDistance);
                 if (distance < minDistance)
                 {
@@ -390,38 +497,38 @@ namespace ZG
             return minDistance;
         }
 
-        public bool Load(int layerIndex, out T layerPosition, int minDistance = int.MaxValue)
+        public bool Load(int layerIndex, out T layerPosition, float minDistance = float.MaxValue)
         {
-            ref var layer = ref __layers.ElementAt(layerIndex);
+            ref var layer = ref __ReadWrite(layerIndex);
 
             return layer.GetMinDistanceToLoad(out layerPosition, minDistance) < minDistance &&
                    layer.Load(layerPosition);
         }
 
-        public bool Load(out int layerIndex, out T layerPosition, int minDistance = int.MaxValue)
+        public bool Load(out int layerIndex, out T layerPosition, float minDistance = float.MaxValue)
         {
             while (GetMinDistanceToLoad(out layerIndex, out layerPosition, minDistance) < minDistance)
             {
-                if (__layers[layerIndex].Load(layerPosition))
+                if (__ReadWrite(layerIndex).Load(layerPosition))
                     return true;
             }
 
             return false;
         }
 
-        public bool Unload(int layerIndex, out T layerPosition, int maxDistance = int.MinValue)
+        public bool Unload(int layerIndex, out T layerPosition, float maxDistance = float.MinValue)
         {
-            ref var layer = ref __layers.ElementAt(layerIndex);
+            ref var layer = ref __ReadWrite(layerIndex);
 
             return layer.GetMaxDistanceToUnload(out layerPosition, maxDistance) > maxDistance &&
                    layer.Unload(layerPosition);
         }
 
-        public bool Unload(out int layerIndex, out T layerPosition, int maxDistance = int.MinValue)
+        public bool Unload(out int layerIndex, out T layerPosition, float maxDistance = float.MinValue)
         {
             while (GetMaxDistanceToUnload(out layerIndex, out layerPosition, maxDistance) > maxDistance)
             {
-                if (__layers[layerIndex].Unload(layerPosition))
+                if (__ReadWrite(layerIndex).Unload(layerPosition))
                     return true;
             }
 
@@ -430,25 +537,61 @@ namespace ZG
 
         public LandscapeLoaderCompleteType Complete(bool isLoading, int layerIndex, in T position)
         {
-            return __layers[layerIndex].Complete(isLoading, position);
+            return __ReadWrite(layerIndex).Complete(isLoading, position);
         }
 
         public void Restore()
         {
             int numLayers = __layers.Length;
             for (int i = 0; i < numLayers; ++i)
+            {
+                if(!__layers.IsCreated)
+                    continue;
+                
                 __layers[i].Restore();
+            }
         }
         
         public void Apply<TWrapper>(
             int layerIndex,
             ref TWrapper wrapper) where TWrapper : ILandscapeWrapper<T>
         {
-            __layers[layerIndex].Apply(ref wrapper);
+            __ReadWrite(layerIndex).Apply(ref wrapper);
+        }
+
+        private bool __ReadOnly(int layerIndex, out LandscapeLayer<T> layer)
+        {
+            if (__layers.Length > layerIndex)
+            {
+                layer = __layers[layerIndex];
+
+                return layer.isCreated;
+            }
+
+            layer = default;
+
+            return false;
+        }
+
+        private ref LandscapeLayer<T> __ReadWrite(int layerIndex)
+        {
+            if (__layers.Length <= layerIndex)
+            {
+                int length = __layers.Length;
+                __layers.Resize(layerIndex + 1);
+                for (int i = length; i < layerIndex; ++i)
+                    __layers[i] = default;
+            }
+
+            ref var layer = ref __layers.ElementAt(layerIndex);
+            if (!layer.isCreated)
+                layer = new LandscapeLayer<T>(__layers.Allocator);
+
+            return ref layer;
         }
     }
 
-    public struct LandscapeManager<TKey, TValue>
+    public struct LandscapeManager<TKey, TValue> : ILandscapeManager<TKey, TValue>
         where TKey : unmanaged, IEquatable<TKey>
         where TValue : unmanaged, IEquatable<TValue>
     {
@@ -487,11 +630,11 @@ namespace ZG
                 }
             }
 
-            public LandscapeWorld<TValue> GetOrCreate(in TKey key, int layers)
+            public LandscapeWorld<TValue> GetOrCreate(in TKey key, int layers = 0)
             {
                 if (!__value.TryGetValue(key, out var world))
                 {
-                    world = new LandscapeWorld<TValue>(layers, Allocator);
+                    world = new LandscapeWorld<TValue>(Allocator, layers);
 
                     __value[key] = world;
                 }
@@ -546,7 +689,7 @@ namespace ZG
         }
 
         public int GetCountToLoad(in TKey key, int layerIndex,
-            int minDistance = int.MinValue)
+            float minDistance = float.MinValue)
         {
             __worlds.lookupJobManager.CompleteReadWriteDependency();
 
@@ -557,7 +700,7 @@ namespace ZG
         }
 
         public int GetCountToUnload(in TKey key, int layerIndex,
-            int maxDistance = int.MaxValue)
+            float maxDistance = int.MaxValue)
         {
             __worlds.lookupJobManager.CompleteReadWriteDependency();
 
@@ -567,8 +710,8 @@ namespace ZG
             return 0;
         }
 
-        public int GetMaxDistanceToUnload(in TKey key, out int layerIndex,
-            out TValue position, int maxDistance = int.MinValue)
+        public float GetMaxDistanceToUnload(in TKey key, out int layerIndex,
+            out TValue position, float maxDistance = float.MinValue)
         {
             __worlds.lookupJobManager.CompleteReadWriteDependency();
 
@@ -581,8 +724,8 @@ namespace ZG
             return maxDistance;
         }
 
-        public int GetMinDistanceToLoad(in TKey key, out int layerIndex,
-            out TValue position, int minDistance = int.MaxValue)
+        public float GetMinDistanceToLoad(in TKey key, out int layerIndex,
+            out TValue position, float minDistance = float.MaxValue)
         {
             __worlds.lookupJobManager.CompleteReadWriteDependency();
 
@@ -596,7 +739,7 @@ namespace ZG
         }
 
         public bool Load(in TKey key, int layerIndex, out TValue position,
-            int minDistance = int.MaxValue)
+            float minDistance = float.MaxValue)
         {
             __worlds.lookupJobManager.CompleteReadWriteDependency();
 
@@ -609,7 +752,7 @@ namespace ZG
         }
 
         public bool Load(in TKey key, out int layerIndex, out TValue position,
-            int minDistance = int.MaxValue)
+            float minDistance = float.MaxValue)
         {
             __worlds.lookupJobManager.CompleteReadWriteDependency();
 
@@ -623,7 +766,7 @@ namespace ZG
         }
 
         public bool Unload(in TKey key, int layerIndex, out TValue position,
-            int maxDistance = int.MinValue)
+            float maxDistance = float.MinValue)
         {
             __worlds.lookupJobManager.CompleteReadWriteDependency();
 
@@ -636,7 +779,7 @@ namespace ZG
         }
 
         public bool Unload(in TKey key, out int layerIndex, out TValue position,
-            int maxDistance = int.MinValue)
+            float maxDistance = float.MinValue)
         {
             __worlds.lookupJobManager.CompleteReadWriteDependency();
 
