@@ -43,7 +43,7 @@ namespace ZG
             [ReadOnly]
             public ReadOnly container;
 
-            public unsafe void Execute(int index)
+            public void Execute(int index)
             {
                 container.Apply(entityArray[index], entityStorageInfoLookup, wrapper, typeHandleIndicess, types);
             }
@@ -453,7 +453,6 @@ namespace ZG
         internal struct Info
         {
             public UnsafeBuffer buffer;
-            public UnsafeParallelHashSet<Key> keys;
             public UnsafeParallelMultiHashMap<Entity, TypeIndex> entityTypes;
             public UnsafeParallelMultiHashMap<Key, Value> values;
 
@@ -468,7 +467,6 @@ namespace ZG
             public Info(in AllocatorManager.AllocatorHandle allocator)
             {
                 buffer = new UnsafeBuffer(0, 1, allocator);
-                keys = new UnsafeParallelHashSet<Key>(1, allocator);
                 entityTypes = new UnsafeParallelMultiHashMap<Entity, TypeIndex>(1, allocator);
                 values = new UnsafeParallelMultiHashMap<Key, Value>(1, allocator);
             }
@@ -476,7 +474,6 @@ namespace ZG
             public void Dispose()
             {
                 buffer.Dispose();
-                keys.Dispose();
                 entityTypes.Dispose();
                 values.Dispose();
             }
@@ -1243,8 +1240,7 @@ namespace ZG
         [NativeContainerIsReadOnly]
         public struct ReadOnly
         {
-            [NativeDisableUnsafePtrRestriction]
-            private unsafe Info* __info;
+            [NativeDisableUnsafePtrRestriction] private unsafe Info* __info;
 
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
             internal AtomicSafetyHandle m_Safety;
@@ -1320,7 +1316,9 @@ namespace ZG
 
                                 destination.type = source.type;
 
-                                destination.block = source.block.isCreated ? writer.WriteBlock(source.block) : UnsafeBlock.Empty;
+                                destination.block = source.block.isCreated
+                                    ? writer.WriteBlock(source.block)
+                                    : UnsafeBlock.Empty;
 
                                 container._info->_Set(key, destination);
                             }
@@ -1337,203 +1335,228 @@ namespace ZG
                 in Entity entity,
                 in EntityStorageInfoLookup entityStorageInfoLookup,
                 in SharedHashMap<Entity, Entity>.Reader wrapper,
-                in UnsafeHashMap<int, int> typeHandleIndicess,
+                in UnsafeHashMap<int, int> typeHandleIndices,
                 in BurstCompatibleTypeArray types)
             {
 #if ENABLE_UNITY_COLLECTIONS_CHECKS
                 AtomicSafetyHandle.CheckReadAndThrow(m_Safety);
 #endif
+
+                Key key;
+                key.entity = wrapper.isCreated ? wrapper[entity] : entity;
+                if (!__info->entityTypes.TryGetFirstValue(key.entity, out key.typeIndex, out var entityIterator))
+                    return;
+
                 if (!entityStorageInfoLookup.Exists(entity))
                 {
                     UnityEngine.Debug.LogError($"{entity} has already been destroyed or was never created");
-                    
+
                     return;
                 }
 
                 var entityStorageInfo = entityStorageInfoLookup[entity];
-                
-                var values = new NativeList<Value>(Allocator.Temp);
+
+                int length = typeHandleIndices.Count;
+                var keys = new UnsafeHashSet<Key>(length, Allocator.Temp);
+                var values = new UnsafeList<Value>(1, Allocator.Temp);
                 DynamicComponentTypeHandle dynamicComponentTypeHandle;
-                NativeParallelMultiHashMapIterator<Entity> entityIterator;
                 NativeParallelMultiHashMapIterator<Key> keyIterator;
-                Key key;
                 Value value;
                 Command command;
                 Unity.Entities.LowLevel.Unsafe.UnsafeUntypedBufferAccessor bufferAccessor = default;
                 void* source, destination = null;
                 int blockSize, numValues, elementSize, i;
 
-                key.entity = wrapper.isCreated ? wrapper[entity] : entity;
-
-                if (__info->entityTypes.TryGetFirstValue(key.entity, out key.typeIndex, out entityIterator))
+                do
                 {
-                    do
+                    if(!keys.Add(key))
+                        continue;
+                    
+                    dynamicComponentTypeHandle = types[typeHandleIndices[key.typeIndex]];
+                    dynamicComponentTypeHandle.m_TypeLookupCache = (short)key.typeIndex;
+
+                    if (!entityStorageInfo.Chunk.Has(ref dynamicComponentTypeHandle))
+                        continue;
+
+                    elementSize = TypeManager.GetTypeInfo(key.typeIndex).ElementSize;
+
+                    if (TypeManager.IsBuffer(key.typeIndex))
+                        bufferAccessor =
+                            entityStorageInfo.Chunk.GetUntypedBufferAccessor(ref dynamicComponentTypeHandle);
+                    else if (TypeManager.IsZeroSized(key.typeIndex))
+                        destination = null;
+                    else
+                        destination =
+                            (byte*)entityStorageInfo.Chunk
+                                .GetDynamicComponentDataArrayReinterpret<byte>(ref dynamicComponentTypeHandle,
+                                    elementSize).GetUnsafePtr() + entityStorageInfo.IndexInChunk * elementSize;
+
+                    values.Clear();
+
+                    if (__info->values.TryGetFirstValue(key, out value, out keyIterator))
                     {
-                        dynamicComponentTypeHandle = types[typeHandleIndicess[key.typeIndex]];
-                        dynamicComponentTypeHandle.m_TypeLookupCache = (short)key.typeIndex;
-
-                        if (!entityStorageInfo.Chunk.Has(ref dynamicComponentTypeHandle))
-                            continue;
-
-                        elementSize = TypeManager.GetTypeInfo(key.typeIndex).ElementSize;
-
-                        if (TypeManager.IsBuffer(key.typeIndex))
-                            bufferAccessor = entityStorageInfo.Chunk.GetUntypedBufferAccessor(ref dynamicComponentTypeHandle);
-                        else if (TypeManager.IsZeroSized(key.typeIndex))
-                            destination = null;
-                        else
-                            destination = (byte*)entityStorageInfo.Chunk.GetDynamicComponentDataArrayReinterpret<byte>(ref dynamicComponentTypeHandle, elementSize).GetUnsafePtr() + entityStorageInfo.IndexInChunk * elementSize;
-
-                        values.Clear();
-
-                        if (__info->values.TryGetFirstValue(key, out value, out keyIterator))
+                        do
                         {
-                            do
-                            {
-                                values.Add(value);
-                            } while (__info->values.TryGetNextValue(out value, ref keyIterator));
+                            values.Add(value);
+                        } while (__info->values.TryGetNextValue(out value, ref keyIterator));
+                    }
+
+                    values.Sort();
+
+                    numValues = values.Length;
+                    for (i = 0; i < numValues; ++i)
+                    {
+                        command = values.ElementAt(i).command;
+                        if (command.block.isCreated)
+                            source = command.block.GetRangePtr(out blockSize);
+                        else
+                        {
+                            source = null;
+
+                            blockSize = 0;
                         }
 
-                        values.Sort();
-
-                        numValues = values.Length;
-                        for (i = 0; i < numValues; ++i)
+                        /*if (TypeManager.GetTypeName(key.typeIndex)->ToString() == "NetworkIdentity")
                         {
-                            command = values.ElementAt(i).command;
-                            if (command.block.isCreated)
-                                source = command.block.GetRangePtr(out blockSize);
-                            else
-                            {
-                                source = null;
+                            UnityEngine.Debug.Log($"Assign {entity} : {*(uint*)source}");
+                        }*/
 
-                                blockSize = 0;
-                            }
+                        switch (command.type)
+                        {
+                            case Command.Type.ComponentData:
+                                /*if (TypeManager.GetTypeName(key.typeIndex)->ToString().Contains("GameNodeCharacterStatus"))
+                                    UnityEngine.Debug.LogError($"{entity} To {*(int*)source}");*/
 
-                            /*if (TypeManager.GetTypeName(key.typeIndex)->ToString() == "NetworkIdentity")
-                            {
-                                UnityEngine.Debug.Log($"Assign {entity} : {*(uint*)source}");
-                            }*/
+                                UnityEngine.Assertions.Assert.AreEqual(blockSize, elementSize);
 
-                            switch (command.type)
-                            {
-                                case Command.Type.ComponentData:
-                                    /*if (TypeManager.GetTypeName(key.typeIndex)->ToString().Contains("GameNodeCharacterStatus"))
-                                        UnityEngine.Debug.LogError($"{entity} To {*(int*)source}");*/
-
-                                    UnityEngine.Assertions.Assert.AreEqual(blockSize, elementSize);
-
-                                    //destination = (byte*)batchInChunk.GetDynamicComponentDataArrayReinterpret<byte>(dynamicComponentTypeHandle, blockSize).GetUnsafePtr() + i * blockSize;
-                                    break;
-                                case Command.Type.BufferOverride:
-                                case Command.Type.BufferAppend:
-                                case Command.Type.BufferAppendUnique:
-                                    if (source == null)
-                                        bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, 0);
+                                //destination = (byte*)batchInChunk.GetDynamicComponentDataArrayReinterpret<byte>(dynamicComponentTypeHandle, blockSize).GetUnsafePtr() + i * blockSize;
+                                break;
+                            case Command.Type.BufferOverride:
+                            case Command.Type.BufferAppend:
+                            case Command.Type.BufferAppendUnique:
+                                if (source == null)
+                                    bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, 0);
+                                else
+                                {
+                                    int elementCount = blockSize / elementSize;
+                                    //var bufferAccessor = batchInChunk.GetUntypedBufferAccessor(ref dynamicComponentTypeHandle);
+                                    if (command.type == Command.Type.BufferOverride)
+                                    {
+                                        bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk,
+                                            elementCount);
+                                        destination = bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk);
+                                    }
                                     else
                                     {
-                                        int elementCount = blockSize / elementSize;
-                                        //var bufferAccessor = batchInChunk.GetUntypedBufferAccessor(ref dynamicComponentTypeHandle);
-                                        if (command.type == Command.Type.BufferOverride)
+                                        byte* ptr;
+                                        int originCount =
+                                            bufferAccessor.GetBufferLength(entityStorageInfo.IndexInChunk);
+                                        if (originCount > 0 && command.type == Command.Type.BufferAppendUnique)
                                         {
-                                            bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, elementCount);
-                                            destination = bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk);
-                                        }
-                                        else
-                                        {
-                                            byte* ptr;
-                                            int originCount = bufferAccessor.GetBufferLength(entityStorageInfo.IndexInChunk);
-                                            if (originCount > 0 && command.type == Command.Type.BufferAppendUnique)
-                                            {
-                                                ptr = (byte*)bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk);
-                                                byte* sourcePtr = (byte*)source, destinationPtr;
-                                                int j, k;
-                                                for (j = 0; j < elementCount; ++j)
-                                                {
-                                                    destinationPtr = ptr;
-                                                    for (k = 0; k < originCount; ++k)
-                                                    {
-                                                        if (UnsafeUtility.MemCmp(destinationPtr, sourcePtr, elementSize) == 0)
-                                                            break;
-
-                                                        destinationPtr += elementSize;
-                                                    }
-
-                                                    if (k < originCount && j < --elementCount)
-                                                        UnsafeUtility.MemMove(sourcePtr, sourcePtr + elementSize, (elementCount - j--) * elementSize);
-
-                                                    sourcePtr += elementSize;
-                                                }
-
-                                                blockSize = elementCount * elementSize;
-                                            }
-
-                                            bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, originCount + elementCount);
-                                            if (elementCount > 0)
-                                            {
-                                                ptr = (byte*)bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk);
-                                                destination = ptr + originCount * elementSize;
-                                            }
-                                            else
-                                                source = null;
-                                        }
-                                    }
-                                    break;
-                                case Command.Type.BufferRemove:
-                                case Command.Type.BufferRemoveSwapBack:
-                                    if (source != null)
-                                    {
-                                        int bufferLength = bufferAccessor.GetBufferLength(entityStorageInfo.IndexInChunk);
-                                        if (bufferLength > 0)
-                                        {
-                                            byte* ptr = (byte*)bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk), sourcePtr = (byte*)source, destinationPtr;
-                                            int j, k, elementCount = blockSize / elementSize;
+                                            ptr = (byte*)bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk);
+                                            byte* sourcePtr = (byte*)source, destinationPtr;
+                                            int j, k;
                                             for (j = 0; j < elementCount; ++j)
                                             {
                                                 destinationPtr = ptr;
-                                                for (k = 0; k < bufferLength; ++k)
+                                                for (k = 0; k < originCount; ++k)
                                                 {
-                                                    if (UnsafeUtility.MemCmp(destinationPtr, sourcePtr, elementSize) == 0)
-                                                    {
-                                                        if (k < --bufferLength)
-                                                        {
-                                                            if (command.type == Command.Type.BufferRemoveSwapBack)
-                                                                UnsafeUtility.MemCpy(destinationPtr, destinationPtr + elementSize * bufferLength, elementSize);
-                                                            else
-                                                                UnsafeUtility.MemMove(destinationPtr, destinationPtr + elementSize, (bufferLength - k) * elementSize);
-                                                        }
-
+                                                    if (UnsafeUtility.MemCmp(destinationPtr, sourcePtr, elementSize) ==
+                                                        0)
                                                         break;
-                                                    }
 
                                                     destinationPtr += elementSize;
                                                 }
 
-                                                if (bufferLength < 1)
-                                                    break;
+                                                if (k < originCount && j < --elementCount)
+                                                    UnsafeUtility.MemMove(sourcePtr, sourcePtr + elementSize,
+                                                        (elementCount - j--) * elementSize);
 
                                                 sourcePtr += elementSize;
                                             }
 
-                                            bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, bufferLength);
+                                            blockSize = elementCount * elementSize;
                                         }
 
-                                        source = null;
+                                        bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk,
+                                            originCount + elementCount);
+                                        if (elementCount > 0)
+                                        {
+                                            ptr = (byte*)bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk);
+                                            destination = ptr + originCount * elementSize;
+                                        }
+                                        else
+                                            source = null;
                                     }
-                                    break;
-                                case Command.Type.Enable:
-                                    entityStorageInfo.Chunk.SetComponentEnabled(ref dynamicComponentTypeHandle, entityStorageInfo.IndexInChunk, true);
-                                    break;
-                                case Command.Type.Disable:
-                                    entityStorageInfo.Chunk.SetComponentEnabled(ref dynamicComponentTypeHandle, entityStorageInfo.IndexInChunk, false);
-                                    break;
-                            }
+                                }
 
-                            if (source != null)
-                                UnsafeUtility.MemCpy(destination, source, blockSize);
+                                break;
+                            case Command.Type.BufferRemove:
+                            case Command.Type.BufferRemoveSwapBack:
+                                if (source != null)
+                                {
+                                    int bufferLength = bufferAccessor.GetBufferLength(entityStorageInfo.IndexInChunk);
+                                    if (bufferLength > 0)
+                                    {
+                                        byte* ptr = (byte*)bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk),
+                                            sourcePtr = (byte*)source,
+                                            destinationPtr;
+                                        int j, k, elementCount = blockSize / elementSize;
+                                        for (j = 0; j < elementCount; ++j)
+                                        {
+                                            destinationPtr = ptr;
+                                            for (k = 0; k < bufferLength; ++k)
+                                            {
+                                                if (UnsafeUtility.MemCmp(destinationPtr, sourcePtr, elementSize) == 0)
+                                                {
+                                                    if (k < --bufferLength)
+                                                    {
+                                                        if (command.type == Command.Type.BufferRemoveSwapBack)
+                                                            UnsafeUtility.MemCpy(destinationPtr,
+                                                                destinationPtr + elementSize * bufferLength,
+                                                                elementSize);
+                                                        else
+                                                            UnsafeUtility.MemMove(destinationPtr,
+                                                                destinationPtr + elementSize,
+                                                                (bufferLength - k) * elementSize);
+                                                    }
+
+                                                    break;
+                                                }
+
+                                                destinationPtr += elementSize;
+                                            }
+
+                                            if (bufferLength < 1)
+                                                break;
+
+                                            sourcePtr += elementSize;
+                                        }
+
+                                        bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk,
+                                            bufferLength);
+                                    }
+
+                                    source = null;
+                                }
+
+                                break;
+                            case Command.Type.Enable:
+                                entityStorageInfo.Chunk.SetComponentEnabled(ref dynamicComponentTypeHandle,
+                                    entityStorageInfo.IndexInChunk, true);
+                                break;
+                            case Command.Type.Disable:
+                                entityStorageInfo.Chunk.SetComponentEnabled(ref dynamicComponentTypeHandle,
+                                    entityStorageInfo.IndexInChunk, false);
+                                break;
                         }
-                    } while (__info->entityTypes.TryGetNextValue(out key.typeIndex, ref entityIterator));
-                }
 
+                        if (source != null)
+                            UnsafeUtility.MemCpy(destination, source, blockSize);
+                    }
+                } while (__info->entityTypes.TryGetNextValue(out key.typeIndex, ref entityIterator));
+
+                keys.Dispose();
                 values.Dispose();
             }
         }
@@ -1573,7 +1596,6 @@ namespace ZG
         public struct ParallelWriter
         {
             private UnsafeBuffer.ParallelWriter __buffer;
-            private UnsafeParallelHashSet<Key>.ParallelWriter __keys;
             private UnsafeParallelMultiHashMap<Entity, TypeIndex>.ParallelWriter __entityTypes;
             private UnsafeParallelMultiHashMap<Key, Value>.ParallelWriter __values;
 
@@ -1590,7 +1612,6 @@ namespace ZG
 #endif
 
                 __buffer = container._info->buffer.parallelWriter;
-                __keys = container._info->keys.AsParallelWriter();
                 __entityTypes = container._info->entityTypes.AsParallelWriter();
                 __values = container._info->values.AsParallelWriter();
             }
@@ -1640,8 +1661,7 @@ namespace ZG
                 key.entity = entity;
                 key.typeIndex = typeIndex;
 
-                if(__keys.Add(key))
-                    __entityTypes.Add(entity, typeIndex);
+                __entityTypes.Add(entity, typeIndex);
 
                 Value value;
                 value.index = 0;
