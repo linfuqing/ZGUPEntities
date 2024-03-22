@@ -1398,7 +1398,7 @@ namespace ZG
             where TDeserializer : struct, IEntityDataDeserializer
             where TDeserializerFactory : struct, IEntityDataFactory<TDeserializer>
         {
-            //不能这样，否则GameDataItem出错
+            //涓嶈兘杩欐牱锛屽惁鍒橤ameDataItem鍑洪敊
             /*if (group.IsEmptyIgnoreFilter)
                 return;*/
 

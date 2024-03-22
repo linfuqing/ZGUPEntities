@@ -123,7 +123,8 @@ namespace ZG
                         if (manager.Load(key, importantLayerToLoad.index, out position,
                                 importantLayerToLoad.minDistance))
                         {
-                            yield return changeStatus(Status.Important);
+                            if(changeStatus != null)
+                                yield return changeStatus(Status.Important);
 
                             yield return __Complete(false, importantLayerToLoad.index, key, position, manager, load, unload, stop);
 
@@ -143,13 +144,15 @@ namespace ZG
 
                 if (manager.Load(key, out layerIndex, out position))
                 {
-                    yield return changeStatus(Status.NotImportant);
+                    if(changeStatus != null)
+                        yield return changeStatus(Status.NotImportant);
 
                     yield return __Complete(false, layerIndex, key, position, manager, load, unload, stop);
                 }
                 else
                 {
-                    yield return changeStatus(Status.Done);
+                    if(changeStatus != null)
+                        yield return changeStatus(Status.Done);
 
                     if (stop())
                         break;
@@ -183,7 +186,8 @@ namespace ZG
                         if (world.Load(importantLayerToLoad.index, out position,
                                 importantLayerToLoad.minDistance))
                         {
-                            yield return changeStatus(Status.Important);
+                            if(changeStatus != null)
+                                yield return changeStatus(Status.Important);
 
                             yield return __Complete(false, importantLayerToLoad.index, position, world, load, unload, stop);
 
@@ -203,13 +207,15 @@ namespace ZG
 
                 if (world.Load(out layerIndex, out position))
                 {
-                    yield return changeStatus(Status.NotImportant);
+                    if(changeStatus != null)
+                        yield return changeStatus(Status.NotImportant);
 
                     yield return __Complete(false, layerIndex, position, world, load, unload, stop);
                 }
                 else
                 {
-                    yield return changeStatus(Status.Done);
+                    if(changeStatus != null)
+                        yield return changeStatus(Status.Done);
 
                     if (stop())
                         break;

@@ -453,6 +453,7 @@ namespace ZG
         internal struct Info
         {
             public UnsafeBuffer buffer;
+            public UnsafeParallelHashSet<Key> keys;
             public UnsafeParallelMultiHashMap<Entity, TypeIndex> entityTypes;
             public UnsafeParallelMultiHashMap<Key, Value> values;
 
@@ -467,6 +468,7 @@ namespace ZG
             public Info(in AllocatorManager.AllocatorHandle allocator)
             {
                 buffer = new UnsafeBuffer(0, 1, allocator);
+                keys = new UnsafeParallelHashSet<Key>(1, allocator);
                 entityTypes = new UnsafeParallelMultiHashMap<Entity, TypeIndex>(1, allocator);
                 values = new UnsafeParallelMultiHashMap<Key, Value>(1, allocator);
             }
@@ -474,6 +476,7 @@ namespace ZG
             public void Dispose()
             {
                 buffer.Dispose();
+                keys.Dispose();
                 entityTypes.Dispose();
                 values.Dispose();
             }
@@ -1570,6 +1573,7 @@ namespace ZG
         public struct ParallelWriter
         {
             private UnsafeBuffer.ParallelWriter __buffer;
+            private UnsafeParallelHashSet<Key>.ParallelWriter __keys;
             private UnsafeParallelMultiHashMap<Entity, TypeIndex>.ParallelWriter __entityTypes;
             private UnsafeParallelMultiHashMap<Key, Value>.ParallelWriter __values;
 
@@ -1586,6 +1590,7 @@ namespace ZG
 #endif
 
                 __buffer = container._info->buffer.parallelWriter;
+                __keys = container._info->keys.AsParallelWriter();
                 __entityTypes = container._info->entityTypes.AsParallelWriter();
                 __values = container._info->values.AsParallelWriter();
             }
@@ -1631,11 +1636,12 @@ namespace ZG
 
             private void __Set(int typeIndex, in Entity entity, in Command command)
             {
-                __entityTypes.Add(entity, typeIndex);
-
                 Key key;
                 key.entity = entity;
                 key.typeIndex = typeIndex;
+
+                if(__keys.Add(key))
+                    __entityTypes.Add(entity, typeIndex);
 
                 Value value;
                 value.index = 0;
@@ -2048,7 +2054,7 @@ namespace ZG
             container.SetBuffer(option, entity, values);
         }
 
-        public void SetBuffer<T>(BufferOption option, in Entity entity, in T[] values) where T : unmanaged, IBufferElementData
+        public void SetBuffer<T>(BufferOption option, in Entity entity, params T[] values) where T : unmanaged, IBufferElementData
         {
             CompleteDependency();
 

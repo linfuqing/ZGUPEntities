@@ -699,16 +699,18 @@ namespace ZG
         {
             if (__entity == Entity.Null)
             {
-                if (status != GameObjectEntityStatus.Creating)
+                switch (status)
                 {
-                    UnityEngine.Assertions.Assert.AreEqual(GameObjectEntityStatus.Deserializing, status);
+                    case GameObjectEntityStatus.Creating:
+                        return true;
+                    case GameObjectEntityStatus.Deserializing:
+                        __BuildArchetypeIfNeed(false);
 
-                    __BuildArchetypeIfNeed(false);
-
-                    __Rebuild();
+                        __Rebuild();
+                        return true;
+                    default:
+                        break;
                 }
-
-                return true;
             }
 
             return false;
