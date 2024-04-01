@@ -52,7 +52,7 @@ namespace ZG
 
                 completeType = world.Complete(isLoading, layerIndex, value);
 
-                //print($"Landscape Complete Type {completeType} (isLoading : {isLoading}, layerIndex : {layerIndex}, position: {position})");
+                //UnityEngine.Debug.Log($"Landscape Complete Type {completeType} (isLoading : {isLoading}, layerIndex : {layerIndex}, position: {value})");
 
             } while (completeType == LandscapeLoaderCompleteType.Reverse);
 
@@ -89,7 +89,7 @@ namespace ZG
 
                 completeType = manager.Complete(key, isLoading, layerIndex, value);
 
-                //print($"Landscape Complete Type {completeType} (isLoading : {isLoading}, layerIndex : {layerIndex}, position: {position})");
+                //UnityEngine.Debug.Log($"Landscape Complete Type {completeType} (isLoading : {isLoading}, layerIndex : {layerIndex}, position: {value})");
 
             } while (completeType == LandscapeLoaderCompleteType.Reverse);
 

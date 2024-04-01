@@ -463,6 +463,8 @@ namespace ZG
                 __ForceBuildIfNeed();
 
                 UnityEngine.Assertions.Assert.AreNotEqual(Entity.Null, __entity, $"{name} : {status} : {__entity}");
+                
+                //Debug.Log($"Get Entity {__entity} Of {name} In {status}");
 
                 return __entity;
             }

@@ -1,6 +1,7 @@
 using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
+using UnityEngine;
 
 namespace ZG
 {
@@ -422,11 +423,11 @@ namespace ZG
 
         public void Reset(int layerCount)
         {
+            Restore();
+
             int length = __layers.Length;
-            if (length > layerCount)
-                return;
-            
-            __layers.Resize(layerCount, NativeArrayOptions.ClearMemory);
+            if (length <= layerCount)
+                __layers.Resize(layerCount, NativeArrayOptions.ClearMemory);
         }
 
         public int GetCountToLoad(int layerIndex, float minDistance = int.MaxValue)
@@ -453,6 +454,9 @@ namespace ZG
                 ref var layer = ref __layers.ElementAt(i);
                 if(!layer.isCreated)
                     continue;
+
+                if (i == 1)
+                    i = 1;
                 
                 distance = layer.GetMaxDistanceToUnload(out position, maxDistance);
                 if (distance > maxDistance)
@@ -610,7 +614,10 @@ namespace ZG
 
             public void Restore()
             {
-                if (!__value.isEmpty)
+                foreach (var value in __value)
+                    value.Value.Restore();
+                
+                /*if (!__value.isEmpty)
                 {
                     using (var keys = __value.GetKeyArray(Unity.Collections.Allocator.Temp))
                     {
@@ -627,7 +634,7 @@ namespace ZG
                             }
                         }
                     }
-                }
+                }*/
             }
 
             public LandscapeWorld<TValue> GetOrCreate(in TKey key, int layers = 0)

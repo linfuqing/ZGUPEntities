@@ -911,7 +911,7 @@ namespace ZG
         }
     }*/
 
-    public struct LandscapeData : IComponentData//, ISharedComponentData
+    public struct LandscapeData : IComponentData, IEnableableComponent//, ISharedComponentData
     {
         public uint layerMask;
         public BlobAssetReference<LandscapeDefinition> definition;
@@ -944,7 +944,7 @@ namespace ZG
 
             public float DistanceTo(in int3 key)
             {
-                int minLength = int.MaxValue, numPositions = __positions.Length, length;
+                int minLength = int.MaxValue - 1, numPositions = __positions.Length, length;
                 int3 distance, result;
                 float3 position;
                 for (int i = 0; i < numPositions; ++i)
@@ -970,7 +970,7 @@ namespace ZG
             [ReadOnly]
             public NativeArray<LandscapeData> instances;
             [ReadOnly]
-            public NativeArray<Translation> translations;
+            public NativeArray<LocalToWorld> localToWorlds;
             public NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput>.ParallelWriter values;
 
             public void Execute(int index)
@@ -981,7 +981,7 @@ namespace ZG
 
                 LandscapeInput value;
                 value.layerMask = instance.layerMask;
-                value.position = translations[index].Value;
+                value.position = localToWorlds[index].Value.c3.xyz;
 
                 values.Add(instance.definition, value);
             }
@@ -993,14 +993,14 @@ namespace ZG
             [ReadOnly]
             public ComponentTypeHandle<LandscapeData> instanceType;
             [ReadOnly]
-            public ComponentTypeHandle<Translation> translationType;
+            public ComponentTypeHandle<LocalToWorld> localToWorldType;
             public NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput>.ParallelWriter values;
 
             public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
             {
                 Collect collect;
                 collect.instances = chunk.GetNativeArray(ref instanceType);
-                collect.translations = chunk.GetNativeArray(ref translationType);
+                collect.localToWorlds = chunk.GetNativeArray(ref localToWorldType);
                 collect.values = values;
 
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -1059,6 +1059,9 @@ namespace ZG
                                     if ((value.layerMask & (1 << j)) != 0)
                                         positionList.Add(value.position);
                                 }
+                                
+                                if(positionList.IsEmpty)
+                                    continue;
 
                                 positions = positionList.AsArray();
 
@@ -1087,6 +1090,8 @@ namespace ZG
 
         private EntityQuery __levelGroup;
         private EntityQuery __group;
+        private ComponentTypeHandle<LandscapeData> __instanceType;
+        private ComponentTypeHandle<LocalToWorld> __localToWorldType;
         private NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput> __values;
 
         [BurstCompile]
@@ -1100,9 +1105,12 @@ namespace ZG
 
             using (var builder = new EntityQueryBuilder(Allocator.Temp))
                 __group = builder
-                    .WithAll<LandscapeData, Translation>()
+                    .WithAll<LandscapeData, LocalToWorld>()
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
+            
+            __instanceType = state.GetComponentTypeHandle<LandscapeData>(true);
+            __localToWorldType = state.GetComponentTypeHandle<LocalToWorld>(true);
             
             __values = new NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput>(1, Allocator.Persistent);
 
@@ -1122,24 +1130,23 @@ namespace ZG
             /*if (__group.IsEmptyIgnoreFilter)
                 return;*/
 
-            NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput> values = __values;
-            values.Capacity = math.max(values.Capacity, __group.CalculateEntityCount());
+            __values.Capacity = math.max(__values.Capacity, __group.CalculateEntityCount());
 
             CollectEx collect;
-            collect.instanceType = state.GetComponentTypeHandle<LandscapeData>(true);
-            collect.translationType = state.GetComponentTypeHandle<Translation>(true);
-            collect.values = values.AsParallelWriter();
-            var jobHandle = collect.ScheduleParallel(__group, state.Dependency);
+            collect.instanceType = __instanceType.UpdateAsRef(ref state);
+            collect.localToWorldType = __localToWorldType.UpdateAsRef(ref state);
+            collect.values = __values.AsParallelWriter();
+            var jobHandle = collect.ScheduleParallelByRef(__group, state.Dependency);
 
             ref var lookupJobManager = ref manager.lookupJobManager;
             lookupJobManager.CompleteReadWriteDependency();
 
             Apply apply;
             apply.levelIndex = __levelGroup.IsEmptyIgnoreFilter ? 0 : __levelGroup.GetSingleton<LandscapeLevel>().index;
-            apply.positions = values;
+            apply.positions = __values;
             apply.manager = manager.writer;
 
-            jobHandle = apply.Schedule(jobHandle);
+            jobHandle = apply.ScheduleByRef(jobHandle);
 
             lookupJobManager.readWriteJobHandle = jobHandle;
 
