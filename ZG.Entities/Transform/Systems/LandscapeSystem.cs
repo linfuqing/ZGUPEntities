@@ -922,7 +922,8 @@ namespace ZG
         public int index;
     }
 
-    [BurstCompile]
+    //InitializationSystemGroup 为了在yield return null前面
+    [BurstCompile, UpdateInGroup(typeof(InitializationSystemGroup))]
     public partial struct LandscapeSystem : ISystem
     {
         private struct Wrapper : ILandscapeWrapper<int3>
@@ -964,9 +965,13 @@ namespace ZG
                 return minLength;
             }
         }
+        
+        //public readonly static SharedStatic<int> d = SharedStatic<int>.GetOrCreate<LandscapeSystem>();
 
         private struct Collect
         {
+            //[ReadOnly]
+            //public NativeArray<Entity> entityArray;
             [ReadOnly]
             public NativeArray<LandscapeData> instances;
             [ReadOnly]
@@ -978,6 +983,10 @@ namespace ZG
                 var instance = instances[index];
                 if (!instance.definition.IsCreated)
                     return;
+/*#if DEBUG
+                if(d.Data == 1)
+                    UnityEngine.Debug.Log($"{entityArray[index].Index} : {localToWorlds[index].Value.c3.xyz}");
+#endif*/
 
                 LandscapeInput value;
                 value.layerMask = instance.layerMask;
@@ -990,6 +999,10 @@ namespace ZG
         [BurstCompile]
         private struct CollectEx : IJobChunk
         {
+            //#if DEBUG
+            //[ReadOnly]
+            //public EntityTypeHandle entityType;
+            //#endif
             [ReadOnly]
             public ComponentTypeHandle<LandscapeData> instanceType;
             [ReadOnly]
@@ -999,6 +1012,9 @@ namespace ZG
             public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
             {
                 Collect collect;
+//#if DEBUG
+                //collect.entityArray = chunk.GetNativeArray(entityType);
+//#endif
                 collect.instances = chunk.GetNativeArray(ref instanceType);
                 collect.localToWorlds = chunk.GetNativeArray(ref localToWorldType);
                 collect.values = values;
@@ -1129,10 +1145,16 @@ namespace ZG
         {
             /*if (__group.IsEmptyIgnoreFilter)
                 return;*/
+            
+            /*if(LandscapeSystem.d.Data == 1)
+                UnityEngine.Debug.LogError($"{UnityEngine.Time.frameCount} : " + __group.CalculateEntityCount());*/
 
             __values.Capacity = math.max(__values.Capacity, __group.CalculateEntityCount());
 
             CollectEx collect;
+            //#if DEBUG
+            //collect.entityType = state.GetEntityTypeHandle();
+            //#endif
             collect.instanceType = __instanceType.UpdateAsRef(ref state);
             collect.localToWorldType = __localToWorldType.UpdateAsRef(ref state);
             collect.values = __values.AsParallelWriter();

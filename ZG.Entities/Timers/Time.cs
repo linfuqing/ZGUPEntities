@@ -34,7 +34,7 @@ namespace ZG
         public CallbackHandle Cannel(ref TimeManager<CallbackHandle>.Writer timeManager)
         {
             var callbackHandle = this.callbackHandle;
-            return timeManager.Cannel(_value) ? callbackHandle : CallbackHandle.Null;
+            return timeManager.Cancel(_value) ? callbackHandle : CallbackHandle.Null;
         }
 
         public bool Equals(TimeEventHandle other)
@@ -92,6 +92,38 @@ namespace ZG
             }
         }
 
+        public struct Enumerator
+        {
+            private NativeRBTreeEnumerator<TimeEvent<T>> __instance;
+
+            public TimeEvent<T> Current => __instance.Current;
+
+            public Enumerator(in NativeRBTree<TimeEvent<T>> instance)
+            {
+                __instance = instance.GetEnumerator();
+            }
+
+            public bool MoveNext() => __instance.MoveNext();
+        }
+
+        public struct Reader
+        {
+            
+            private NativeRBTree<TimeEvent<T>> __events;
+
+            public bool isEmpty => __events.isEmpty;
+
+            internal Reader(NativeRBTree<TimeEvent<T>> events)
+            {
+                __events = events;
+            }
+
+            public Enumerator GetEnumerator()
+            {
+                return new Enumerator(__events);
+            }
+        }
+
         public struct Writer
         {
             private NativeRBTree<TimeEvent<T>> __events;
@@ -112,7 +144,7 @@ namespace ZG
                 return handle;
             }
 
-            public bool Cannel(in TimeEventHandle<T> handle)
+            public bool Cancel(in TimeEventHandle<T> handle)
             {
                 return __events.Remove(handle._node);
             }
@@ -126,6 +158,8 @@ namespace ZG
         public bool isCreated => __events.isCreated;
 
         public AllocatorManager.AllocatorHandle allocator => __events.allocator;
+
+        public Reader reader => new Reader(__events);
 
         public Writer writer => new Writer(__events);
 
@@ -289,7 +323,7 @@ namespace ZG
 
             var callbackHandle = handle.callbackHandle;
 
-            return timeManager.value.writer.Cannel(handle._value) && callbackHandle.Unregister();
+            return timeManager.value.writer.Cancel(handle._value) && callbackHandle.Unregister();
         }
 
     }
