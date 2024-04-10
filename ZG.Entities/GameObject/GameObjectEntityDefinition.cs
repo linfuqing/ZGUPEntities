@@ -4,11 +4,11 @@ using System.Collections.Generic;
 using Unity.Entities;
 using UnityEngine;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
 
 namespace ZG
 {
-    public class GameObjectEntityDefinition : MonoBehaviour, IEntityComponentRoot
+    [Serializable]
+    public class GameObjectEntityDefinition : IDisposable
     {
         [SerializeField, HideInInspector]
         private int __componentHash;
@@ -17,11 +17,21 @@ namespace ZG
         private GameObjectEntityData __data;
 
         [SerializeField, HideInInspector]
-        private List<Component> __components = null;
+        private List<Component> __components;
 
-        public int componentHash
+        public int componentHash => __componentHash;
+
+        public void Dispose()
         {
-            get => __componentHash;
+            if (__data == null)
+                return;
+            
+#if UNITY_EDITOR
+            if (Application.isPlaying)
+#endif
+            UnityEngine.Object.Destroy(__data);
+
+            __data = null;
         }
 
         public bool Contains(Type type)
@@ -149,13 +159,13 @@ namespace ZG
             info.SetComponents(entity, assigner, __data, __components);
         }
 
-        public GameObjectEntityData Rebuild()
+        public GameObjectEntityData Init(Transform transform)
         {
             if (__data == null)
             {
                 __data = ScriptableObject.CreateInstance<GameObjectEntityData>();
 
-                __data.name = name;
+                __data.name = transform.name;
             }
 
             if (__components != null)
@@ -204,5 +214,84 @@ namespace ZG
 
             return index;
         }
+    }
+
+    [Serializable]
+    public class GameObjectEntityInstance : IDisposable
+    {
+        [SerializeField, HideInInspector]
+        private GameObjectEntityInfo __info;
+
+        private int __instanceID;
+        
+        public bool isValid => __info != null && __info.isValid;
+
+        public World world => __info == null ? null : __info.world;
+
+        public void Dispose()
+        {
+            if (__info == null)
+                return;
+            
+            if (__info.instanceID == __instanceID)
+            {
+#if UNITY_EDITOR
+                if (Application.isPlaying)
+#endif
+                    UnityEngine.Object.Destroy(__info);
+            }
+
+            __info = null;
+        }
+
+        public void Init(int componentHash, string worldName, Transform transform)
+        {
+            __instanceID = transform.GetInstanceID();
+            if (__info != null)
+            {
+                if (!__info.isValid)
+                    __info = null;
+                else if (__info.instanceID != __instanceID || __info.componentHash != componentHash)
+                {
+                    __info.Destroy();
+
+                    __info = null;
+                }
+            }
+            
+            if (__info == null)
+            {
+                __info = GameObjectEntityInfo.Create(__instanceID, componentHash, worldName);
+                __info.name = transform.name;
+            }
+        }
+
+        public void BuildArchetype(
+            bool isPrefab, 
+            string worldName, 
+            Transform transform, 
+            GameObjectEntityDefinition definition, 
+            params ComponentType[] componentTypes)
+        {
+            var data = definition.Init(transform);
+            
+            Init(definition.componentHash, worldName, transform);
+
+            __info.Rebuild(
+                    isPrefab, 
+                    data,
+                    componentTypes);
+        }
+        
+        public void CreateEntity(
+            GameObjectEntityDefinition definition, 
+            ref Entity entity, 
+            ref EntityCommandFactory factory, 
+            out EntityComponentAssigner assigner, 
+            params ComponentType[] runtimeComponentTypes)
+        {
+            definition.CreateEntityDefinition(__info, ref entity, ref factory, out assigner, runtimeComponentTypes);
+        }
+
     }
 }

@@ -50,7 +50,7 @@ namespace ZG
         public GCHandle value; 
     }
 
-    public class GameObjectEntity : GameObjectEntityDefinition, IGameObjectEntity, ISerializationCallbackReceiver
+    public sealed class GameObjectEntity : MonoBehaviour, IGameObjectEntity, IEntityComponentRoot, ISerializationCallbackReceiver
     {
         public enum DeserializedType
         {
@@ -61,10 +61,9 @@ namespace ZG
 
         internal class DestroiedEntity : IDisposable
         {
-            public int instanceID;
             public GameObjectEntityStatus status;
             public Entity entity;
-            public GameObjectEntityInfo info;
+            public GameObjectEntityInstance instance;
 
             private DestroiedEntity __next;
 
@@ -103,7 +102,7 @@ namespace ZG
                         break;
                     }
 
-                } while (System.Threading.Interlocked.CompareExchange(ref __pool, destroiedEntity.__next, destroiedEntity) != destroiedEntity);
+                } while (Interlocked.CompareExchange(ref __pool, destroiedEntity.__next, destroiedEntity) != destroiedEntity);
 
                 destroiedEntity.__Init(instance);
 
@@ -115,7 +114,7 @@ namespace ZG
                 do
                 {
                     __next = __pool;
-                } while (System.Threading.Interlocked.CompareExchange(ref __pool, this, __next) != __next);
+                } while (Interlocked.CompareExchange(ref __pool, this, __next) != __next);
             }
 
             public void AsManaged()
@@ -123,15 +122,14 @@ namespace ZG
                 do
                 {
                     __next = __head;
-                } while (System.Threading.Interlocked.CompareExchange(ref __head, this, __next) != __next);
+                } while (Interlocked.CompareExchange(ref __head, this, __next) != __next);
             }
 
             private void __Init(GameObjectEntity instance)
             {
-                instanceID = instance.__instanceID;
                 status = instance.status;
                 entity = instance.__entity;
-                info = instance.__info;
+                this.instance = instance._instance;
             }
         }
 
@@ -139,18 +137,19 @@ namespace ZG
 
         [SerializeField]
         internal string _worldName;
-
-        [SerializeField, HideInInspector]
-        private GameObjectEntityInfo __info;
-
+        
         [SerializeField]
         internal GameObjectEntity _parent;
+
+        [SerializeField] 
+        internal GameObjectEntityDefinition _definition;
+        
+        [SerializeField]
+        internal GameObjectEntityInstance _instance;
 
         private GameObjectEntity __next;
 
         private Entity __entity;
-
-        private int __instanceID;
 
         private bool __isActive;
 
@@ -158,34 +157,7 @@ namespace ZG
 
         private static Entity __prefab;
 
-        //private static ConcurrentDictionary<int, GameObjectEntityInfo> __instancedEntities = new ConcurrentDictionary<int, GameObjectEntityInfo>();
-        //private readonly static ConcurrentBag<DestroiedEntity> DestoriedEntities = new ConcurrentBag<DestroiedEntity>();
-
-        private readonly static List<ComponentType> ComponentTypeList = new List<ComponentType>();
-
-        //private static ConcurrentDictionary<int, GameObjectEntityInfo> __infos = new ConcurrentDictionary<int, GameObjectEntityInfo>();
-        //private static Dictionary<Scene, LinkedList<GameObjectEntity>> __sceneEntities = null;
-        //private LinkedListNode<GameObjectEntity> __sceneLinkedListNode;
-
-        /*[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        private static void __Init()
-        {
-            SceneManager.sceneUnloaded += __DestroyEntities;
-        }
-
-        public static void __DestroyEntities(Scene scene)
-        {
-            if (__sceneEntities == null || !__sceneEntities.TryGetValue(scene, out var sceneEntities))
-                return;
-
-            LinkedListNode<GameObjectEntity> sceneLinkedListNode = sceneEntities == null ? null : sceneEntities.First;
-            while(sceneLinkedListNode != null)
-            {
-                sceneLinkedListNode.Value.OnDestroy();
-
-                sceneLinkedListNode = sceneEntities.First;
-            }
-        }*/
+        private static readonly List<ComponentType> ComponentTypeList = new List<ComponentType>();
 
         private static bool __CreateDeserializedEntity(ref DeserializedType type)
         {
@@ -522,17 +494,28 @@ namespace ZG
                 if (!Application.isPlaying)
                     return null;
 #endif
-                if (__info == null || !__info.isValid)
+                if (_instance == null)
+                    _instance = new GameObjectEntityInstance();
+
+                if (!_instance.isValid)
                 {
-                    __instanceID = GetInstanceID();
+                    var transform = base.transform;
+                    
+                    if (_definition == null)
+                        _definition = new GameObjectEntityDefinition();
 
-                    if (__info != null && __info.instanceID == __instanceID)
-                        DestroyImmediate(__info);
+                    int componentHash = _definition.componentHash;
+                    if (componentHash == 0)
+                    {
+                        _definition.Init(transform);
 
-                    __info = GameObjectEntityInfo.Create(__instanceID, componentHash, _worldName);
+                        componentHash = _definition.componentHash;
+                    }
+
+                    _instance.Init(componentHash, _worldName, transform);
                 }
 
-                return __info == null ? null : __info.world;
+                return _instance.world;
             }
         }
 
@@ -579,16 +562,15 @@ namespace ZG
 
         ~GameObjectEntity()
         {
-            if (status != GameObjectEntityStatus.Destroied && (object)__info != null)
+            if (status != GameObjectEntityStatus.Destroied/* && (object)__info != null*/)
                 DestroiedEntity.Create(this).AsManaged();
-                //DestoriedEntities.Add(destroiedEntity);
         }
 
-        public new bool Contains(Type type)
+        public bool Contains(Type type)
         {
             __BuildArchetypeIfNeed(false);
 
-            return base.Contains(type);
+            return _definition.Contains(type);
         }
 
         public void RebuildArchetype()
@@ -608,67 +590,10 @@ namespace ZG
                 __Rebuild();
         }
 
-        protected void Awake()
+        public void Refresh()
         {
-            __ForceBuildIfNeed();
-        }
-
-#if UNITY_EDITOR
-        private bool __isNamed;
-#endif
-
-        protected void OnEnable()
-        {
-            isActive = true;
-
-#if UNITY_EDITOR
-            if (isCreated && !__isNamed)
-            {
-                __isNamed = true;
-
-                entityManager.SetName(__entity, name);
-            }
-#endif
-        }
-
-        protected void OnDisable()
-        {
-            isActive = false;
-
-            /*if (__entity != Entity.Null)
-            {
-                if (onChanged != null)
-                    onChanged.Invoke(Entity.Null);
-
-                this.DestroyEntity(__entity);
-
-                __entity = Entity.Null;
-            }*/
-        }
-
-        protected void OnDestroy()
-        {
-            /*if (__sceneLinkedListNode != null)
-            {
-                __sceneLinkedListNode.List.Remove(__sceneLinkedListNode);
-
-                __sceneLinkedListNode = null;
-            }*/
-
-            /*bool isInstance = this.isInstance;
-            if (!isInstance)
-                __infos.TryRemove(GetInstanceID(), out _);*/
-
-            if ((object)__info != null)
-            {
-                using (var destroiedEntity = DestroiedEntity.Create(this))
-                    destroiedEntity.Execute();
-
-                __info = null;
-            }
-
-            __entity = Entity.Null;
-            status = GameObjectEntityStatus.Destroied;
+            if (_definition != null)
+                _definition.Refresh();
         }
 
         internal void _Create(in Entity entity)
@@ -722,29 +647,28 @@ namespace ZG
         {
             status = GameObjectEntityStatus.Creating;
 
+            UnityEngine.Assertions.Assert.AreEqual(Entity.Null, __entity);
+
+            __entity = _parent == null ? __prefab : Entity.Null;
+
             var factory = this.GetFactory();
 
             ComponentTypeList.Clear();
 
-            GetRuntimeComponentTypes(ComponentTypeList);
+            _definition.GetRuntimeComponentTypes(ComponentTypeList);
 
             if (_parent == null)
             {
                 var parent = transform.parent;
                 if (parent != null)
-                {
                     _parent = parent.GetComponentInParent<GameObjectEntity>(true);
-                    if(_parent != null)
-                        ComponentTypeList.Add(ComponentType.ReadOnly<EntityParent>());
-                }
             }
 
-            UnityEngine.Assertions.Assert.AreEqual(Entity.Null, __entity);
+            if(_parent != null)
+                ComponentTypeList.Add(ComponentType.ReadOnly<EntityParent>());
 
-            __entity = _parent == null ? __prefab : Entity.Null;
-
-            CreateEntityDefinition(__info, ref __entity, ref factory, out var assigner, ComponentTypeList);
-
+            _instance.CreateEntity(_definition, ref __entity, ref factory, out var assigner, ComponentTypeList.ToArray());
+            
             var entityManager = world.EntityManager;
             if (isActiveAndEnabled)
                 isActive = true;
@@ -777,18 +701,6 @@ namespace ZG
 
         private void __RebuildArchetype(bool isPrefab)
         {
-            var data = Rebuild();
-
-            if (__info == null || !__info.isValid || __info.componentHash != componentHash)
-            {
-                __instanceID = GetInstanceID();
-                if (__info != null && __info.instanceID == __instanceID)
-                    __info.Destroy();
-
-                __info = GameObjectEntityInfo.Create(__instanceID, componentHash, _worldName);
-                __info.name = name;
-            }
-
             if (_parent == null)
             {
                 var parent = transform.parent;
@@ -796,35 +708,22 @@ namespace ZG
                     _parent = parent.GetComponentInParent<GameObjectEntity>(true);
             }
 
-            if (_parent == null)
-                __info.Rebuild(
-                    isPrefab, 
-                    data,
-                    GameObjectEntityUtility.ComponentTypes);
-            else
-                __info.Rebuild(
-                    isPrefab, 
-                    data,
-                    GameObjectEntityUtility.ComponentTypesWithParent);
+            if (_definition == null)
+                _definition = new GameObjectEntityDefinition();
 
-            /*if(isPrefab)
-                __infos[GetInstanceID()] = __info;*/
+            if (_parent == null)
+                _instance.BuildArchetype(isPrefab, _worldName, transform, _definition, GameObjectEntityUtility.ComponentTypes);
+            else
+                _instance.BuildArchetype(isPrefab, _worldName, transform, _definition, GameObjectEntityUtility.ComponentTypesWithParent);
         }
 
         private void __BuildArchetypeIfNeed(bool isPrefab)
         {
-            if (__info == null || !__info.isValid)
-            {
-                /*if (isPrefab && __infos.TryGetValue(GetInstanceID(), out __info) && __info != null && __info.isValid)
-                {
-                    Rebuild();
-
-                    if(componentHash == __info.componentHash)
-                        return;
-                }*/
-
+            if (_instance == null)
+                _instance = new GameObjectEntityInstance();
+            
+            if (!_instance.isValid)
                 __RebuildArchetype(isPrefab);
-            }
         }
 
         private void __Deserialize()
@@ -839,7 +738,68 @@ namespace ZG
             } while (Interlocked.CompareExchange(ref __deserializedEntities, this, __next) != __next);
         }
 
-        //Entity IGameObjectEntity.entity => __entity;
+        void Awake()
+        {
+            __ForceBuildIfNeed();
+        }
+
+#if UNITY_EDITOR
+        private bool __isNamed;
+#endif
+
+        void OnEnable()
+        {
+            isActive = true;
+
+#if UNITY_EDITOR
+            if (isCreated && !__isNamed)
+            {
+                __isNamed = true;
+
+                entityManager.SetName(__entity, name);
+            }
+#endif
+        }
+
+        void OnDisable()
+        {
+            isActive = false;
+
+            /*if (__entity != Entity.Null)
+            {
+                if (onChanged != null)
+                    onChanged.Invoke(Entity.Null);
+
+                this.DestroyEntity(__entity);
+
+                __entity = Entity.Null;
+            }*/
+        }
+
+        void OnDestroy()
+        {
+            /*if (__sceneLinkedListNode != null)
+            {
+                __sceneLinkedListNode.List.Remove(__sceneLinkedListNode);
+
+                __sceneLinkedListNode = null;
+            }*/
+
+            /*bool isInstance = this.isInstance;
+            if (!isInstance)
+                __infos.TryRemove(GetInstanceID(), out _);*/
+
+            if (_instance != null)
+            {
+                using (var destroiedEntity = DestroiedEntity.Create(this))
+                    destroiedEntity.Execute();
+
+                _instance = null;
+            }
+
+            __entity = Entity.Null;
+            status = GameObjectEntityStatus.Destroied;
+        }
 
         void ISerializationCallbackReceiver.OnAfterDeserialize()
         {
@@ -865,7 +825,7 @@ namespace ZG
                     break;*/
                 case GameObjectEntityStatus.Creating:
                 case GameObjectEntityStatus.Created:
-                    if (__info != null && __info.isValid)
+                    if (_instance !=  null && _instance.isValid)
                         return;
                     break;
                 default:
@@ -879,7 +839,7 @@ namespace ZG
 
             status = GameObjectEntityStatus.Deserializing;
 
-            isInstance = __info != null && __info.isValid;
+            isInstance = _instance != null && _instance.isValid;
 
             __Deserialize();
 
@@ -1075,15 +1035,13 @@ namespace ZG
 
         internal static void Execute(this GameObjectEntity.DestroiedEntity destroiedEntity)
         {
-            _Add<GameObjectEntityInstanceCount>(destroiedEntity.info.world, destroiedEntity.entity, destroiedEntity.status, -1);
+            if (destroiedEntity.instance == null)
+                return;
+            
+            if(destroiedEntity.instance.isValid)
+                _Add<GameObjectEntityInstanceCount>(destroiedEntity.instance.world, destroiedEntity.entity, destroiedEntity.status, -1);
 
-            if (destroiedEntity.info.instanceID == destroiedEntity.instanceID)
-            {
-#if UNITY_EDITOR
-                if (Application.isPlaying)
-#endif
-                    UnityEngine.Object.Destroy(destroiedEntity.info);
-            }
+            destroiedEntity.instance.Dispose();
         }
 
         internal static void Destroy(this GameObjectEntityInfo info)

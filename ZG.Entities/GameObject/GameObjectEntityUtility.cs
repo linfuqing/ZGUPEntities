@@ -14,6 +14,25 @@ namespace ZG
     {
         private static EntityCommandSharedSystemGroup __commander = null;
 
+        public static Entity BakeToEntity(
+            this Transform transform, 
+            string worldName, 
+            out EntityCommandFactory factory)
+        {
+            Entity entity = Entity.Null;
+            using(var definition = new GameObjectEntityDefinition())
+            using (var instance = new GameObjectEntityInstance())
+            {
+                instance.BuildArchetype(false, worldName, transform, definition);
+
+                factory = __GetCommandSystem(instance.world).factory;
+
+                instance.CreateEntity(definition, ref entity, ref factory, out _);
+            }
+
+            return entity;
+        }
+
         public static void AddComponent<T>(this IGameObjectEntity gameObjectEntity)
         {
             var commandSystem = __GetCommandSystem(gameObjectEntity);
