@@ -596,6 +596,18 @@ namespace ZG
                 _definition.Refresh();
         }
 
+        public void CreateEntity(
+            ref Entity entity, 
+            ref EntityCommandFactory factory, 
+            out EntityComponentAssigner assigner, 
+            params ComponentType[] componentTypes)
+        {
+            __CreateEntity(ref entity, ref factory, out assigner, componentTypes);
+            
+            assigner.SetComponentEnabled<GameObjectEntityActiveCount>(entity, false);
+            assigner.SetComponentEnabled<GameObjectEntityInstanceCount>(entity, false);
+        }
+        
         internal void _Create(in Entity entity)
         {
             UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{name} : {status} : {entity}");
@@ -621,7 +633,30 @@ namespace ZG
             if (__onCreated != null)
                 __onCreated();
         }
+        
+        private void __CreateEntity(
+            ref Entity entity, 
+            ref EntityCommandFactory factory, 
+            out EntityComponentAssigner assigner, 
+            params ComponentType[] componentTypes)
+        {
+            if (!factory.isCreated)
+                factory = this.GetFactory();
+            
+            ComponentTypeList.Clear();
 
+            _definition.GetRuntimeComponentTypes(ComponentTypeList);
+
+            if(_parent != null)
+                ComponentTypeList.AddRange(componentTypes);
+
+            _instance.CreateEntity(_definition, ref entity, ref factory, out assigner, ComponentTypeList.ToArray());
+            
+            EntityOrigin origin;
+            origin.entity = entity;
+            assigner.SetComponentData(entity, origin);
+        }
+        
         private bool __ForceBuildIfNeed()
         {
             if (__entity == Entity.Null)
@@ -651,12 +686,6 @@ namespace ZG
 
             __entity = _parent == null ? __prefab : Entity.Null;
 
-            var factory = this.GetFactory();
-
-            ComponentTypeList.Clear();
-
-            _definition.GetRuntimeComponentTypes(ComponentTypeList);
-
             if (_parent == null)
             {
                 var parent = transform.parent;
@@ -664,11 +693,14 @@ namespace ZG
                     _parent = parent.GetComponentInParent<GameObjectEntity>(true);
             }
 
-            if(_parent != null)
-                ComponentTypeList.Add(ComponentType.ReadOnly<EntityParent>());
+            EntityCommandFactory factory = default;
 
-            _instance.CreateEntity(_definition, ref __entity, ref factory, out var assigner, ComponentTypeList.ToArray());
-            
+            EntityComponentAssigner assigner;
+            if (_parent == null)
+                __CreateEntity(ref __entity, ref factory, out assigner);
+            else
+                __CreateEntity(ref __entity, ref factory, out assigner, ComponentType.ReadOnly<EntityParent>());
+
             var entityManager = world.EntityManager;
             if (isActiveAndEnabled)
                 isActive = true;
@@ -682,10 +714,6 @@ namespace ZG
             GameObjectEntityHandle handle;
             handle.value = GCHandle.Alloc(this);
             assigner.SetBuffer(EntityComponentAssigner.BufferOption.Append, __entity, handle);
-
-            EntityOrigin origin;
-            origin.entity = __entity;
-            assigner.SetComponentData(__entity, origin);
 
             if (_parent != null)
             {

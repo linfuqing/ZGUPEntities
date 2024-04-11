@@ -9,7 +9,13 @@ namespace ZG
 {
     public interface IEntityComponentRoot
     {
-
+        string worldName { get; }
+        
+        void CreateEntity(
+            ref Entity entity,
+            ref EntityCommandFactory factory,
+            out EntityComponentAssigner assigner,
+            params ComponentType[] componentTypes);
     }
 
     public interface IEntityComponent

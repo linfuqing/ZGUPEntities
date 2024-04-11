@@ -662,8 +662,8 @@ namespace ZG
                 //Debug.Log($"Apply {entity} To {entityOrigins[index].entity}");
                 foreach (var gcHandle in gcHandles[index])
                 {
-                    UnityEngine.Assertions.Assert.IsTrue(gcHandle.value.IsAllocated);
-                    gameObjectEntity = (GameObjectEntity)gcHandle.value.Target;
+                    //UnityEngine.Assertions.Assert.IsTrue(gcHandle.value.IsAllocated);
+                    gameObjectEntity = gcHandle.value.IsAllocated ? (GameObjectEntity)gcHandle.value.Target : null;
                     if (gameObjectEntity != null)
                     {
                         try

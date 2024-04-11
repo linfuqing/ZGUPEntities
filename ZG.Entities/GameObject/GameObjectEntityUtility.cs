@@ -14,23 +14,64 @@ namespace ZG
     {
         private static EntityCommandSharedSystemGroup __commander = null;
 
-        public static Entity BakeToEntity(
+        public static void BakeToEntity(
             this Transform transform, 
             string worldName, 
-            out EntityCommandFactory factory)
+            ref EntityCommandFactory factory, 
+            ref NativeList<Entity> entities, 
+            in Entity parent = default, 
+            params ComponentType[] componentTypes)
         {
             Entity entity = Entity.Null;
-            using(var definition = new GameObjectEntityDefinition())
-            using (var instance = new GameObjectEntityInstance())
+            
+            var entityComponentRoot = transform.GetComponent<IEntityComponentRoot>();
+            if (entityComponentRoot == null || entityComponentRoot.worldName != worldName)
             {
-                instance.BuildArchetype(false, worldName, transform, definition);
+                using (var definition = new GameObjectEntityDefinition())
+                using (var instance = new GameObjectEntityInstance())
+                {
+                    if (parent == Entity.Null)
+                        instance.BuildArchetype(false, worldName, transform, definition);
+                    else
+                        instance.BuildArchetype(false, worldName, transform, definition,
+                            ComponentType.ReadOnly<EntityParent>());
 
-                factory = __GetCommandSystem(instance.world).factory;
+                    if (!factory.isCreated)
+                        factory = __GetCommandSystem(instance.world).factory;
 
-                instance.CreateEntity(definition, ref entity, ref factory, out _);
+                    instance.CreateEntity(definition, ref entity, ref factory, out _, componentTypes);
+                }
             }
+            else
+                entityComponentRoot.CreateEntity(ref entity, ref factory, out _, componentTypes);
 
-            return entity;
+            entities.Add(entity);
+
+            if (parent != Entity.Null)
+            {
+                EntityParent entityParent;
+                entityParent.entity = parent;
+                factory.instanceAssigner.SetBuffer(EntityComponentAssigner.BufferOption.AppendUnique, entity,
+                    entityParent);
+            }
+            
+            var roots = new List<IEntityComponentRoot>();
+            foreach (Transform child in transform)
+            {
+                roots.Clear();
+                child.GetComponentsInChildren<IEntityComponentRoot>(
+                    true, 
+                    roots.Add,
+                    typeof(IEntityComponentRoot));
+
+                foreach (var root in roots)
+                    BakeToEntity(
+                        ((Component)root).transform, 
+                        worldName, 
+                        ref factory, 
+                        ref entities, 
+                        entity);
+            }
         }
 
         public static void AddComponent<T>(this IGameObjectEntity gameObjectEntity)
