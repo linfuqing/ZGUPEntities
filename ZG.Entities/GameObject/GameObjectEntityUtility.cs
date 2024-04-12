@@ -24,22 +24,26 @@ namespace ZG
         {
             Entity entity = Entity.Null;
             
+            if (parent != Entity.Null)
+            {
+                int numComponentTypes = componentTypes == null ? 0 : componentTypes.Length;
+                Array.Resize(ref componentTypes, numComponentTypes + 1);
+
+                componentTypes[numComponentTypes] = ComponentType.ReadOnly<EntityParent>();
+            }
+
             var entityComponentRoot = transform.GetComponent<IEntityComponentRoot>();
             if (entityComponentRoot == null || entityComponentRoot.worldName != worldName)
             {
                 using (var definition = new GameObjectEntityDefinition())
                 using (var instance = new GameObjectEntityInstance())
                 {
-                    if (parent == Entity.Null)
-                        instance.BuildArchetype(false, worldName, transform, definition);
-                    else
-                        instance.BuildArchetype(false, worldName, transform, definition,
-                            ComponentType.ReadOnly<EntityParent>());
-
+                    instance.BuildArchetype(false, worldName, transform, definition, componentTypes);
+                    
                     if (!factory.isCreated)
                         factory = __GetCommandSystem(instance.world).factory;
 
-                    instance.CreateEntity(definition, ref entity, ref factory, out _, componentTypes);
+                    instance.CreateEntity(definition, ref entity, ref factory, out _);
                 }
             }
             else
@@ -70,7 +74,8 @@ namespace ZG
                         worldName, 
                         ref factory, 
                         ref entities, 
-                        entity);
+                        entity, 
+                        componentTypes);
             }
         }
 
