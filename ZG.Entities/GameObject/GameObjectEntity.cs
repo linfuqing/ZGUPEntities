@@ -592,8 +592,10 @@ namespace ZG
 
         public void Refresh()
         {
+#if UNITY_EDITOR
             if (_definition != null)
                 _definition.Refresh();
+#endif
         }
 
         public void CreateEntity(
