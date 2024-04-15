@@ -455,7 +455,7 @@ namespace ZG
     }
     
     #if USING_DEFAULT_FRAME_SYNC_SYSTEM_GROUP
-    [CreateAfter(typeof(RollbackCommandSystem)), UpdateInGroup(typeof(GameSyncSystemGroup)), SystemGroupInherit(typeof(FrameSyncSystemGroup))]
+    [CreateAfter(typeof(RollbackCommandSystem)), SystemGroupInherit(typeof(FrameSyncSystemGroup))]
     public struct FrameSyncSystemGroupDefault : ISystem
     {
         public void OnCreate(ref SystemState state)
