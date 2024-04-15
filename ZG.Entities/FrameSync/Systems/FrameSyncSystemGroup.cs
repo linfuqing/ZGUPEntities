@@ -454,8 +454,8 @@ namespace ZG
         }*/
     }
     
-    #if FRAME_SYNC_SYSTEM_GROUP_INSTANCE
-    public struct FrameSyncSystemGroupInstance : ISystem
+    #if USING_DEFAULT_FRAME_SYNC_SYSTEM_GROUP
+    public struct FrameSyncSystemGroupDefault : ISystem
     {
         public void OnCreate(ref SystemState state)
         {
