@@ -529,4 +529,16 @@ namespace ZG
             return groupSys;
         }
     }
+    
+    public class WorldBootStrap : ICustomBootstrap
+    {
+        public bool Initialize(string defaultWorldName)
+        {
+            var world = new World(defaultWorldName);
+
+            World.DefaultGameObjectInjectionWorld = world;
+
+            return true;
+        }
+    }
 }

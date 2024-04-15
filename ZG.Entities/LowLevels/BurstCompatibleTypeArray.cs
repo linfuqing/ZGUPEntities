@@ -1054,4 +1054,17 @@ namespace ZG
             set { ((DynamicComponentTypeHandle*)UnsafeUtility.AddressOf(ref this))[index] = value; }
         }
     }
+
+    public static class BurstCompatibleTypeArrayUtility
+    {
+        public static ref BurstCompatibleTypeArrayReadOnly UpdateAsRef(this ref BurstCompatibleTypeArrayReadOnly instance, ref SystemState state)
+        {
+            for (int i = 0; i < BurstCompatibleTypeArrayReadOnly.LENGTH; ++i)
+            {
+                instance[i].Update(ref state);
+            }
+
+            return ref instance;
+        }
+    }
 }
