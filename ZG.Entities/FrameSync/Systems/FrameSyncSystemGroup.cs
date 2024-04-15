@@ -453,6 +453,26 @@ namespace ZG
             syncFrameIndex = realFrameIndex;
         }*/
     }
+    
+    #if FRAME_SYNC_SYSTEM_GROUP_INSTANCE
+    public struct FrameSyncSystemGroupInstance : ISystem
+    {
+        public void OnCreate(ref SystemState state)
+        {
+            new FrameSyncSystemGroup(ref state);
+        }
+
+        public void OnDestroy(ref SystemState state)
+        {
+            
+        }
+
+        public void OnUpdate(ref SystemState state)
+        {
+            
+        }
+    }
+    #endif
 
     //[BurstCompile]
     public static class FrameSyncUtility
