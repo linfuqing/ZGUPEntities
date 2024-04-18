@@ -948,8 +948,14 @@ namespace ZG
             return result || factory.HasComponent<TValue>(entity);
         }
 
-        private static EntityCommandSharedSystemGroup __GetCommandSystem<T>(in T gameObjectEntity) where T : IGameObjectEntity
-            => __GetCommandSystem(gameObjectEntity.world);
+        private static EntityCommandSharedSystemGroup __GetCommandSystem<T>(in T gameObjectEntity)
+            where T : IGameObjectEntity
+        {
+            if (gameObjectEntity == null)
+                return null;
+            
+            return __GetCommandSystem(gameObjectEntity.world);
+        }
 
         private static EntityCommandSharedSystemGroup __GetCommandSystem(World world)
         {

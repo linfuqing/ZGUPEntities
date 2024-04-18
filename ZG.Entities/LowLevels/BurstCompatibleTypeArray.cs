@@ -521,13 +521,8 @@ namespace ZG
         [NativeDisableContainerSafetyRestriction] public DynamicComponentTypeHandle t255;*/
 
         public const int LENGTH = 128;
-
-        public unsafe DynamicComponentTypeHandle this[int index]
-        {
-            get { return ((DynamicComponentTypeHandle*)UnsafeUtility.AddressOf(ref this))[index]; }
-
-            set { ((DynamicComponentTypeHandle*)UnsafeUtility.AddressOf(ref this))[index] = value; }
-        }
+        
+        public unsafe ref DynamicComponentTypeHandle this[int index] => ref UnsafeUtility.ArrayElementAsRef<DynamicComponentTypeHandle>(UnsafeUtility.AddressOf(ref this), index);
     }
     
     [StructLayout(LayoutKind.Sequential)]
@@ -1047,12 +1042,7 @@ namespace ZG
 
         public const int LENGTH = 128;
 
-        public unsafe DynamicComponentTypeHandle this[int index]
-        {
-            get { return ((DynamicComponentTypeHandle*)UnsafeUtility.AddressOf(ref this))[index]; }
-
-            set { ((DynamicComponentTypeHandle*)UnsafeUtility.AddressOf(ref this))[index] = value; }
-        }
+        public unsafe ref DynamicComponentTypeHandle this[int index] => ref UnsafeUtility.ArrayElementAsRef<DynamicComponentTypeHandle>(UnsafeUtility.AddressOf(ref this), index);
     }
 
     public static class BurstCompatibleTypeArrayUtility
@@ -1060,9 +1050,7 @@ namespace ZG
         public static ref BurstCompatibleTypeArrayReadOnly UpdateAsRef(this ref BurstCompatibleTypeArrayReadOnly instance, ref SystemState state)
         {
             for (int i = 0; i < BurstCompatibleTypeArrayReadOnly.LENGTH; ++i)
-            {
                 instance[i].Update(ref state);
-            }
 
             return ref instance;
         }

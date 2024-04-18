@@ -45,7 +45,7 @@ namespace ZG
     }
 
     [AttributeUsage(AttributeTargets.Property, AllowMultiple = true, Inherited = false)]
-    public class EntityComponentsAttribute : Attribute
+    public class EntityComponentsAttribute : UnityEngine.Scripting.PreserveAttribute
     {
         public EntityComponentsAttribute()
         {
