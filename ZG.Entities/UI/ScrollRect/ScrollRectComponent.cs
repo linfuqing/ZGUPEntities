@@ -409,7 +409,7 @@ namespace ZG
                 __info.isVail = false;//this.RemoveComponent<ScrollRectInfo>();
         }
 
-        private void __EnableNode(in float2 velocity, in float2 normalizedPosition)
+        private int2 __EnableNode(in float2 velocity, in float2 normalizedPosition)
         {
             __data = data;
 
@@ -432,28 +432,18 @@ namespace ZG
 
                 this.index = index;
             }
+
+            return index;
         }
 
-        private bool __EnableNode(in float2 normalizedPosition)
+        private int2 __EnableNode(in float2 normalizedPosition)
         {
-            ScrollRect scrollRect = this.scrollRect;
-            if (scrollRect == null)
-                return false;
-
-            __EnableNode(scrollRect.velocity, normalizedPosition);
-
-            return true;
+            return __EnableNode(scrollRect.velocity, normalizedPosition);
         }
 
-        private bool __EnableNode()
+        private int2 __EnableNode()
         {
-            ScrollRect scrollRect = this.scrollRect;
-            if (scrollRect == null)
-                return false;
-
-            __EnableNode(scrollRect.velocity, scrollRect.normalizedPosition);
-            
-            return true;
+            return __EnableNode(scrollRect.velocity, scrollRect.normalizedPosition);
         }
 
         private void __DisableNode()
@@ -477,7 +467,11 @@ namespace ZG
 
         void IEndDragHandler.OnEndDrag(PointerEventData eventData)
         {
-            __EnableNode(scrollRect.normalizedPosition);
+            ScrollRectInfo info;
+            info.isVail = true;
+            info.index = __EnableNode(scrollRect.normalizedPosition);
+            
+            __info = info;
         }
 
         void IDragHandler.OnDrag(PointerEventData eventData)

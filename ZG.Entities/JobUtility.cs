@@ -7,7 +7,7 @@ using Unity.Collections;
 namespace ZG
 {
     [Serializable]
-    public struct EntityData<T> where T : struct
+    public struct EntityData<T> : IComparable<EntityData<T>> where T : struct
     {
         public Entity entity;
         public T value;
@@ -16,6 +16,11 @@ namespace ZG
         {
             this.entity = entity;
             this.value = value;
+        }
+
+        public int CompareTo(EntityData<T> other)
+        {
+            return entity.CompareTo(other.entity);
         }
     }
 

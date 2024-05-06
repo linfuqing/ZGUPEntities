@@ -1,11 +1,7 @@
-using System;
-using System.Collections.Generic;
-using Unity.Jobs;
 using Unity.Entities;
 using Unity.Collections;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
-using UnityEngine.UIElements;
 
 namespace ZG
 {
@@ -150,7 +146,9 @@ namespace ZG
                 else
                 {
                     status = states[i];
-                    if (status.systemHandle == SystemHandle.Null && info.systemHandle != SystemHandle.Null && info.systemHandle != systemHandle)
+                    if (status.systemHandle == SystemHandle.Null && 
+                        info.systemHandle != SystemHandle.Null && 
+                        info.systemHandle != systemHandle)
                         continue;
 
                     if (!isEntry)
@@ -335,7 +333,7 @@ namespace ZG
 
                     if (j < length)
                         instances.ElementAt(j).executorSystemHandle = executorSystemHandle;
-                    else
+                    else 
                     {
                         instance.systemHandle = systemHandle;
                         instance.executorSystemHandle = executorSystemHandle;

@@ -29,72 +29,9 @@ namespace ZG
         }
     }
 
-    /*[UpdateInGroup(typeof(TimeSystemGroup))]
-    public class StateMachineExecutorGroup : ComponentSystemGroup
-    {
-
-    }*/
-
-    /*public abstract partial class StateMachineSystemBase : SystemBase
-    {
-        private static Pool<StateMachineSystemBase> __systems;
-
-        private int __systemIndex;
-
-        public int systemIndex
-        {
-            get
-            {
-                return __systemIndex;
-            }
-        }
-
-        protected override void OnCreate()
-        {
-            base.OnCreate();
-
-            if (__systems == null)
-                __systems = new Pool<StateMachineSystemBase>();
-
-            __systemIndex = __systems.Add(this);
-        }
-
-        protected override void OnDestroy()
-        {
-            if (__systems != null)
-                __systems.RemoveAt(__systemIndex);
-
-            __systemIndex = -1;
-
-            base.OnDestroy();
-        }
-    }*/
-
     //[UpdateInGroup(typeof(StateMachineSchedulerGroup))]
-    public struct StateMachineSchedulerSystemCore// : StateMachineSystemBase
-        //where TSystem : StateMachineSchedulerSystem<TSchedulerExit, TSchedulerEntry, TFactoryExit, TFactoryEntry, TSystem>
+    public struct StateMachineSchedulerSystemCore
     {
-
-        //[Serializable, InternalBufferCapacity(1)]
-        /*public struct StateMachine : IStateMachine
-        {
-            public SystemHandle executor
-            {
-                get;
-
-                set;
-            }
-        }*/
-
-        /*public abstract partial class StateMachineExecutorSystem<TExecutor, TExecutorFactory> : StateMachineExecutorSystem<StateMachineEscaper, TExecutor, StateMachineFactory<StateMachineEscaper>, TExecutorFactory>
-            where TExecutor : struct, IStateMachineExecutor
-            where TExecutorFactory : struct, IStateMachineFactory<TExecutor>
-        {
-            protected override StateMachineFactory<StateMachineEscaper> _GetExit(ref JobHandle inputDeps)
-            {
-                return default;
-            }
-        }*/
 
         private ComponentTypeHandle<StateMachineStatus> __statusType;
         private ComponentTypeHandle<StateMachineInfo> __infoType;
@@ -214,15 +151,4 @@ namespace ZG
             state.Dependency = executor.ScheduleParallelByRef(runGroup, jobHandle);
         }
     }
-
-    /*public abstract partial class StateMachineSchedulerSystemCore<TSchedulerEntry, TFactoryEntry, TSystem> : StateMachineSchedulerSystem<StateMachineScheduler, TSchedulerEntry, StateMachineFactory<StateMachineScheduler>, TFactoryEntry, TSystem>
-        where TSchedulerEntry : struct, IStateMachineScheduler
-        where TFactoryEntry : struct, IStateMachineFactory<TSchedulerEntry>
-        where TSystem : StateMachineSchedulerSystem<TSchedulerEntry, TFactoryEntry, TSystem>
-    {
-        protected override StateMachineFactory<StateMachineScheduler> _GetExit(ref JobHandle inputDeps)
-        {
-            return default;
-        }
-    }*/
 }

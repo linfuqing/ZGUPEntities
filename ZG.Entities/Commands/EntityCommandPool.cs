@@ -613,9 +613,9 @@ namespace ZG
                 while (--length >= 0)
                 {
                     values = pool.__values[length];
-                    if (values.commands.enumerable.TryPopUnsafe(out value))
+                    if (values.commands.enumerable.TryPop(out value))
                         return true;
-
+                    
                     pool.__values.RemoveAt(length);
 
                     pool.__caches.Add(values);
