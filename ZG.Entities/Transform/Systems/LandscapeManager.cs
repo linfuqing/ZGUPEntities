@@ -1,7 +1,6 @@
 using System;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
-using UnityEngine;
 
 namespace ZG
 {
@@ -549,7 +548,8 @@ namespace ZG
             int numLayers = __layers.Length;
             for (int i = 0; i < numLayers; ++i)
             {
-                if(!__layers.IsCreated)
+                ref var layer = ref __layers.ElementAt(i);
+                if(!layer.isCreated)
                     continue;
                 
                 __layers[i].Restore();

@@ -7,24 +7,23 @@ using Unity.Collections;
 
 namespace ZG
 {
-    [EntityComponent(typeof(StateMachine))]
-    [EntityComponent(typeof(StateMachineInfo))]
+    [EntityComponent(typeof(StateMachineResult))]
     [EntityComponent(typeof(StateMachineStatus))]
     public class StateMachineComponent : EntityProxyComponent, IEntityComponent
     {
         public void Break()
         {
-            StateMachineInfo info = this.GetComponentData<StateMachineInfo>();
-            info.systemHandle = SystemHandle.Null;
-            this.SetComponentData(info);
+            var result = this.GetComponentData<StateMachineResult>();
+            result.systemHandle = SystemHandle.Null;
+            this.SetComponentData(result);
         }
 
         public virtual void Init(in Entity entity, EntityComponentAssigner assigner)
         {
-            StateMachineInfo info;
-            info.count = 0;
-            info.systemHandle = SystemHandle.Null;
-            assigner.SetComponentData(entity, info);
+            StateMachineResult result;
+            //result.count = 0;
+            result.systemHandle = SystemHandle.Null;
+            assigner.SetComponentData(entity, result);
 
             StateMachineStatus status;
             status.value = 0;

@@ -1,4 +1,3 @@
-using Unity.Jobs;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Collections;
@@ -30,125 +29,81 @@ namespace ZG
     }
 
     //[UpdateInGroup(typeof(StateMachineSchedulerGroup))]
-    public struct StateMachineSchedulerSystemCore
+    public struct StateMachineSystemCore
     {
-
         private ComponentTypeHandle<StateMachineStatus> __statusType;
-        private ComponentTypeHandle<StateMachineInfo> __infoType;
-        private BufferTypeHandle<StateMachine> __instanceType;
-
-        public EntityQuery group
-        {
-            get;
-        }
-
-        public StateMachineSchedulerSystemCore(ref SystemState state, EntityQueryBuilder entryBuilder)
-        {
-            group = entryBuilder
-                .WithAll<StateMachineStatus>()
-                .WithAllRW<StateMachineInfo, StateMachine>()
-                //.WithNone<StateMachine>()
-                .Build(ref state);
-
-            __statusType = state.GetComponentTypeHandle<StateMachineStatus>(true);
-            __infoType = state.GetComponentTypeHandle<StateMachineInfo>();
-            __instanceType = state.GetBufferTypeHandle<StateMachine>();
-        }
-
-        public void Update<TSchedulerExit, TSchedulerEntry, TFactoryExit, TFactoryEntry>(
-            ref SystemState state, 
-            ref TFactoryEntry factoryEntry, 
-            ref TFactoryExit factoryExit)
-            where TSchedulerExit : struct, IStateMachineScheduler
-            where TSchedulerEntry : struct, IStateMachineScheduler
-            where TFactoryExit : struct, IStateMachineFactory<TSchedulerExit>
-            where TFactoryEntry : struct, IStateMachineFactory<TSchedulerEntry>
-        {
-            StateMachineSchedulerJob<TSchedulerExit, TFactoryExit, TSchedulerEntry, TFactoryEntry> job;
-            job.systemHandle = state.SystemHandle;
-            job.factoryExit = factoryExit;
-            job.factoryEntry = factoryEntry;
-            job.statusType = __statusType.UpdateAsRef(ref state);
-            job.infoType = __infoType.UpdateAsRef(ref state);
-            job.instanceType = __instanceType.UpdateAsRef(ref state);
-            state.Dependency = job.ScheduleParallelByRef(group, state.Dependency);
-        }
-    }
-
-    //[UpdateInGroup(typeof(StateMachineExecutorGroup))]
-    public struct StateMachineExecutorSystemCore
-    {
-        private SystemHandle __schedulerSystemHandle;
-        private ComponentTypeHandle<StateMachineInfo> __infoType;
-        private ComponentTypeHandle<StateMachineStatus> __statusType;
-        private BufferTypeHandle<StateMachine> __instanceType;
+        private ComponentTypeHandle<StateMachineResult> __resultType;
 
         public EntityQuery exitGroup
         {
             get;
-
-            private set;
         }
 
-        public EntityQuery runGroup
+        public EntityQuery entryGroup
         {
             get;
-
-            private set;
         }
 
-        public StateMachineExecutorSystemCore(ref SystemState state, EntityQueryBuilder runBuilder, in SystemHandle schedulerSystemHandle)
+        public StateMachineSystemCore(
+            ref SystemState state, 
+            EntityQueryBuilder entryBuilder)
         {
-            using (var builder = new EntityQueryBuilder(Allocator.Temp))
-                exitGroup = builder
-                        .WithAll<StateMachine, StateMachineInfo>()
-                        .WithAllRW<StateMachineStatus>()
-                        .Build(ref state);
-
-            runGroup = runBuilder
-                .WithAll<StateMachineInfo>()
-                .WithAllRW<StateMachineStatus, StateMachine>()
+            entryGroup = entryBuilder
+                .WithAllRW<StateMachineStatus, StateMachineResult>()
                 .Build(ref state);
 
-            __infoType = state.GetComponentTypeHandle<StateMachineInfo>(true);
-            __statusType = state.GetComponentTypeHandle<StateMachineStatus>();
-            __instanceType = state.GetBufferTypeHandle<StateMachine>();
+            using (var builder = new EntityQueryBuilder(Allocator.Temp))
+                exitGroup = builder
+                    .WithAll<StateMachineStatus>()
+                    .WithAllRW<StateMachineResult>()
+                    .Build(ref state);
 
-            __schedulerSystemHandle = schedulerSystemHandle;
+            __statusType = state.GetComponentTypeHandle<StateMachineStatus>();
+            __resultType = state.GetComponentTypeHandle<StateMachineResult>();
         }
 
-        public void Update<TEscaper, TExecutor, TEscaperFactory, TExecutorFactory>(
+        public void Update<
+            TSchedulerExit, 
+            TSchedulerEntry, 
+            TSchedulerRun, 
+            TFactoryExit, 
+            TFactoryEntry, 
+            TFactoryRun>(
             ref SystemState state, 
-            ref TExecutorFactory executorFactory, 
-            ref TEscaperFactory escaperFactory)
-            where TEscaper : struct, IStateMachineEscaper
-            where TExecutor : struct, IStateMachineExecutor
-            where TEscaperFactory : struct, IStateMachineFactory<TEscaper>
-            where TExecutorFactory : struct, IStateMachineFactory<TExecutor>
+            ref TFactoryRun factoryRun, 
+            ref TFactoryEntry factoryEntry, 
+            ref TFactoryExit factoryExit)
+            where TSchedulerExit : struct, IStateMachineCondition
+            where TSchedulerEntry : struct, IStateMachineCondition
+            where TSchedulerRun : struct, IStateMachineExecutor
+            where TFactoryExit : struct, IStateMachineFactory<TSchedulerExit>
+            where TFactoryEntry : struct, IStateMachineFactory<TSchedulerEntry>
+            where TFactoryRun : struct, IStateMachineFactory<TSchedulerRun>
         {
-            SystemHandle executorSystemHandle = state.SystemHandle;
-            var infoType = __infoType.UpdateAsRef(ref state);
+            var systemHandle = state.SystemHandle;
             var statusType = __statusType.UpdateAsRef(ref state);
-            var instanceType = __instanceType.UpdateAsRef(ref state);
+            var resultType = __resultType.UpdateAsRef(ref state);
+            
+            StateMachineRunJob<TSchedulerRun, TFactoryRun> run;
+            run.systemHandle = systemHandle;
+            run.factory = factoryRun;
+            run.resultType = resultType;
+            run.statusType = statusType;
+            var jobHandle = run.ScheduleParallelByRef(entryGroup, state.Dependency);
+            
+            StateMachineEntryJob<TSchedulerEntry, TFactoryEntry> entry;
+            entry.systemHandle = systemHandle;
+            entry.factoryEntry = factoryEntry;
+            entry.statusType = statusType;
+            entry.resultType = resultType;
+            jobHandle = entry.ScheduleParallelByRef(entryGroup, jobHandle);
 
-            StateMachineEscaperJob<TEscaper, TEscaperFactory> escaper;
-            escaper.systemHandle = __schedulerSystemHandle;
-            escaper.executorSystemHandle = executorSystemHandle;
-            escaper.factory = escaperFactory;
-            escaper.infoType = infoType;
-            escaper.statusType = statusType;
-            escaper.instanceType = instanceType;
-            var jobHandle = escaper.ScheduleParallelByRef(exitGroup, state.Dependency);
-
-            StateMachineExecutorJob<TExecutor, TExecutorFactory> executor;
-            executor.systemHandle = __schedulerSystemHandle;
-            executor.executorSystemHandle = executorSystemHandle;
-            executor.factory = executorFactory;
-            executor.infoType = infoType;
-            executor.statusType = statusType;
-            executor.instanceType = instanceType;
-
-            state.Dependency = executor.ScheduleParallelByRef(runGroup, jobHandle);
+            StateMachineExitJob<TSchedulerExit, TFactoryExit> exit;
+            exit.systemHandle = systemHandle;
+            exit.factoryExit = factoryExit;
+            exit.statusType = statusType;
+            exit.resultType = resultType;
+            state.Dependency = exit.ScheduleParallelByRef(exitGroup, jobHandle);
         }
     }
 }
