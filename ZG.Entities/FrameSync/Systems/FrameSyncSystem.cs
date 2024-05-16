@@ -434,7 +434,11 @@ namespace ZG
                 var frameCallbacks = this.frameCallbacks[index];
                 int numFrameCallbacks = frameCallbacks.Length;//, destination = source;
                 for (int i = 0; i < numFrameCallbacks; ++i)
+                {
+                    //UnityEngine.Debug.LogError($"Invoke {frameCallbacks.ElementAt(i).handle}");
+                    
                     invokeAndUnregister.Invoke(frameCallbacks.ElementAt(i).handle, default);
+                }
 
                 frameCallbacks.Clear();
             }
@@ -555,6 +559,7 @@ namespace ZG
                     /*if (frameEvent.destinationFrameIndex > frameIndex)
                         continue;*/
 
+                    //UnityEngine.Debug.LogError($"Invoke {frameEvent.sourceFrameIndex} : {frameEvent.destinationFrameIndex} : {frameEvent.handle}");
                     if (frameEvent.destinationFrameIndex == 0)
                         unregister.Invoke(frameEvent.handle);
                     else
@@ -567,7 +572,7 @@ namespace ZG
                         callbackData.frameIndex = frameEvent.destinationFrameIndex;
                         callbackData.commander = commander.Invoke(frameEvent.destinationFrameIndex, entry);
 
-                        //UnityEngine.Debug.Log($"Invoke {frameEvent.sourceFrameIndex} : {frameEvent.destinationFrameIndex}");
+                        //UnityEngine.Debug.Log($"Invoke {frameEvent.sourceFrameIndex} : {frameEvent.destinationFrameIndex} : {frameEvent.handle}");
 
                         invokeAndUnregister.Invoke(frameEvent.handle, callbackData);
                     }

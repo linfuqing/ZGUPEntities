@@ -45,6 +45,8 @@ namespace ZG
         public Func<bool> onSelected;
 
         public Predicate<PointerEventData> onSelect;
+
+        public float clickTime = 0.2f;
         
         private Flag __flag;
 
@@ -220,6 +222,9 @@ namespace ZG
             }
             else if (onSelect == null || onSelect(eventData))
                 Select();*/
+            if(eventData != null && 
+               (eventData.dragging || Time.unscaledTime - eventData.clickTime > clickTime))
+                return;
 
             isSelected = true;
         }

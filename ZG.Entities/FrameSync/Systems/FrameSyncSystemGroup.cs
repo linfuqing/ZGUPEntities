@@ -140,12 +140,12 @@ namespace ZG
 
         public uint clearFrameIndex
         {
-            get => __group.GetSingleton<FrameSyncClear>().index; //{ get; private set; }
+            get => __group.GetSingleton<FrameSyncClear>().index - maxFrameCount; //{ get; private set; }
 
             private set
             {
                 FrameSyncClear data;
-                data.index = value;
+                data.index = value + maxFrameCount;
                 __group.SetSingleton(data);
             }
         }
@@ -225,7 +225,7 @@ namespace ZG
             frameIndex = 0;
             realFrameIndex = 0;
             syncFrameIndex = 0;
-            clearFrameIndex = maxFrameCount;
+            clearFrameIndex = 0;
 
             flag &= ~FrameSyncFlag.Value.Active;
         }
@@ -319,7 +319,7 @@ namespace ZG
 
             this.maxFrameCount = maxFrameCount;
 
-            clearFrameIndex = maxFrameCount;
+            clearFrameIndex = 0;
         }
 
         public void Update(ref WorldUnmanaged world)

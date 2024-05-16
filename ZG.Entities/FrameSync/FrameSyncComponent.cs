@@ -66,6 +66,8 @@ namespace ZG
             this.AppendBuffer(frameCallback);
 
             this.SetComponentEnabled<SyncFrameCallback>(true);
+            
+            //UnityEngine.Debug.LogError($"Delegate {frameCallback.handle}");
         }
     }
 }
