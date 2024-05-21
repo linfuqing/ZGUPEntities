@@ -784,7 +784,7 @@ namespace ZG
                 componentType, 
             })
                 __group = builder
-                    .WithAll(componentTypes.GetUnsafePtr(), componentTypes.Length)
+                    .WithAll((ComponentType*)componentTypes.GetUnsafePtr(), componentTypes.Length)
                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
 

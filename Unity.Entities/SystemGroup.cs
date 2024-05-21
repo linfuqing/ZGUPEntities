@@ -470,7 +470,7 @@ namespace ZG
                 throw new InvalidOperationException($"System Group has not been created, either the derived class forgot to call base.OnCreate(), or it has been destroyed");
         }
     }
-
+    
     [AttributeUsage(AttributeTargets.Struct | AttributeTargets.Class)]
     public class SystemGroupInheritAttribute : Attribute
     {
@@ -490,18 +490,15 @@ namespace ZG
 
         private static Dictionary<(World, Type), int> __typeIndices;
 
-        static SystemGroupUtility()
+        public static void Dispose()
         {
-            AppDomain.CurrentDomain.DomainUnload += (x, y) =>
+            if (__systemGroups.IsCreated)
             {
-                if (__systemGroups.IsCreated)
-                {
-                    foreach (var systemGroup in __systemGroups)
-                        systemGroup.Dispose();
+                foreach (var systemGroup in __systemGroups)
+                    systemGroup.Dispose();
 
-                    __systemGroups.Dispose();
-                }
-            };
+                __systemGroups.Dispose();
+            }
         }
 
         public static bool TryGetSystemGroupIndex(World world, Type type, out int systemGroupIndex)
@@ -575,10 +572,10 @@ namespace ZG
 
         public static void SortAllSystemGroups(in WorldUnmanaged world)
         {
-            if (! __systemGroups.IsCreated)
+            if (!__systemGroups.IsCreated)
                 return;
 
-            foreach(var systemGroup in __systemGroups)
+            foreach (var systemGroup in __systemGroups)
                 systemGroup.SortSystems(world);
         }
     }
