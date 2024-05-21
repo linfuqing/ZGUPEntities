@@ -140,7 +140,7 @@ namespace ZG
 
         public uint clearFrameIndex
         {
-            get => __group.GetSingleton<FrameSyncClear>().index - maxFrameCount; //{ get; private set; }
+            get => math.max(__group.GetSingleton<FrameSyncClear>().index, maxFrameCount) - maxFrameCount; //{ get; private set; }
 
             private set
             {

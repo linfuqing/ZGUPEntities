@@ -363,6 +363,7 @@ namespace ZG
         [BurstCompile]
         public void OnDestroy(ref SystemState state)
         {
+            __groups.Dispose();
         }
 
         [BurstCompile]

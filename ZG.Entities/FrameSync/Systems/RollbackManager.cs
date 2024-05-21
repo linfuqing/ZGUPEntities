@@ -2153,6 +2153,8 @@ namespace ZG
                 container.Dispose();
 
             __containers.Dispose();
+            
+            __buffer.Dispose();
         }
     }
 
