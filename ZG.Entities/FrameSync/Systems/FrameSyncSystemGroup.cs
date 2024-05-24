@@ -575,7 +575,9 @@ namespace ZG
                     {
                         frameSave.minIndex = realFrameIndex - 1;
 
-                        frameClear.maxIndex = realFrameIndex - (maxFrameCount >> 1);
+                        frameClear.maxIndex = maxFrameCount >> 1;
+
+                        frameClear.maxIndex = math.max(realFrameIndex, frameClear.maxIndex) - frameClear.maxIndex;
 
                         clearFrame.index = frameClear.maxIndex + maxFrameCount;
 
