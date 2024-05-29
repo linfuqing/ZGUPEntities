@@ -898,7 +898,7 @@ namespace ZG
                 var entityManager = scheduler.entityManager;
                 if (entityManager.HasComponent<TValue>(instance))
                 {
-                    var buffer = entityManager.GetBuffer<TValue>(instance);
+                    var buffer = entityManager.GetBuffer<TValue>(instance, true);
                     indexOffset = buffer.Length;
 
                     result = indexOffset > index;
@@ -931,7 +931,7 @@ namespace ZG
                 var entityManager = scheduler.entityManager;
                 if (entityManager.HasComponent<TValue>(instance))
                 {
-                    var buffer = entityManager.GetBuffer<TValue>(instance);
+                    var buffer = entityManager.GetBuffer<TValue>(instance, true);
                     int length = buffer.Length;
                     wrapper.SetCount(ref list, length);
                     for (int i = 0; i < length; ++i)

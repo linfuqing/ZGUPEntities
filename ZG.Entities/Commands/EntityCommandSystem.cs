@@ -317,7 +317,7 @@ namespace ZG
             {
                 if (!isOverride)
                 {
-                    var buffer = entityManager.GetBuffer<TValue>(entity);
+                    var buffer = entityManager.GetBuffer<TValue>(entity, true);
                     int length = buffer.Length;
                     wrapper.SetCount(ref list, length);
                     for (int i = 0; i < length; ++i)
@@ -346,7 +346,7 @@ namespace ZG
                 var entityManager = scheduler.entityManager;
                 if (entityManager.HasComponent<T>(entity))
                 {
-                    var buffer = entityManager.GetBuffer<T>(entity);
+                    var buffer = entityManager.GetBuffer<T>(entity, true);
                     indexOffset = buffer.Length;
 
                     result = indexOffset > index;

@@ -235,7 +235,7 @@ namespace ZG
                 using (var entities = __groupToDestroy.ToEntityArray(Allocator.TempJob))
                 {
                     foreach (var entity in entities)
-                        entityManager.DestroyEntity(entityManager.GetBuffer<GrassObstacleEntity>(entity).Reinterpret<Entity>().AsNativeArray());
+                        entityManager.DestroyEntity(entityManager.GetBuffer<GrassObstacleEntity>(entity, true).Reinterpret<Entity>().AsNativeArray());
                 }
 
                 entityManager.RemoveComponent<GrassObstacleEntity>(__groupToDestroy);

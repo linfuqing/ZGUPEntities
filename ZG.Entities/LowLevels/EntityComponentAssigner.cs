@@ -834,6 +834,8 @@ namespace ZG
             {
                 if (_info->entityTypes.IsEmpty)
                     return false;
+                
+                //UnityEngine.Debug.LogError("a");
 
                 AssignJob assign;
                 assign.types = default;
@@ -1101,6 +1103,9 @@ namespace ZG
 
                     if (!entityStorageInfo.Chunk.Has(ref dynamicComponentTypeHandle))
                         continue;
+                    
+                    /*if(TypeManager.GetTypeName(key.typeIndex)->ToString().Contains("GameContainerChild"))
+                        UnityEngine.Debug.LogError("Apply");*/
 
                     elementSize = TypeManager.GetTypeInfo(key.typeIndex).ElementSize;
 

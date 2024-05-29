@@ -12,6 +12,11 @@ using UnityEngine.LowLevel;
 
 namespace ZG
 {
+    public struct TimeFrame : IComponentData
+    {
+        public int count;
+    }
+    
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = true)]
     public class AutoCreateExceptAttribute : Attribute
     {
@@ -112,6 +117,23 @@ namespace ZG
             SetRateManagerCreateAllocator(new RateUtils.FixedRateCatchUpManager(UnityEngine.Time.fixedDeltaTime));
             //UseLegacySortOrder = false;
         }*/
+        private Entity __entity;
+
+        protected override void OnCreate()
+        {
+            base.OnCreate();
+
+            __entity = EntityManager.CreateEntity(ComponentType.ReadOnly<TimeFrame>());
+        }
+
+        protected override void OnUpdate()
+        {
+            TimeFrame timeFrame;
+            timeFrame.count = UnityEngine.Time.frameCount;
+            EntityManager.SetComponentData(__entity, timeFrame);
+            
+            base.OnUpdate();
+        }
     }
 
     public partial class ManagedSystemGroup : ComponentSystemGroup
