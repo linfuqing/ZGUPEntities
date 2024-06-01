@@ -567,7 +567,7 @@ namespace ZG
                         //UnityEngine.Assertions.Assert.AreEqual(frameIndex, frameEvent.destinationFrameIndex);
 
                         entry.type = RollbackEntryType.Init;
-                        entry.key = frameEvent.type;
+                        entry.key = ((long)entity.Index << 32) | (uint)frameEvent.type;
                         entry.entity = entity;
                         callbackData.frameIndex = frameEvent.destinationFrameIndex;
                         callbackData.commander = commander.Invoke(frameEvent.destinationFrameIndex, entry);

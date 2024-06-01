@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using Unity.Jobs;
 using Unity.Burst;
 using Unity.Collections;
@@ -52,7 +53,7 @@ namespace ZG
         }
 
         private static int __previousProducerJobTypeIndex;
-        private static Dictionary<World, SystemHandle> __systems;
+        private static ConcurrentDictionary<World, SystemHandle> __systems;
         private static System.Threading.Timer __timer;
         private static List<Type> __types;
 
@@ -84,7 +85,7 @@ namespace ZG
                 }
             }
 
-            __systems = new Dictionary<World, SystemHandle>();
+            __systems = new ConcurrentDictionary<World, SystemHandle>();
 
             if (__timer != null)
                 __timer.Dispose();
