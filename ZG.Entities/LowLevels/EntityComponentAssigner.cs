@@ -1163,9 +1163,6 @@ namespace ZG
                             case Command.Type.BufferOverride:
                             case Command.Type.BufferAppend:
                             case Command.Type.BufferAppendUnique:
-                                if (source == null)
-                                    bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk, 0);
-                                else
                                 {
                                     int elementCount = blockSize / elementSize;
                                     //var bufferAccessor = batchInChunk.GetUntypedBufferAccessor(ref dynamicComponentTypeHandle);
@@ -1173,7 +1170,9 @@ namespace ZG
                                     {
                                         bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk,
                                             elementCount);
-                                        destination = bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk);
+                                        
+                                        if(source != null)
+                                            destination = bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk);
                                     }
                                     else
                                     {
@@ -1218,7 +1217,6 @@ namespace ZG
                                             source = null;
                                     }
                                 }
-
                                 break;
                             case Command.Type.BufferRemove:
                             case Command.Type.BufferRemoveSwapBack:
