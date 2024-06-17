@@ -25,6 +25,11 @@ namespace ZG
         public int3 segments;
         public float3 size;
 
+        public int GetPositionIndex(in int3 position)
+        {
+            return position.x + position.y * segments.x + position.z * segments.x * segments.y;
+        }
+        
         public bool GetPosition(ref float3 position, out int3 result)
         {
             position = (position / size + math.float3(0.5f, 0.0f, 0.5f)) * segments;
@@ -192,12 +197,19 @@ namespace ZG
 
     public struct LandscapeDefinition
     {
+        public struct Layer
+        {
+            public LandscapeLayer value;
+            
+            public BlobArray<int> weights;
+        }
+        
         public struct Level
         {
             public BlobArray<LandscapeSection> sections;
         }
 
-        public BlobArray<LandscapeLayer> layers;
+        public BlobArray<Layer> layers;
         public BlobArray<Level> levels;
     }
 
@@ -1051,7 +1063,6 @@ namespace ZG
                         LandscapeWorld<int3> world;
                         BlobAssetReference<LandscapeDefinition> key;
                         LandscapeInput value;
-                        LandscapeLayer layer;
                         Wrapper wrapper;
                         int i, j, numLayers, count = keys.ConvertToUniqueArray();
                         for (i = 0; i < count; ++i)
@@ -1081,9 +1092,24 @@ namespace ZG
 
                                 positions = positionList.AsArray();
 
-                                layer = definition.layers[j];
-                                layer.FindNeighbor(level.sections[j], positions, ref addList);
-                                wrapper = new Wrapper(definition.layers[j], positions, addList.GetEnumerator());
+                                ref var layer = ref definition.layers[j];
+                                layer.value.FindNeighbor(level.sections[j], positions, ref addList);
+
+                                if (!addList.IsEmpty)
+                                {
+                                    using (var addKeys = addList.GetKeyArray(Allocator.Temp))
+                                    {
+                                        foreach (var addKey in addKeys)
+                                        {
+                                            if (layer.weights[layer.value.GetPositionIndex(addKey)] > 0)
+                                                continue;
+                                            
+                                            addList.Remove(addKey);
+                                        }
+                                    }
+                                }
+                                
+                                wrapper = new Wrapper(layer.value, positions, addList.GetEnumerator());
                                 world.Apply(j, ref wrapper);
                             }
                         }
