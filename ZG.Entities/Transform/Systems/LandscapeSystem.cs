@@ -17,6 +17,13 @@ namespace ZG
         public int top;
         public int bottom;
 
+        public static readonly LandscapeSection Invail = new LandscapeSection()
+        {
+            horizontal = -1, 
+            top = -1, 
+            bottom = -1
+        };
+
         public bool isVail => horizontal >= 0 && top >= 0 && bottom >= 0;
     }
 
@@ -1070,7 +1077,7 @@ namespace ZG
                             key = keys[i];
 
                             ref var definition = ref key.Value;
-                            numLayers = definition.layers.Length;
+                            numLayers = math.min(definition.layers.Length, definition.levels.Length);
                             world = manager.GetOrCreate(key, numLayers);
 
                             ref var level =
