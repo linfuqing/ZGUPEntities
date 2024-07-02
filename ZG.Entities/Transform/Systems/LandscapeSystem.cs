@@ -1077,7 +1077,7 @@ namespace ZG
                             key = keys[i];
 
                             ref var definition = ref key.Value;
-                            numLayers = math.min(definition.layers.Length, definition.levels.Length);
+                            numLayers = definition.layers.Length;
                             world = manager.GetOrCreate(key, numLayers);
 
                             ref var level =
