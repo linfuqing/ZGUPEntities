@@ -140,6 +140,7 @@ namespace ZG
         private ScrollRectEvent __event;
 
         private ScrollRect __scrollRect;
+        private ISubmitHandler __submitHandler;
         private List<ISubmitHandler> __submitHandlers;
 
         public int version
@@ -499,8 +500,13 @@ namespace ZG
             {
                 int index = __ToSubmitIndex(indexInt);
                 var submitHandler = index >= 0 && index < __submitHandlers.Count ? __submitHandlers[index] : null;
-                if (submitHandler != null)
-                    submitHandler.OnSubmit(new BaseEventData(EventSystem.current));
+                if (submitHandler != __submitHandler)
+                {
+                    if (submitHandler != null)
+                        submitHandler.OnSubmit(new BaseEventData(EventSystem.current));
+
+                    __submitHandler = submitHandler;
+                }
             }
         }
 
