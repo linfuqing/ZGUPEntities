@@ -52,7 +52,7 @@ namespace ZG
         {
             if (__world != null && __world.IsCreated && __timeEventHandle.isVail)
             {
-                __timeManager.Cannel(__timeEventHandle);
+                __timeManager.Cancel(__timeEventHandle);
 
                 __timeEventHandle = TimeEventHandle.Null;
             }
@@ -61,7 +61,7 @@ namespace ZG
         public void Play()
         {
             if(__timeEventHandle.isVail)
-                __timeManager.Cannel(__timeEventHandle);
+                __timeManager.Cancel(__timeEventHandle);
 
             __Play(isDelay);
         }

@@ -317,13 +317,21 @@ namespace ZG
             return result;
         }
 
-        public static bool Cannel(this SharedTimeManager<CallbackHandle> timeManager, in TimeEventHandle handle)
+        public static bool Cancel(
+            this SharedTimeManager<CallbackHandle> timeManager, 
+            in TimeEventHandle handle, 
+            out CallbackHandle callbackHandle)
         {
             timeManager.lookupJobManager.CompleteReadWriteDependency();
 
-            var callbackHandle = handle.callbackHandle;
+            callbackHandle = handle.callbackHandle;
 
-            return timeManager.value.writer.Cancel(handle._value) && callbackHandle.Unregister();
+            return timeManager.value.writer.Cancel(handle._value);
+        }
+        
+        public static bool Cancel(this SharedTimeManager<CallbackHandle> timeManager, in TimeEventHandle handle)
+        {
+            return Cancel(timeManager, handle, out var callbackHandle) && callbackHandle.Unregister();
         }
 
     }
