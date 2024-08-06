@@ -448,7 +448,8 @@ namespace ZG
                             entity = instance;
                         }
 
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.SetComponentData(entity, value);
                         break;
@@ -485,7 +486,8 @@ namespace ZG
                             entity = instance;
                         }
 
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.SetBuffer(entity, values);
                         break;
@@ -523,7 +525,8 @@ namespace ZG
                             entity = instance;
                         }
 
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.SetBuffer(entity, values);
                         break;
@@ -561,7 +564,8 @@ namespace ZG
                             entity = instance;
                         }
 
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.SetBuffer<TValue, TCollection>(entity, values);
                         break;
@@ -598,7 +602,8 @@ namespace ZG
                             entity = instance;
                         }
 
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.SetComponentEnabled<T>(entity, value);
                         break;
@@ -622,28 +627,34 @@ namespace ZG
             where TGameObjectEntity : IGameObjectEntity
             where TValue : unmanaged, IComponentData
         {
+            //UnityEngine.Profiling.Profiler.BeginSample("TryGetComponentData");
+            value = default;
+
+            bool result = false;
             var commandSystem = __GetCommandSystem(gameObjectEntity);
             if (commandSystem != null)
             {
                 var entity = gameObjectEntity.entity;
-
                 switch (gameObjectEntity.status)
                 {
                     case GameObjectEntityStatus.Creating:
-                        return __TryGetComponentData(commandSystem, commandSystem.factory, entity, out value);
+                        result = __TryGetComponentData(commandSystem, commandSystem.factory, entity, out value);
+                        break;
                     case GameObjectEntityStatus.Created:
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         value = default;
-                        return commandSystem.TryGetComponentData(entity, ref value);
+                        result = commandSystem.TryGetComponentData(entity, ref value);
+                        break;
                     default:
                         throw new InvalidOperationException();
                 }
             }
+            
+            //UnityEngine.Profiling.Profiler.EndSample();
 
-            value = default;
-
-            return false;
+            return result;
         }
 
         public static bool TryGetBuffer<TGameObjectEntity, TValue>(this TGameObjectEntity gameObjectEntity, int index, out TValue value)
@@ -660,7 +671,8 @@ namespace ZG
                     case GameObjectEntityStatus.Creating:
                         return __TryGetBuffer(commandSystem, index, entity, commandSystem.factory, out value);
                     case GameObjectEntityStatus.Created:
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         value = default;
                         return commandSystem.TryGetBuffer(entity, index, ref value);
@@ -696,7 +708,8 @@ namespace ZG
                             ref wrapper,
                             ref list);
                     case GameObjectEntityStatus.Created:
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         return commandSystem.TryGetBuffer<TValue, TList, TWrapper>(entity, ref list, ref wrapper);
                     default:
@@ -733,7 +746,8 @@ namespace ZG
 
                         return false;
                     case GameObjectEntityStatus.Created:
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         return commandSystem.TryGetComponentObject(entity, out value);
                     default:
@@ -750,7 +764,8 @@ namespace ZG
         {
             bool result = TryGetComponentData(gameObjectEntity, out T value);
 
-            UnityEngine.Assertions.Assert.IsTrue(result, gameObjectEntity.ToString());
+            if(!result)
+                UnityEngine.Assertions.Assert.IsTrue(result, gameObjectEntity.ToString());
 
             return value;
         }
@@ -822,7 +837,8 @@ namespace ZG
 
                     return result;
                 case GameObjectEntityStatus.Created:
-                    UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                    if(entity.Index < 0)
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                     return commandSystem.IsComponentEnabled<T>(entity, out _);
                 default:
@@ -854,7 +870,8 @@ namespace ZG
                         return result || factory.HasComponent<T>(entity);
                     }
 
-                    UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                    if(entity.Index < 0)
+                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                     return commandSystem.HasComponent<T>(entity, out _);
                 default:
@@ -876,7 +893,9 @@ namespace ZG
             if (instance != Entity.Null)
                 result = entityManager.TryGetComponentData(instance, ref value, result) || result;
 
-            return result || factory.HasComponent<TValue>(entity);
+            result |= factory.HasComponent<TValue>(entity);
+
+            return result;
         }
 
         private static bool __TryGetBuffer<TValue, TScheduler>(
@@ -953,7 +972,7 @@ namespace ZG
         {
             if (gameObjectEntity == null)
                 return null;
-            
+
             return __GetCommandSystem(gameObjectEntity.world);
         }
 
@@ -964,7 +983,7 @@ namespace ZG
 
             if (__commander == null || __commander.World != world)
                 __commander = world.GetExistingSystemManaged<EntityCommandSharedSystemGroup>();
-
+            
             return __commander;
         }
     }

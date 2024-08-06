@@ -1,3 +1,4 @@
+using System;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Collections;
@@ -59,6 +60,13 @@ namespace ZG
             private set;
         }
 
+        public SharedFunctionFactory functionFactory
+        {
+            get;
+
+            private set;
+        }
+
         //[BurstCompile]
         public void OnCreate(ref SystemState state)
         {
@@ -73,6 +81,8 @@ namespace ZG
             handlesToInvokeAndUnregister = new SharedList<CallbackHandle>(Allocator.Persistent);
 
             handlesToUnregister = new SharedList<CallbackHandle>(Allocator.Persistent);
+
+            functionFactory = new SharedFunctionFactory(Allocator.Persistent);
         }
 
         //[BurstCompile]
@@ -92,6 +102,8 @@ namespace ZG
             handlesToInvokeAndUnregister.Dispose();
 
             handlesToUnregister.Dispose();
+            
+            functionFactory.Dispose();
         }
 
         [BurstCompile]
@@ -126,6 +138,8 @@ namespace ZG
                 __unregister.Invoke(handlesToUnregisterWriter[i]);
 
             handlesToUnregisterWriter.Clear();
+            
+            functionFactory.Apply();
         }
     }
 

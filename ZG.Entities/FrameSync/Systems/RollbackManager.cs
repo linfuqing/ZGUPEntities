@@ -1877,7 +1877,8 @@ namespace ZG
             ref U core) where U : IRollbackCore
         {
             uint maxSaveFrameIndex = this.maxSaveFrameIndex;
-            UnityEngine.Assertions.Assert.IsTrue(frameIndex > maxSaveFrameIndex, $"{frameIndex} : {maxSaveFrameIndex}");
+            if(frameIndex <= maxSaveFrameIndex)
+                UnityEngine.Assertions.Assert.IsTrue(frameIndex > maxSaveFrameIndex, $"{frameIndex} : {maxSaveFrameIndex}");
 
             if (/*isClear && */frameIndex > minFrameIndexToSave/*minSaveFrameIndex + MaxFrameCount*/)
             {

@@ -38,14 +38,14 @@ namespace ZG
             public SharedHashMap<Entity, Entity>.Reader wrapper;
             
             [ReadOnly]
-            public UnsafeHashMap<int, int> typeHandleIndicess;
+            public UnsafeHashMap<int, int> typeHandleIndices;
 
             [ReadOnly]
             public ReadOnly container;
 
             public void Execute(int index)
             {
-                container.Apply(entityArray[index], entityStorageInfoLookup, wrapper, typeHandleIndicess, types);
+                container.Apply(entityArray[index], entityStorageInfoLookup, wrapper, typeHandleIndices, types);
             }
         }
 
@@ -853,7 +853,7 @@ namespace ZG
 
                     int numTypes = 0, numEntities = keys.ConvertToUniqueArray(), entityIndex = 0, i;
 
-                    assign.typeHandleIndicess = new UnsafeHashMap<int, int>(BurstCompatibleTypeArray.LENGTH, Allocator.TempJob);
+                    assign.typeHandleIndices = new UnsafeHashMap<int, int>(BurstCompatibleTypeArray.LENGTH, Allocator.TempJob);
 
                     Entity key, entity;
                     for (i = 0; i < numEntities; ++i)
@@ -876,7 +876,7 @@ namespace ZG
                         {
                             do
                             {
-                                if (assign.typeHandleIndicess.ContainsKey(componentType.TypeIndex))
+                                if (assign.typeHandleIndices.ContainsKey(componentType.TypeIndex))
                                     continue;
 
                                 if (numTypes >= BurstCompatibleTypeArray.LENGTH)
@@ -895,14 +895,14 @@ namespace ZG
 
                                     numTypes = 0;
 
-                                    jobHandle = assign.typeHandleIndicess.Dispose(jobHandle);
+                                    jobHandle = assign.typeHandleIndices.Dispose(jobHandle);
 
-                                    assign.typeHandleIndicess = new UnsafeHashMap<int, int>(BurstCompatibleTypeArray.LENGTH, Allocator.TempJob);
+                                    assign.typeHandleIndices = new UnsafeHashMap<int, int>(BurstCompatibleTypeArray.LENGTH, Allocator.TempJob);
 
                                     break;
                                 }
 
-                                assign.typeHandleIndicess[componentType.TypeIndex] = numTypes;
+                                assign.typeHandleIndices[componentType.TypeIndex] = numTypes;
 
                                 assign.types[numTypes++] = systemState.GetDynamicComponentTypeHandle(componentType);
                             } while (_info->entityTypes.TryGetNextValue(out componentType.TypeIndex, ref iterator));
@@ -915,7 +915,7 @@ namespace ZG
                         jobHandle = assign.ScheduleByRef(assign.entityArray.Length, innerloopBatchCount, jobHandle);
                     }
 
-                    jobHandle = assign.typeHandleIndicess.Dispose(jobHandle);
+                    jobHandle = assign.typeHandleIndices.Dispose(jobHandle);
                 }
                 //keys.Dispose();
 
@@ -1104,7 +1104,7 @@ namespace ZG
                     if (!entityStorageInfo.Chunk.Has(ref dynamicComponentTypeHandle))
                         continue;
                     
-                    /*if(TypeManager.GetTypeName(key.typeIndex)->ToString().Contains("GameContainerChild"))
+                    /*if(TypeManager.GetTypeName(key.typeIndex)->ToString().Contains("GameNodeStatus"))
                         UnityEngine.Debug.LogError("Apply");*/
 
                     elementSize = TypeManager.GetTypeInfo(key.typeIndex).ElementSize;
@@ -1145,9 +1145,9 @@ namespace ZG
                             blockSize = 0;
                         }
 
-                        /*if (TypeManager.GetTypeName(key.typeIndex)->ToString() == "NetworkIdentity")
+                        /*if (TypeManager.GetTypeName(key.typeIndex)->ToString() == "GameNodeStatus")
                         {
-                            UnityEngine.Debug.Log($"Assign {entity} : {*(uint*)source}");
+                            UnityEngine.Debug.Log($"Assign {entity} : {*(int*)source}");
                         }*/
 
                         switch (command.type)

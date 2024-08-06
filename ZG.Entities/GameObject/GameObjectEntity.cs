@@ -434,7 +434,8 @@ namespace ZG
 
                 __ForceBuildIfNeed();
 
-                UnityEngine.Assertions.Assert.AreNotEqual(Entity.Null, __entity, $"{name} : {status} : {__entity}");
+                if(__entity == Entity.Null)
+                    UnityEngine.Assertions.Assert.AreNotEqual(Entity.Null, __entity, $"{name} : {status} : {__entity}");
                 
                 //Debug.Log($"Get Entity {__entity} Of {name} In {status}");
 
@@ -1043,7 +1044,7 @@ namespace ZG
             return value;
         }
 
-        public static T GetComponentObject<T>(this IGameObjectEntity gameObjectEntity, Entity entity) where T : class
+        public static T GetComponentObject<T>(this IGameObjectEntity gameObjectEntity, in Entity entity) where T : class
         {
             return __GetCommandSystem(gameObjectEntity).TryGetComponentObject(entity, out T value) ? value : null;
         }

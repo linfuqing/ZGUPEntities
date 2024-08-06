@@ -165,11 +165,13 @@ namespace ZG
                     __submitHandlers = new List<ISubmitHandler>();
 
                 bool isChanged = false;
-                int index = 0;
+                int index = 0, numChildren = content.childCount;
                 ISubmitHandler submitHandler;
                 GameObject gameObject;
-                foreach (Transform child in content)
+                Transform child;
+                for(int i = 0; i < numChildren; ++i)
                 {
+                    child = content.GetChild(i);
                     gameObject = child.gameObject;
                     if (gameObject != null && gameObject.activeSelf)
                     {
@@ -209,7 +211,7 @@ namespace ZG
                 RectTransform.Axis axis = scrollRect.horizontal ? RectTransform.Axis.Horizontal : RectTransform.Axis.Vertical;
                 int2 result = int2.zero;
                 result[(int)axis] = __submitHandlers.Count;
-
+                
                 return result;
             }
         }
