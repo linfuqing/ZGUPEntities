@@ -105,7 +105,8 @@ namespace ZG
                             entity = instance;
                         }
 
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.AddComponent<T>(entity);
                         break;
@@ -143,7 +144,8 @@ namespace ZG
                             entity = instance;
                         }
 
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.AddComponentData(entity, value);
                         break;
@@ -179,7 +181,8 @@ namespace ZG
                             entity = instance;
                         }
 
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.AddBuffer(entity, values);
                         break;
@@ -217,7 +220,8 @@ namespace ZG
                             entity = instance;
                         }
 
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.AddBuffer<TValue, TCollection>(entity, values);
                         break;
@@ -253,7 +257,8 @@ namespace ZG
                             entity = instance;
                         }
 
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.AppendBuffer<T, T[]>(entity, values);
                         break;
@@ -291,7 +296,8 @@ namespace ZG
                             entity = instance;
                         }
 
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.AppendBuffer<TValue, TCollection>(entity, values);
                         break;
@@ -329,7 +335,8 @@ namespace ZG
                             entity = instance;
                         }
 
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.AppendBufferUnique<TValue, TCollection>(entity, values);
                         break;
@@ -370,7 +377,8 @@ namespace ZG
                             entity = instance;
                         }
 
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.RemoveBufferElementSwapBack<TValue, TCollection>(entity, values);
                         break;
@@ -410,7 +418,8 @@ namespace ZG
                             entity = instance;
                         }
 
-                        UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
+                        if(entity.Index < 0)
+                            UnityEngine.Assertions.Assert.IsFalse(entity.Index < 0, $"{gameObjectEntity} : {gameObjectEntity.status} : {entity}");
 
                         commandSystem.RemoveComponent<T>(entity);
                         break;

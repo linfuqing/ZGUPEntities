@@ -576,10 +576,9 @@ namespace ZG
                 if (tempComponent != null)
                     __componentMap[attributeType] = __GetComponentIndex(tempComponent, components);
             }
-            else if (!__componentMap.ContainsKey(attributeType))
-                __componentMap[attributeType] = -1;
+            else
+                __componentMap.TryAdd(attributeType, -1);
         }
-
 
         private static int __DepthOf(Transform transform)
         {

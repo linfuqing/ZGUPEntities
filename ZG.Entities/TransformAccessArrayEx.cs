@@ -59,21 +59,39 @@ namespace ZG
 
                 using(var sources = __group.ToComponentDataArray<EntityObject<Transform>>(Allocator.Temp))
                 {
-                    int length = sources.Length;
+                    int destination = sources.Length;
                     EntityObject<Transform> transform;
-                    var destinations = new Transform[length];
-                    for (int i = 0; i < length; ++i)
-                    {
-                        transform = sources[i];
-                        //UnityEngine.Assertions.Assert.AreNotEqual(null, (object)sources[i].value);
-
-                        destinations[i] = transform.isCreated ? transform.value : null;
-                    }
-
                     if (isCreated)
-                        __value.SetTransforms(destinations);
+                    {
+                        int source = __value.length;
+                        for(int i = source - 1; i >= destination; --i)
+                            __value.RemoveAtSwapBack(i);
+
+                        Transform value;
+                        for (int i = 0; i < destination; ++i)
+                        {
+                            transform = sources[i];
+
+                            value = transform.isCreated ? transform.value : null;
+                            if(i < source)
+                                __value[i] = value;
+                            else
+                                __value.Add(value);
+                        }
+                    }
                     else
+                    {
+                        var destinations = new Transform[destination];
+                        for (int i = 0; i < destination; ++i)
+                        {
+                            transform = sources[i];
+                            //UnityEngine.Assertions.Assert.AreNotEqual(null, (object)sources[i].value);
+
+                            destinations[i] = transform.isCreated ? transform.value : null;
+                        }
+                        
                         __value = new TransformAccessArray(destinations);
+                    }
                 }
 
                 UnityEngine.Profiling.Profiler.EndSample();

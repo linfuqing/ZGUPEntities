@@ -311,11 +311,14 @@ namespace ZG
 
         public Camera camera;
 
-        public event Func<ScreenSpaceNodeSphere> onUpdate;
-
         public int innerloopBatchCount = 16;
 
         public float lerp = 0.9f;
+
+        public event Func<ScreenSpaceNodeSphere> onUpdate;
+
+        private Func<ScreenSpaceNodeSphere> __onUpdate;
+        private Delegate[] __sphereDelegates;
 
         private EntityQuery __invisibleTargets;
         private EntityQuery __visibleTargets;
@@ -372,20 +375,17 @@ namespace ZG
             __addComponentCommander = endFrameBarrier.addComponentCommander;
             __removeComponentCommander = endFrameBarrier.removeComponentCommander;
 
+            __spheres = new NativeList<ScreenSpaceNodeSphere>(Allocator.Persistent);
             __positions = new NativeParallelHashMap<Entity, float3>(1, Allocator.Persistent);
         }
 
         protected override void OnDestroy()
         {
-            //__nodes.Dispose();
-
-            if (__spheres.IsCreated)
-                __spheres.Dispose();
-
             __invisibleTransforms.Dispose();
             __visibleTransforms.Dispose();
             __nodeTransforms.Dispose();
 
+            __spheres.Dispose();
             __positions.Dispose();
         }
 
@@ -401,16 +401,19 @@ namespace ZG
             if (camera == null)
                 return;
 
-            if (__spheres.IsCreated)
-                __spheres.Clear();
-            else
-                __spheres = new NativeList<ScreenSpaceNodeSphere>(Allocator.Persistent);
+            __spheres.Clear();
 
-            Delegate[] sphereDelegates = this.onUpdate == null ? null : this.onUpdate.GetInvocationList();
-            if (sphereDelegates != null)
+            if (__onUpdate != this.onUpdate)
+            {
+                __onUpdate = this.onUpdate;
+                
+                __sphereDelegates = this.onUpdate == null ? null : this.onUpdate.GetInvocationList();
+            }
+            
+            if (__sphereDelegates != null)
             {
                 Func<ScreenSpaceNodeSphere> onUpdate;
-                foreach (Delegate sphereDelegate in sphereDelegates)
+                foreach (Delegate sphereDelegate in __sphereDelegates)
                 {
                     onUpdate = sphereDelegate as Func<ScreenSpaceNodeSphere>;
                     if (onUpdate == null)
@@ -419,7 +422,6 @@ namespace ZG
                     __spheres.Add(onUpdate());
                 }
             }
-
             /*if (version != (entityManager == null ? 0 : entityManager.Version))
             {
                 RequireForUpdate(__invisibleTargets);
