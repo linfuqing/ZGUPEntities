@@ -504,16 +504,10 @@ namespace ZG
                     
                     if (_definition == null)
                         _definition = new GameObjectEntityDefinition();
-
-                    int componentHash = _definition.componentHash;
-                    if (componentHash == 0)
-                    {
-                        _definition.Init(transform);
-
-                        componentHash = _definition.componentHash;
-                    }
-
-                    _instance.Init(componentHash, _worldName, transform);
+                    
+                    _definition.Init(transform);
+                    
+                    _instance.Init(_definition.componentHash, _worldName, transform);
                 }
 
                 return _instance.world;
@@ -886,13 +880,14 @@ namespace ZG
         void ISerializationCallbackReceiver.OnBeforeSerialize()
         {
 #if UNITY_EDITOR
-            if (!UnityEditor.EditorApplication.isPlaying)
-                return;
+            if (_definition == null)
+                _definition = new GameObjectEntityDefinition();
+
+            _definition.Init(transform, true);
+            
+            if (UnityEditor.EditorApplication.isPlaying)
 #endif
-
-            //Debug.Log($"Deserialized {name}", this);
-            //_parent = null;
-
+            
             __BuildArchetypeIfNeed(!gameObject.scene.IsValid());
         }
     }

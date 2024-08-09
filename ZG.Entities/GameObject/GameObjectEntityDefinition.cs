@@ -19,6 +19,9 @@ namespace ZG
         [SerializeField, HideInInspector]
         private List<Component> __components;
 
+        [SerializeField, HideInInspector]
+        private byte[] __bytes;
+
         public int componentHash => __componentHash;
 
         public void Dispose()
@@ -73,11 +76,8 @@ namespace ZG
 
                         factory.CreateEntity(prefab, info.entityArchetype);
 
-                        if (systemStateComponentTypes != null)
-                        {
-                            foreach (var systemStateComponentType in systemStateComponentTypes)
-                                factory.AddStateComponent(prefab, systemStateComponentType);
-                        }
+                        foreach (var systemStateComponentType in systemStateComponentTypes)
+                            factory.AddStateComponent(prefab, systemStateComponentType);
 
 #if UNITY_EDITOR
                         factory.SetName(prefab, $"[Prefab]{info.name}");
@@ -111,11 +111,8 @@ namespace ZG
 
                     factory.CreateEntity(entity, info.entityArchetype);
 
-                    if (systemStateComponentTypes != null)
-                    {
-                        foreach (var systemStateComponentType in systemStateComponentTypes)
-                            factory.AddComponent(entity, systemStateComponentType);
-                    }
+                    foreach (var systemStateComponentType in systemStateComponentTypes)
+                        factory.AddComponent(entity, systemStateComponentType);
 
                     assigner = factory.prefabAssigner;
 
@@ -135,15 +132,12 @@ namespace ZG
                         if (entityArchetypeComponentType.TypeIndex == TypeManager.GetTypeIndex<Prefab>())
                             continue;
 
-                        factory.AddComponent(entity, entityArchetypeComponentType);
+                        factory.AddComponent(entity, entityArchetypeComponentType.TypeIndex);
                     }
                 }
 
-                if (systemStateComponentTypes != null)
-                {
-                    foreach(var systemStateComponentType in systemStateComponentTypes)
-                        factory.AddComponent(entity, systemStateComponentType);
-                }
+                foreach(var systemStateComponentType in systemStateComponentTypes)
+                    factory.AddComponent(entity, systemStateComponentType);
 
                 assigner = factory.instanceAssigner;
 
@@ -153,13 +147,13 @@ namespace ZG
             if (componentTypes != null)
             {
                 foreach (var componentType in componentTypes)
-                    factory.AddComponent(entity, componentType);
+                    factory.AddComponent(entity, componentType.TypeIndex);
             }
 
             info.SetComponents(entity, assigner, __data, __components);
         }
 
-        public GameObjectEntityData Init(Transform transform)
+        public GameObjectEntityData Init(Transform transform, bool isForce = false)
         {
             if (__data == null)
             {
@@ -168,12 +162,28 @@ namespace ZG
                 __data.name = transform.name;
             }
 
-            if (__components != null)
-                __components.Clear();
+            if (!__data.isCreated)
+            {
+                if (!isForce && __bytes != null && __bytes.Length > 0)
+                {
+                    __data.bytes = __bytes;
 
-            __componentHash = 0;
+                    __bytes = null;
+                }
+                
+                if (!__data.isCreated)
+                {
+                    if (__components != null)
+                        __components.Clear();
 
-            __data.Rebuild(transform, __Set);
+                    __componentHash = 0;
+
+                    __data.Rebuild(transform, __Set);
+
+                    if (isForce)
+                        __bytes = __data.bytes;
+                }
+            }
 
             return __data;
         }
@@ -277,10 +287,16 @@ namespace ZG
             
             Init(definition.componentHash, worldName, transform);
 
+            var typeIndices = data.typeIndices;
+            if (componentTypes != null)
+            {
+                foreach (var componentType in componentTypes)
+                    typeIndices.Add(componentType.TypeIndex);
+            }
+
             __info.Rebuild(
                     isPrefab, 
-                    data,
-                    componentTypes);
+                    typeIndices);
         }
         
         public void CreateEntity(

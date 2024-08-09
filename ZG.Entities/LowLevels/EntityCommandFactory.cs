@@ -637,14 +637,14 @@ namespace ZG
             instanceAssigner.SetComponentData(prefab, value);
         }
 
-        public void AddStateComponent(in Entity prefab, in ComponentType componentType)
+        public void AddStateComponent(in Entity prefab, in TypeIndex typeIndex)
         {
-            __systemStateComponentTypes.Add(prefab, componentType.TypeIndex);
+            __systemStateComponentTypes.Add(prefab, typeIndex);
         }
 
-        public void AddComponent(in Entity prefab, in ComponentType componentType)
+        public void AddComponent(in Entity prefab, in TypeIndex typeIndex)
         {
-            __instanceComponentTypes.Add(prefab, componentType.TypeIndex);
+            __instanceComponentTypes.Add(prefab, typeIndex);
         }
 
         public void AddComponent<T>(in Entity prefab)

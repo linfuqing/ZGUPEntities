@@ -1,9 +1,12 @@
 ﻿using System;
 using System.Reflection;
 using System.Collections.Generic;
+using System.IO;
+using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using UnityEngine;
+using TypeIndices = Unity.Collections.FixedList4096Bytes<Unity.Entities.TypeIndex>;
 
 namespace ZG
 {
@@ -71,8 +74,8 @@ namespace ZG
 
         public class Info : ScriptableObject
         {
-            private static HashSet<ComponentType> __componentTypes = null;
-            private static HashSet<ComponentType> __systemStateComponentTypes = null;
+            //private static HashSet<ComponentType> __componentTypes = null;
+            //private static HashSet<ComponentType> __systemStateComponentTypes = null;
 
             public bool isPrefab
             {
@@ -120,9 +123,9 @@ namespace ZG
                 private set;
             }
 
-            public ComponentType[] systemStateComponentTypes
+            public TypeIndices systemStateComponentTypes
             {
-                get;
+                 get;
 
                 private set;
             }
@@ -229,80 +232,154 @@ namespace ZG
                 prefabVersion = entity == Entity.Null ? 0 : version;
             }
 
-            public void Rebuild(bool isPrefab, GameObjectEntityData data, params ComponentType[] componentTypes)
+            public void Rebuild(bool isPrefab, /*GameObjectEntityData data, */in TypeIndices typeIndices)
             {
                 this.isPrefab = isPrefab;
 
                 ++version;
 
-                if (__componentTypes == null)
-                    __componentTypes = new HashSet<ComponentType>();
-                else
-                    __componentTypes.Clear();
-
+                //var entityComponentTypes = new NativeList<ComponentType>(Allocator.Temp);
+                
                 if (isPrefab)
-                    __componentTypes.Add(ComponentType.ReadOnly<Prefab>());
+                    typeIndices.Add(TypeManager.GetTypeIndex<Prefab>());
 
-                __componentTypes.Add(ComponentType.ReadOnly<EntityObjects>());
+                typeIndices.Add(TypeManager.GetTypeIndex<EntityObjects>());
 
-                if (__systemStateComponentTypes != null)
-                    __systemStateComponentTypes.Clear();
+                TypeIndices systemStateComponentTypes = default;
+                var entityManager = world.EntityManager;
+                entityArchetype = GameObjectEntityDataUtility.BuildFunction(isPrefab, typeIndices, ref systemStateComponentTypes, ref entityManager);
 
-                if (componentTypes != null)
-                {
-                    foreach (var componentType in componentTypes)
-                    {
-                        if (isPrefab && componentType.IsCleanupComponent)
-                        {
-                            if (__systemStateComponentTypes == null)
-                                __systemStateComponentTypes = new HashSet<ComponentType>();
-
-                            __systemStateComponentTypes.Add(componentType);
-                        }
-                        else
-                            __componentTypes.Add(componentType);
-                    }
-                }
-
-                if (data.__componentMap != null)
-                {
-                    ComponentType componentType;
-                    foreach (var type in data.__componentMap.Keys)
-                    {
-                        componentType = EntityObjectUtility.GetType(type) ?? type;
-                        if (isPrefab && componentType.IsCleanupComponent)
-                        {
-                            if (__systemStateComponentTypes == null)
-                                __systemStateComponentTypes = new HashSet<ComponentType>();
-
-                            __systemStateComponentTypes.Add(componentType);
-                        }
-                        else
-                            __componentTypes.Add(componentType);
-                    }
-                }
-
-                int numSystemStateComponentTypes = __systemStateComponentTypes == null ? 0 : __systemStateComponentTypes.Count;
-                if (numSystemStateComponentTypes > 0)
-                {
-                    var systemStateComponentTypes = new ComponentType[numSystemStateComponentTypes];
-                    __systemStateComponentTypes.CopyTo(systemStateComponentTypes);
-                    this.systemStateComponentTypes = systemStateComponentTypes;
-                }
-
-                if (__componentTypes.Count > 256)
-                        Debug.LogError($"{name} ComponentType Count Out Of Range {__componentTypes.Count} / 256");
-
-                var entityComponentTypes = new ComponentType[__componentTypes.Count];
-                __componentTypes.CopyTo(entityComponentTypes);
-
-                entityArchetype = world.EntityManager.CreateArchetype(entityComponentTypes);
+                this.systemStateComponentTypes = systemStateComponentTypes;
             }
         }
 
-        public bool isBuild => __componentMap != null;
+        public bool isCreated => __componentMap != null && __componentMap.Count > 0;
 
         public ICollection<Type> types => __componentMap == null ? null : __componentMap.Keys;
+
+        public byte[] bytes
+        {
+            get
+            {
+                var stream = new MemoryStream();
+                using (var writer = new BinaryWriter(stream))
+                {
+                    if(__entityComponents == null)
+                        writer.Write(0);
+                    else
+                    {
+                        writer.Write(__entityComponents.Count);
+                        foreach (var entityComponent in __entityComponents)
+                            writer.Write(entityComponent);
+                    }
+                    
+                    if(__entitySystemStateComponents == null)
+                        writer.Write(0);
+                    else
+                    {
+                        writer.Write(__entitySystemStateComponents.Count);
+                        foreach (var entitySystemStateComponent in __entitySystemStateComponents)
+                            writer.Write(entitySystemStateComponent);
+                    }
+                    
+                    if(__entityRuntimeComponentDefinitions == null)
+                        writer.Write(0);
+                    else
+                    {
+                        writer.Write(__entityRuntimeComponentDefinitions.Count);
+                        foreach (var entityRuntimeComponentDefinition in __entityRuntimeComponentDefinitions)
+                            writer.Write(entityRuntimeComponentDefinition);
+                    }
+                    
+                    if(__componentMap == null)
+                        writer.Write(0);
+                    else
+                    {
+                        writer.Write(__componentMap.Count);
+                        foreach (var pair in __componentMap)
+                        {
+                            writer.Write(pair.Key.AssemblyQualifiedName);
+                            writer.Write(pair.Value);
+                        }
+                    }
+
+                    return stream.ToArray();
+                }
+            }
+
+            set
+            {
+                using (var reader = new BinaryReader(new MemoryStream(value)))
+                {
+                    if (__entityComponents == null)
+                        __entityComponents = new List<int>();
+                    else
+                        __entityComponents.Clear();
+
+                    int numEntityComponents = reader.ReadInt32();
+                    __entityComponents.Capacity = Math.Max(__entityComponents.Capacity, numEntityComponents);
+                    for (int i = 0; i < numEntityComponents; ++i)
+                        __entityComponents.Add(reader.ReadInt32());
+                    
+                    if (__entitySystemStateComponents == null)
+                        __entitySystemStateComponents = new List<int>();
+                    else
+                        __entitySystemStateComponents.Clear();
+
+                    int numEntitySystemStateComponents = reader.ReadInt32();
+                    __entitySystemStateComponents.Capacity = Math.Max(__entitySystemStateComponents.Capacity, numEntitySystemStateComponents);
+                    for (int i = 0; i < numEntitySystemStateComponents; ++i)
+                        __entitySystemStateComponents.Add(reader.ReadInt32());
+
+                    if (__entityRuntimeComponentDefinitions == null)
+                        __entityRuntimeComponentDefinitions = new List<int>();
+                    else
+                        __entityRuntimeComponentDefinitions.Clear();
+
+                    int numEntityRuntimeComponentDefinitions = reader.ReadInt32();
+                    __entityRuntimeComponentDefinitions.Capacity = Math.Max(__entityRuntimeComponentDefinitions.Capacity, numEntityRuntimeComponentDefinitions);
+                    for (int i = 0; i < numEntityRuntimeComponentDefinitions; ++i)
+                        __entityRuntimeComponentDefinitions.Add(reader.ReadInt32());
+                    
+                    if (__componentMap == null)
+                        __componentMap = new Dictionary<Type, int>();
+                    else
+                        __componentMap.Clear();
+
+                    int numComponents = reader.ReadInt32(), componentIndex;
+                    Type type;
+                    __componentMap.EnsureCapacity(numComponents);
+                    for (int i = 0; i < numEntityRuntimeComponentDefinitions; ++i)
+                    {
+                        type = Type.GetType(reader.ReadString());
+                        componentIndex = reader.ReadInt32();
+                        if(type == null)
+                            continue;
+                        
+                        __componentMap.Add(type, componentIndex);
+                    }
+                }
+            }
+        }
+
+        public TypeIndices typeIndices
+        {
+            get
+            {
+                TypeIndices typeIndices = default;
+                if (__componentMap != null)
+                {
+                    Type componentType;
+                    foreach (var type in __componentMap.Keys)
+                    {
+                        componentType = EntityObjectUtility.GetType(type) ?? type;
+                        typeIndices.Add(TypeManager.GetTypeIndex(componentType));
+                    }
+                }
+
+                return typeIndices;
+            }
+        }
 
         public bool Contains(Type type)
         {
@@ -587,6 +664,69 @@ namespace ZG
                 return 0;
 
             return 1 + __DepthOf(parent);
+        }
+    }
+
+    [BurstCompile]
+    public static class GameObjectEntityDataUtility
+    {
+        public delegate EntityArchetype BuildDelegate(
+            bool isPrefab, 
+            in TypeIndices typeIndices,
+            ref TypeIndices systemStateComponentTypes, 
+            ref EntityManager entityManager);
+
+        public static readonly BuildDelegate BuildFunction =
+            BurstCompiler.CompileFunctionPointer<BuildDelegate>(Build).Invoke;
+        
+        [BurstCompile]
+        [MonoPInvokeCallback(typeof(BuildDelegate))]
+        public static EntityArchetype Build(bool isPrefab, in TypeIndices typeIndices, ref TypeIndices systemStateComponentTypes, ref EntityManager entityManager)
+        {
+            var entityComponentTypes = new NativeList<ComponentType>(Allocator.Temp);
+                
+            if (isPrefab)
+                entityComponentTypes.Add(ComponentType.ReadOnly<Prefab>());
+
+            entityComponentTypes.Add(ComponentType.ReadOnly<EntityObjects>());
+
+            systemStateComponentTypes.Clear();
+
+            ComponentType componentType;
+            componentType.AccessModeType = ComponentType.AccessMode.ReadWrite;
+                
+            foreach (var typeIndex in typeIndices)
+            {
+                if (isPrefab && typeIndex.IsCleanupComponent)
+                    systemStateComponentTypes.Add(typeIndex);
+                else
+                {
+                    componentType.TypeIndex = typeIndex;
+                        
+                    entityComponentTypes.Add(componentType);
+                }
+            }
+
+            /*if (data.__componentMap != null)
+            {
+                foreach (var type in data.__componentMap.Keys)
+                {
+                    componentType = EntityObjectUtility.GetType(type) ?? type;
+                    if (isPrefab && componentType.IsCleanupComponent)
+                        systemStateComponentTypes.Add(componentType.TypeIndex);
+                    else
+                        entityComponentTypes.Add(componentType);
+                }
+            }*/
+
+            if (entityComponentTypes.Length > 256)
+                Debug.LogError($"ComponentType Count Out Of Range {entityComponentTypes.Length} / 256");
+
+            var entityArchetype = entityManager.CreateArchetype(entityComponentTypes.AsArray());
+
+            entityComponentTypes.Dispose();
+
+            return entityArchetype;
         }
     }
 }
