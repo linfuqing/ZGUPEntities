@@ -349,7 +349,7 @@ namespace ZG
                     int numComponents = reader.ReadInt32(), componentIndex;
                     Type type;
                     __componentMap.EnsureCapacity(numComponents);
-                    for (int i = 0; i < numEntityRuntimeComponentDefinitions; ++i)
+                    for (int i = 0; i < numComponents; ++i)
                     {
                         type = Type.GetType(reader.ReadString());
                         componentIndex = reader.ReadInt32();
