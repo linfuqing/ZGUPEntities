@@ -377,8 +377,12 @@ namespace ZG
             {
                 if (__isActive == value || __entity == Entity.Null)
                     return;
+                
+                UnityEngine.Profiling.Profiler.BeginSample("GameObjectEntityUtility._Add");
 
                 GameObjectEntityUtility._Add<GameObjectEntityActiveCount>(world, __entity, status, value ? 1 : -1);
+                
+                UnityEngine.Profiling.Profiler.EndSample();
 
                 __isActive = value;
             }

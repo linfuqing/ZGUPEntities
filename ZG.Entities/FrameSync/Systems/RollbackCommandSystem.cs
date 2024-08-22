@@ -384,7 +384,9 @@ namespace ZG
 
                     if (frameIndex > restoreFrameIndex)
                     {
+#if UNITY_EDITOR
                         UnityEngine.Debug.LogWarning($"Restore Frame Index Out Of Range: {restoreFrameIndex} To {frameIndex}");
+#endif
 
                         frameIndices[(int)RollbackFrameIndexType.Restore] = frameIndex;
 

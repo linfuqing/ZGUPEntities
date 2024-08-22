@@ -48,7 +48,7 @@ namespace ZG
 
         public void FindNeighbor(
             in LandscapeSection section,
-            in NativeArray<float3> positions,
+            in NativeSlice<float3> positions,
             ref UnsafeParallelHashMap<int3, int> addList)
         {
             addList.Clear();
@@ -223,6 +223,7 @@ namespace ZG
     public struct LandscapeInput
     {
         public uint layerMask;
+        public int distance;
         public float3 position;
     }
 
@@ -932,6 +933,7 @@ namespace ZG
 
     public struct LandscapeData : IComponentData, IEnableableComponent//, ISharedComponentData
     {
+        public int distance;
         public uint layerMask;
         public BlobAssetReference<LandscapeDefinition> definition;
     }
@@ -945,15 +947,24 @@ namespace ZG
     [BurstCompile, UpdateInGroup(typeof(InitializationSystemGroup))]
     public partial struct LandscapeSystem : ISystem
     {
+        private struct Position
+        {
+            public float3 value;
+            public int distance;
+        }
+        
         private struct Wrapper : ILandscapeWrapper<int3>
         {
             private LandscapeLayer __layer;
-            private NativeArray<float3> __positions;
+            private NativeArray<Position> __positions;
             private UnsafeParallelHashMap<int3, int>.Enumerator __enumerator;
 
             public int3 Current => __enumerator.Current.Key;
 
-            public Wrapper(in LandscapeLayer layer, in NativeArray<float3> positions, UnsafeParallelHashMap<int3, int>.Enumerator enumerator)
+            public Wrapper(
+                in LandscapeLayer layer, 
+                in NativeArray<Position> positions, 
+                UnsafeParallelHashMap<int3, int>.Enumerator enumerator)
             {
                 __layer = layer;
                 __positions = positions;
@@ -966,16 +977,17 @@ namespace ZG
             {
                 int minLength = int.MaxValue - 1, numPositions = __positions.Length, length;
                 int3 distance, result;
-                float3 position;
+                Position position;
                 for (int i = 0; i < numPositions; ++i)
                 {
                     position = __positions[i];
-                    if (!__layer.GetPosition(ref position, out result))
+                    if (!__layer.GetPosition(ref position.value, out result))
                         continue;
 
                     distance = math.abs(result - key);
 
                     length = distance.x * distance.x + distance.y * distance.y + distance.z * distance.z;
+                    length += position.distance;
 
                     if (length < minLength)
                         minLength = length;
@@ -1009,6 +1021,7 @@ namespace ZG
 
                 LandscapeInput value;
                 value.layerMask = instance.layerMask;
+                value.distance = instance.distance;
                 value.position = localToWorlds[index].Value.c3.xyz;
 
                 values.Add(instance.definition, value);
@@ -1063,12 +1076,13 @@ namespace ZG
                     using (var keys = positions.GetKeyArray(Allocator.Temp))
                     {
                         var addList = new UnsafeParallelHashMap<int3, int>(1, Allocator.Temp);
-                        var positionList = new NativeList<float3>(Allocator.Temp);
-                        NativeArray<float3> positions;
+                        var positionList = new NativeList<Position>(Allocator.Temp);
+                        NativeArray<Position> positions;
                         NativeParallelMultiHashMap<BlobAssetReference<LandscapeDefinition>, LandscapeInput>.Enumerator
                             enumerator;
                         LandscapeWorld<int3> world;
                         BlobAssetReference<LandscapeDefinition> key;
+                        Position position;
                         LandscapeInput value;
                         Wrapper wrapper;
                         int i, j, numLayers, count = keys.ConvertToUniqueArray();
@@ -1091,7 +1105,11 @@ namespace ZG
                                 {
                                     value = enumerator.Current;
                                     if ((value.layerMask & (1 << j)) != 0)
-                                        positionList.Add(value.position);
+                                    {
+                                        position.distance = value.distance;
+                                        position.value = value.position;
+                                        positionList.Add(position);
+                                    }
                                 }
                                 
                                 if(positionList.IsEmpty)
@@ -1100,7 +1118,7 @@ namespace ZG
                                 positions = positionList.AsArray();
 
                                 ref var layer = ref definition.layers[j];
-                                layer.value.FindNeighbor(level.sections[j], positions, ref addList);
+                                layer.value.FindNeighbor(level.sections[j], positions.Slice().SliceWithStride<float3>(), ref addList);
 
                                 if (!addList.IsEmpty)
                                 {

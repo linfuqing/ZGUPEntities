@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 //using System.Runtime.InteropServices;
 //using Unity.Collections.LowLevel.Unsafe;
 using Unity.Collections;
@@ -637,14 +638,23 @@ namespace ZG
         }
     }
 
-    [RequireMatchingQueriesForUpdate, UpdateInGroup(typeof(EntityCommandSharedSystemGroup), OrderFirst = true), 
+    [BurstCompile, RequireMatchingQueriesForUpdate, UpdateInGroup(typeof(EntityCommandSharedSystemGroup), OrderFirst = true), 
         UpdateAfter(typeof(GameObjectEntityFactorySystem))]
-    public partial class GameObjectEntityInitSystem : SystemBase
+    public partial struct GameObjectEntityInitSystem : ISystem
     {
-        public int innerloopBatchCount = 1;
+        public struct FunctionWrapper : IFunctionWrapper
+        {
+            public Entity entity;
+            public GCHandle gcHandle;
 
-        private EntityQuery __group;
-
+            public void Invoke()
+            {
+                var gameObjectEntity = gcHandle.IsAllocated ? (GameObjectEntity)gcHandle.Target : null;
+                if (gameObjectEntity != null)
+                    gameObjectEntity._Create(entity);
+            }
+        }
+        
         private struct Callback
         {
             [ReadOnly]
@@ -654,31 +664,24 @@ namespace ZG
             [ReadOnly]
             public BufferAccessor<GameObjectEntityHandle> gcHandles;
 
+            public NativeList<FunctionWrapper> functionWrappers;
+
             public void Execute(int index)
             {
-                GameObjectEntity gameObjectEntity;
-                Entity entity = entityArray[index];
+                FunctionWrapper functionWrapper;
+                functionWrapper.entity = entityArray[index];
 
                 //Debug.Log($"Apply {entity} To {entityOrigins[index].entity}");
                 foreach (var gcHandle in gcHandles[index])
                 {
-                    //UnityEngine.Assertions.Assert.IsTrue(gcHandle.value.IsAllocated);
-                    gameObjectEntity = gcHandle.value.IsAllocated ? (GameObjectEntity)gcHandle.value.Target : null;
-                    if (gameObjectEntity != null)
-                    {
-                        try
-                        {
-                            gameObjectEntity._Create(entity);
-                        }
-                        catch (Exception e)
-                        {
-                            Debug.LogException(e.InnerException ?? e, gameObjectEntity);
-                        }
-                    }
+                    functionWrapper.gcHandle = gcHandle.value;
+                    
+                    functionWrappers.Add(functionWrapper);
                 }
             }
         }
 
+        [BurstCompile]
         private struct CallbackEx : IJobChunk
         {
             [ReadOnly]
@@ -688,50 +691,68 @@ namespace ZG
             [ReadOnly]
             public BufferTypeHandle<GameObjectEntityHandle> gcHandleType;
 
+            public NativeList<FunctionWrapper> functionWrappers;
+
             public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
             {
                 Callback callback;
                 callback.entityArray = chunk.GetNativeArray(entityType);
                 //callback.entityOrigins = chunk.GetNativeArray(ref entityOriginType);
                 callback.gcHandles = chunk.GetBufferAccessor(ref gcHandleType);
+                callback.functionWrappers = functionWrappers;
                 var iterator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
                 while (iterator.NextEntityIndex(out int i))
                     callback.Execute(i);
             }
         }
 
-        protected override void OnCreate()
-        {
-            base.OnCreate();
+        private EntityQuery __group;
 
-            __group = GetEntityQuery(new EntityQueryDesc()
-            {
-                All = new ComponentType[]
-                {
-                    ComponentType.ReadOnly<GameObjectEntityHandle>()
-                },
-                Options = EntityQueryOptions.IncludeDisabledEntities
-            });
+        private EntityTypeHandle __entityType;
+        private BufferTypeHandle<GameObjectEntityHandle> __gcHandleType;
+        
+        private NativeList<FunctionWrapper> __functionWrappers;
+
+        [BurstCompile]
+        public void OnCreate(ref SystemState state)
+        {
+            using(var builder = new EntityQueryBuilder(Allocator.Temp))
+                __group = builder
+                    .WithAll<GameObjectEntityHandle>()
+                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    .Build(ref state);
+            
+            __entityType = state.GetEntityTypeHandle();
+            __gcHandleType = state.GetBufferTypeHandle<GameObjectEntityHandle>(true);
+
+            __functionWrappers = new NativeList<FunctionWrapper>(Allocator.Persistent);
         }
 
-        protected override void OnUpdate()
+        [BurstCompile]
+        public void OnDestroy(ref SystemState state)
         {
-            //UnityEngine.Assertions.Assert.AreEqual(Dependency, EntityCommandFactory.JobHandle);
+            __functionWrappers.Dispose();
+        }
 
+        [BurstCompile]
+        public void OnUpdate(ref SystemState state)
+        {
             //TODO: 
-            CompleteDependency();
-
-            /*if(!__group.IsEmpty)
-                UnityEngine.Assertions.Assert.IsTrue(EntityCommandFactory.JobHandle.IsCompleted);*/
+            state.CompleteDependency();
 
             CallbackEx callback;
-            callback.entityType = GetEntityTypeHandle();
-            //callback.entityOriginType = GetComponentTypeHandle<EntityOrigin>(true);
-            callback.gcHandleType = GetBufferTypeHandle<GameObjectEntityHandle>(true);
-            callback.RunByRefWithoutJobs(__group);
+            callback.entityType = __entityType.UpdateAsRef(ref state);
+            callback.gcHandleType = __gcHandleType.UpdateAsRef(ref state);
+            callback.functionWrappers = __functionWrappers;
+            callback.RunByRef(__group);
 
-            var entityManager = EntityManager;
-            entityManager.RemoveComponent<GameObjectEntityHandle>(__group);
+            state.EntityManager.RemoveComponent<GameObjectEntityHandle>(__group);
+
+            int numFunctionWrappers = __functionWrappers.Length;
+            for(int i = 0; i < numFunctionWrappers; ++i)
+                __functionWrappers.ElementAt(i).Run();
+
+            __functionWrappers.Clear();
         }
     }
 
