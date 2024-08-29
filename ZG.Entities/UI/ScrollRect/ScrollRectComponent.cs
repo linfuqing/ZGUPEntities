@@ -156,10 +156,71 @@ namespace ZG
         {
             get
             {
+                var submitHandlers = this.submitHandlers;
+                if(submitHandlers == null)
+                    return int2.zero;
+
+                RectTransform.Axis axis = scrollRect.horizontal ? RectTransform.Axis.Horizontal : RectTransform.Axis.Vertical;
+                int2 result = int2.zero;
+                result[(int)axis] = submitHandlers.Count;
+                
+                return result;
+            }
+        }
+
+        public int2 index
+        {
+            get;
+
+            private set;
+        } = new int2(-1, -1);
+
+        public ScrollRectData data
+        {
+            get
+            {
+                ScrollRect scrollRect = this.scrollRect;
+                if (scrollRect == null)
+                    return default;
+
+                ScrollRectData result;
+                result.decelerationRate = scrollRect.decelerationRate;
+                result.elasticity = scrollRect.elasticity;
+
+                //result.count = count;
+
+                //Canvas.ForceUpdateCanvases();
+
+                RectTransform content = scrollRect.content;
+                result.contentLength = content == null ? float2.zero : (float2)content.rect.size;
+
+                RectTransform viewport = scrollRect.viewport;
+                result.viewportLength = viewport == null ? float2.zero : (float2)viewport.rect.size;
+
+                return result;
+            }
+        }
+
+        public ScrollRect scrollRect
+        {
+            get
+            {
+                if (__scrollRect == null)
+                    __scrollRect = GetComponent<ScrollRect>();
+
+                return __scrollRect;
+            }
+        }
+
+        public IReadOnlyList<ISubmitHandler> submitHandlers
+        {
+            
+            get
+            {
                 ScrollRect scrollRect = this.scrollRect;
                 RectTransform content = scrollRect == null ? null : scrollRect.content;
                 if (content == null)
-                    return int2.zero;
+                    return null;
 
                 if (__submitHandlers == null)
                     __submitHandlers = new List<ISubmitHandler>();
@@ -208,55 +269,7 @@ namespace ZG
                 if (isChanged)
                     --version;
 
-                RectTransform.Axis axis = scrollRect.horizontal ? RectTransform.Axis.Horizontal : RectTransform.Axis.Vertical;
-                int2 result = int2.zero;
-                result[(int)axis] = __submitHandlers.Count;
-                
-                return result;
-            }
-        }
-
-        public int2 index
-        {
-            get;
-
-            private set;
-        } = new int2(-1, -1);
-
-        public ScrollRectData data
-        {
-            get
-            {
-                ScrollRect scrollRect = this.scrollRect;
-                if (scrollRect == null)
-                    return default;
-
-                ScrollRectData result;
-                result.decelerationRate = scrollRect.decelerationRate;
-                result.elasticity = scrollRect.elasticity;
-
-                //result.count = count;
-
-                //Canvas.ForceUpdateCanvases();
-
-                RectTransform content = scrollRect.content;
-                result.contentLength = content == null ? float2.zero : (float2)content.rect.size;
-
-                RectTransform viewport = scrollRect.viewport;
-                result.viewportLength = viewport == null ? float2.zero : (float2)viewport.rect.size;
-
-                return result;
-            }
-        }
-
-        public ScrollRect scrollRect
-        {
-            get
-            {
-                if (__scrollRect == null)
-                    __scrollRect = GetComponent<ScrollRect>();
-
-                return __scrollRect;
+                return __submitHandlers;
             }
         }
 

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace ZG
@@ -15,7 +16,8 @@ namespace ZG
 
         private bool __isMoving;
         private int2 __selectedIndex = IndexNull;
-        private ScrollRectToggle[] __toggles;
+        private IReadOnlyList<ISubmitHandler> __submitHandlers;
+        private Dictionary<ISubmitHandler, ScrollRectToggle> __toggles;
 
         private static readonly int2 IndexNull = new int2(-1, -1);
         
@@ -24,56 +26,91 @@ namespace ZG
             get
             {
                 int version = base.version;
-                var result = base.count;
+                __submitHandlers = base.submitHandlers;
+                int count = __submitHandlers == null ? 0 : __submitHandlers.Count;
+                RectTransform.Axis axis = scrollRect.horizontal ? RectTransform.Axis.Horizontal : RectTransform.Axis.Vertical;
+                int2 result = int2.zero;
+                result[(int)axis] = count;
                 if (version == base.version || toggleStyle == null)
                     return result;
-
-                int count = math.max(result.x, result.y);
+                
+                ISubmitHandler submitHandler;
                 if (count > 0)
                 {
-                    int i, length;
                     ScrollRectToggle toggle;
                     if (__toggles == null)
-                    {
-                        length = 0;
-
-                        __toggles = new ScrollRectToggle[count];
-                    }
+                        __toggles = new Dictionary<ISubmitHandler, ScrollRectToggle>();
                     else
                     {
-                        length = __toggles.Length;
-                        for (i = count; i < length; ++i)
+                        bool isContains;
+                        List<ISubmitHandler> submitHandlersToDestroy = null;
+                        foreach (var pair in __toggles)
                         {
-                            toggle = __toggles[i];
-                            if (toggle != null)
-                                Destroy(toggle.gameObject);
+                            submitHandler = pair.Key;
+
+                            isContains = false;
+                            foreach (var submitHandlerToDestroy in __submitHandlers)
+                            {
+                                if (submitHandlerToDestroy == submitHandler)
+                                {
+                                    isContains = true;
+
+                                    break;
+                                }
+                            }
+                            
+                            if (!isContains)
+                            {
+                                toggle = pair.Value;
+                                if (toggle != null)
+                                    Destroy(toggle.gameObject);
+
+                                if (submitHandlersToDestroy == null)
+                                    submitHandlersToDestroy = new List<ISubmitHandler>();
+                                
+                                submitHandlersToDestroy.Add(submitHandler);
+                            }
                         }
 
-                        Array.Resize(ref __toggles, count);
+                        if (submitHandlersToDestroy != null)
+                        {
+                            foreach (var submitHandlerToDestroy in submitHandlersToDestroy)
+                                __toggles.Remove(submitHandlerToDestroy);
+                        }
                     }
 
                     GameObject gameObject;
                     Transform parent = toggleStyle == null ? null : toggleStyle.transform;
                     parent = parent == null ? null : parent.parent;
-                    for (i = length; i < count; ++i)
+                    for(int i = 0; i < count; ++i)
                     {
+                        submitHandler = __submitHandlers[i];
+                        if (__toggles.TryGetValue(submitHandler, out toggle) && toggle != null)
+                        {
+                            toggle.transform.SetSiblingIndex(i + 1);
+
+                            continue;
+                        }
+
                         toggle = Instantiate(toggleStyle, parent);
                         if (toggle == null)
                             continue;
 
                         toggle.handler = this;
                         toggle.index = i;
+                        
+                        toggle.transform.SetSiblingIndex(i + 1);
 
                         gameObject = toggle.gameObject;
                         if (gameObject != null)
                             gameObject.SetActive(true);
 
-                        __toggles[i] = toggle;
+                        __toggles[submitHandler] = toggle;
                     }
 
                     int2 temp = selectedIndex;
                     int min = 0, max = count - 1, index = math.clamp(math.max(temp.x, temp.y), min, max);
-                    toggle = __toggles[index];
+                    toggle = __toggles[__submitHandlers[index]];
                     if (toggle != null && toggle.onSelected != null)
                     {
                         __isMoving = true;
@@ -91,13 +128,13 @@ namespace ZG
                 {
                     if (__toggles != null)
                     {
-                        foreach (ScrollRectToggle toogle in __toggles)
+                        foreach (var toogle in __toggles.Values)
                         {
                             if (toogle != null)
                                 Destroy(toogle.gameObject);
                         }
 
-                        __toggles = null;
+                        __toggles.Clear();
                     }
 
                     if (onPreviousChanged != null)
@@ -115,7 +152,7 @@ namespace ZG
         {
             get
             {
-                return math.all(__selectedIndex == IndexNull) ? index : math.min(__selectedIndex, __toggles == null ? 0 : __toggles.Length - 1);
+                return math.all(__selectedIndex == IndexNull) ? index : math.min(__selectedIndex, __toggles == null ? 0 : __toggles.Count - 1);
             }
         }
 
@@ -129,14 +166,6 @@ namespace ZG
             }
         }
 
-        public IReadOnlyList<ScrollRectToggle> toggles
-        {
-            get
-            {
-                return __toggles;
-            }
-        }
-
         public ScrollRectComponentEx()
         {
             onChanged += __OnChanged;
@@ -144,7 +173,7 @@ namespace ZG
 
         public ScrollRectToggle Get(int index)
         {
-            return index < 0 || index >= (__toggles == null ? 0 : __toggles.Length) ? null : __toggles[index];
+            return index < 0 || index >= (__toggles == null ? 0 : __toggles.Count) ? null : __toggles[__submitHandlers[index]];
         }
 
         public void Next()
@@ -208,12 +237,12 @@ namespace ZG
         private void __OnChanged(int2 source)
         {
             bool isNull = math.all(__selectedIndex == IndexNull);
-            if (!isNull && !math.all(math.min(__selectedIndex, __toggles == null ? 0 : __toggles.Length - 1) == source))
+            if (!isNull && !math.all(math.min(__selectedIndex, __toggles == null ? 0 : __toggles.Count - 1) == source))
                 return;
 
             if (isNull)
             {
-                int length = __toggles == null ? 0 : __toggles.Length, index = math.clamp(math.max(source.x, source.y), 0, length - 1);
+                int length = __toggles == null ? 0 : __toggles.Count, index = math.clamp(math.max(source.x, source.y), 0, length - 1);
                 int2 destination = base.index;
                 __Update(math.max(destination.x, destination.y), index);
             }
@@ -223,8 +252,8 @@ namespace ZG
 
         private void __Update(int source, int destination)
         {
-            int length = __toggles == null ? 0 : __toggles.Length, min = 0, max = length - 1;
-            ScrollRectToggle toggle = length > destination ? __toggles[destination] : null;
+            int length = __toggles == null ? 0 : __toggles.Count, min = 0, max = length - 1;
+            ScrollRectToggle toggle = length > destination ? __toggles[__submitHandlers[destination]] : null;
             if (toggle != null && toggle.onSelected != null)
             {
                 __isMoving = true;
