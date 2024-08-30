@@ -85,6 +85,9 @@ namespace ZG
                     for(int i = 0; i < count; ++i)
                     {
                         submitHandler = __submitHandlers[i];
+                        if(submitHandler == null)
+                            continue;
+                        
                         if (__toggles.TryGetValue(submitHandler, out toggle) && toggle != null)
                         {
                             toggle.transform.SetSiblingIndex(i + 1);
