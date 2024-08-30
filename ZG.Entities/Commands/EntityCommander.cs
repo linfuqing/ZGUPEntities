@@ -271,7 +271,12 @@ namespace ZG
         {
             __assigner.SetComponentData(entity, value);
         }
-
+        public void SetBuffer<T>(in Entity entity, int index, in T values)
+            where T : struct, IBufferElementData
+        {
+            __assigner.SetBuffer(entity, index, values);
+        }
+        
         public void SetBuffer<T>(in Entity entity, in NativeArray<T> values)
                 where T : struct, IBufferElementData
         {

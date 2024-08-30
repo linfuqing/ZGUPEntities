@@ -1,6 +1,4 @@
-using System.Reflection;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Collections.Generic;
 using Unity.Jobs;
 using Unity.Burst;
@@ -129,6 +127,7 @@ namespace ZG
             public enum Type
             {
                 ComponentData,
+                BufferIndex,
                 BufferOverride,
                 BufferAppend,
                 BufferAppendUnique,
@@ -427,6 +426,25 @@ namespace ZG
 
                 SetComponentData(TypeManager.GetTypeIndex<T>(), entity, value);
             }
+            
+            public unsafe void SetBuffer<T>(in Entity entity, void* values, int length, int offset)
+                where T : struct, IBufferElementData
+            {
+                Command command;
+                command.type = Command.Type.BufferIndex;
+                if (values == null || length < 1)
+                    command.block = UnsafeBlock.Empty;
+                else
+                {
+                    int size = UnsafeUtility.SizeOf<T>() * length;
+                    command.block = buffer.writer.WriteBlock(UnsafeUtility.SizeOf<int>() + size, false);
+                    var writer = command.block.writer;
+                    writer.Write(offset);
+                    writer.Write(values, size);
+                }
+
+                __Set<T>(entity, command);
+            }
 
             public unsafe void SetBuffer<T>(BufferOption option, in Entity entity, void* values, int length)
                 where T : struct, IBufferElementData
@@ -446,7 +464,47 @@ namespace ZG
                 __Set<T>(entity, command);
             }
 
-            public unsafe void SetBuffer<TValue, TCollection>(BufferOption option, in TypeIndex typeIndex, in Entity entity, in TCollection values)
+            public void SetBuffer<TValue, TCollection>(in TypeIndex typeIndex, in Entity entity, in TCollection values, int offset)
+                where TValue : struct
+                where TCollection : IReadOnlyCollection<TValue>
+            {
+                UnityEngine.Assertions.Assert.IsTrue(typeIndex.IsBuffer);
+                __CheckTypeSize<TValue>(typeIndex);
+
+                Command command;
+                command.type = Command.Type.BufferIndex;
+
+                int count = values == null ? 0 : values.Count;
+                if (count > 0)
+                {
+                    int size = UnsafeUtility.SizeOf<TValue>() * count;
+                    command.block = buffer.writer.WriteBlock(UnsafeUtility.SizeOf<int>() + size, false);
+                    var writer = command.block.writer;
+                    writer.Write(offset);
+                    
+                    int index = 0;
+                    var array = writer.WriteBlock(size, false).AsArray<TValue>();
+                    foreach (var value in values)
+                    {
+                        array[index++] = value;
+
+                        UnityEngine.Assertions.Assert.IsTrue(index <= count);
+                    }
+                }
+                else
+                    command.block = UnsafeBlock.Empty;
+
+                __Set(typeIndex, entity, command);
+            }
+            
+            public void SetBuffer<TValue, TCollection>(in Entity entity, in TCollection values, int offset)
+                where TValue : struct, IBufferElementData
+                where TCollection : IReadOnlyCollection<TValue>
+            {
+                SetBuffer<TValue, TCollection>(TypeManager.GetTypeIndex<TValue>(), entity, values, offset);
+            }
+            
+            public void SetBuffer<TValue, TCollection>(BufferOption option, in TypeIndex typeIndex, in Entity entity, in TCollection values)
                 where TValue : struct
                 where TCollection : IReadOnlyCollection<TValue>
             {
@@ -476,7 +534,7 @@ namespace ZG
                 __Set(typeIndex, entity, command);
             }
 
-            public unsafe void SetBuffer<TValue, TCollection>(BufferOption option, in Entity entity, in TCollection values)
+            public void SetBuffer<TValue, TCollection>(BufferOption option, in Entity entity, in TCollection values)
                 where TValue : struct, IBufferElementData
                 where TCollection : IReadOnlyCollection<TValue>
             {
@@ -767,6 +825,28 @@ namespace ZG
 
                 SetComponentData(TypeManager.GetTypeIndex<T>(), entity, value);
             }
+            
+            public unsafe void SetBuffer<T>(in Entity entity, void* values, int length, int offset)
+                where T : struct, IBufferElementData
+            {
+                __CheckWrite();
+
+                _info->SetBuffer<T>(entity, values, length, offset);
+            }
+            
+            public unsafe void SetBuffer<T>(in Entity entity, in NativeArray<T> values, int offset) where T : struct, IBufferElementData => SetBuffer<T>(
+                entity, values.GetUnsafeReadOnlyPtr(), values.Length, offset);
+
+            public unsafe void SetBuffer<T>(in Entity entity, in T[] values, int offset) where T : unmanaged, IBufferElementData
+            {
+                if (values == null)
+                    return;
+
+                fixed (void* ptr = values)
+                {
+                    SetBuffer<T>(entity, ptr, values.Length, offset);
+                }
+            }
 
             public unsafe void SetBuffer<T>(BufferOption option, in Entity entity, void* values, int length)
                 where T : struct, IBufferElementData
@@ -792,6 +872,24 @@ namespace ZG
                 {
                     SetBuffer<T>(option, entity, ptr, values.Length);
                 }
+            }
+
+            public unsafe void SetBuffer<TValue, TCollection>(in TypeIndex typeIndex, in Entity entity, in TCollection values, int offset)
+                where TValue : struct
+                where TCollection : IReadOnlyCollection<TValue>
+            {
+                __CheckWrite();
+
+                _info->SetBuffer<TValue, TCollection>(typeIndex, entity, values, offset);
+            }
+
+            public unsafe void SetBuffer<TValue, TCollection>(in Entity entity, in TCollection values, int offset)
+                where TValue : struct, IBufferElementData
+                where TCollection : IReadOnlyCollection<TValue>
+            {
+                __CheckWrite();
+
+                _info->SetBuffer<TValue, TCollection>(entity, values, offset);
             }
 
             public unsafe void SetBuffer<TValue, TCollection>(BufferOption option, in TypeIndex typeIndex, in Entity entity, in TCollection values)
@@ -1160,6 +1258,33 @@ namespace ZG
 
                                 //destination = (byte*)batchInChunk.GetDynamicComponentDataArrayReinterpret<byte>(dynamicComponentTypeHandle, blockSize).GetUnsafePtr() + i * blockSize;
                                 break;
+                            case Command.Type.BufferIndex:
+                                if (source != null)
+                                {
+                                    int* temp = (int*)source;
+                                    int offset = *temp * elementSize;
+
+                                    int intSize = UnsafeUtility.SizeOf<int>();
+                                    source = (byte*)source + intSize;//++temp;
+                                    blockSize -= intSize;
+                                    int elementCount = (blockSize + offset) / elementSize, 
+                                        bufferLength = bufferAccessor.GetBufferLength(entityStorageInfo.IndexInChunk), 
+                                        clearLength = offset;
+                                    if (bufferLength < elementCount)
+                                    {
+                                        bufferAccessor.ResizeUninitialized(entityStorageInfo.IndexInChunk,
+                                            elementCount);
+
+                                        clearLength = bufferLength * elementSize;
+                                    }
+
+                                    destination = bufferAccessor.GetUnsafePtr(entityStorageInfo.IndexInChunk);
+                                    if(clearLength < offset)
+                                        UnsafeUtility.MemClear(destination, offset - clearLength);
+
+                                    destination = (byte*)destination + offset;
+                                }
+                                break;
                             case Command.Type.BufferOverride:
                             case Command.Type.BufferAppend:
                             case Command.Type.BufferAppendUnique:
@@ -1305,10 +1430,16 @@ namespace ZG
 
             public void SetComponentData<T>(in Entity entity, in T value) where T : struct, IComponentData => _container.SetComponentData(entity, value);
 
+            public unsafe void SetBuffer<T>(in Entity entity, void* values, int length, int offset)
+                where T : struct, IBufferElementData => _container.SetBuffer<T>(entity, values, length, offset);
+
             public unsafe void SetBuffer<T>(BufferOption option, in Entity entity, void* values, int length)
                 where T : struct, IBufferElementData => _container.SetBuffer<T>(option, entity, values, length);
 
-            public unsafe void SetBuffer<T>(BufferOption option, in Entity entity, in NativeArray<T> values) where T : struct, IBufferElementData =>
+            public void SetBuffer<T>(in Entity entity, in NativeArray<T> values, int offset)
+                where T : struct, IBufferElementData => _container.SetBuffer<T>(entity, values, offset);
+
+            public void SetBuffer<T>(BufferOption option, in Entity entity, in NativeArray<T> values) where T : struct, IBufferElementData =>
                 _container.SetBuffer(option, entity, values);
 
             public void Clear()
@@ -1777,6 +1908,20 @@ namespace ZG
             CompleteDependency();
 
             container.SetComponentData(entity, value);
+        }
+
+        public unsafe void SetBuffer<T>(in Entity entity, void* values, int length, int offset)
+            where T : struct, IBufferElementData
+        {
+            CompleteDependency();
+
+            container.SetBuffer<T>(entity, values, length, offset);
+        }
+        
+        public unsafe void SetBuffer<T>(in Entity entity, int index, T value)
+            where T : struct, IBufferElementData
+        {
+            SetBuffer<T>(entity, UnsafeUtility.AddressOf(ref value), 1, index);
         }
 
         public unsafe void SetBuffer<T>(BufferOption option, in Entity entity, void* values, int length)
