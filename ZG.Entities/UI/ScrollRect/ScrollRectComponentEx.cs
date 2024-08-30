@@ -113,8 +113,11 @@ namespace ZG
 
                     int2 temp = selectedIndex;
                     int min = 0, max = count - 1, index = math.clamp(math.max(temp.x, temp.y), min, max);
-                    toggle = __toggles[__submitHandlers[index]];
-                    if (toggle != null && toggle.onSelected != null)
+                    submitHandler = __submitHandlers[index];
+                    if (submitHandler != null && 
+                        __toggles.TryGetValue(submitHandler, out toggle) && 
+                        toggle != null && 
+                        toggle.onSelected != null)
                     {
                         __isMoving = true;
                         toggle.onSelected.Invoke();
