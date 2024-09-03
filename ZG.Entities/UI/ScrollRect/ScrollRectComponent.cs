@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Unity.Burst;
 using Unity.Mathematics;
 using Unity.Collections;
@@ -131,6 +132,41 @@ namespace ZG
 
     public class ScrollRectComponent : MonoBehaviour, IBeginDragHandler, IEndDragHandler, IDragHandler
     {
+        private class SubmitHandler : ISubmitHandler
+        {
+            public readonly GameObject GameObject;
+
+            public SubmitHandler([NotNull]GameObject gameObject)
+            {
+                GameObject = gameObject;
+            }
+
+            public override bool Equals(object obj)
+            {
+                var component = obj as Component;
+                if (component == null)
+                {
+                    var submitHandler = obj as SubmitHandler;
+                    if (submitHandler == null)
+                        return false;
+
+                    return submitHandler.GameObject == GameObject;
+                }
+
+                return GameObject == component.gameObject;
+            }
+
+            public override int GetHashCode()
+            {
+                return GameObject.GetHashCode();
+            }
+
+            void ISubmitHandler.OnSubmit(BaseEventData eventData)
+            {
+                
+            }
+        }
+
         public event Action<float2> onChanged;
 
         private int2 __count;
@@ -237,11 +273,22 @@ namespace ZG
                     if (gameObject != null && gameObject.activeSelf)
                     {
                         submitHandler = gameObject.GetComponent<ISubmitHandler>();
-
                         if (index < __submitHandlers.Count)
                         {
                             if (submitHandler != __submitHandlers[index])
                             {
+                                if (submitHandler == null)
+                                {
+                                    if (__submitHandlers[index] is SubmitHandler temp && temp.GameObject == gameObject)
+                                    {
+                                        ++index;
+
+                                        continue;
+                                    }
+
+                                    submitHandler = new SubmitHandler(gameObject);
+                                }
+                                
                                 __submitHandlers[index] = submitHandler;
 
                                 isChanged = true;
@@ -249,6 +296,9 @@ namespace ZG
                         }
                         else
                         {
+                            if (submitHandler == null)
+                                submitHandler = new SubmitHandler(gameObject);
+                            
                             __submitHandlers.Add(submitHandler);
 
                             isChanged = true;
