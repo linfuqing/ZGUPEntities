@@ -411,14 +411,14 @@ namespace ZG
         {
             if (__entityComponents != null)
             {
-                Component component;
+                IEntityComponent component;
                 foreach (var index in __entityComponents)
                 {
-                    component = objects[index];
+                    component = objects[index] as IEntityComponent;
                     if (component == null)
                         continue;
 
-                    ((IEntityComponent)component).Init(entity, assigner);
+                    component.Init(entity, assigner);
                 }
             }
         }
@@ -430,14 +430,14 @@ namespace ZG
         {
             if (__entitySystemStateComponents != null)
             {
-                Component component;
+                IEntitySystemStateComponent component;
                 foreach (var index in __entitySystemStateComponents)
                 {
-                    component = objects[index];
+                    component = objects[index] as IEntitySystemStateComponent;
                     if (component == null)
                         continue;
 
-                    ((IEntitySystemStateComponent)component).Init(entity, assigner);
+                    component.Init(entity, assigner);
                 }
             }
         }
