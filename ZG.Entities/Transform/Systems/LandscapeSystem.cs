@@ -1200,6 +1200,7 @@ namespace ZG
             /*if(LandscapeSystem.d.Data == 1)
                 UnityEngine.Debug.LogError($"{UnityEngine.Time.frameCount} : " + __group.CalculateEntityCount());*/
 
+            __values.Clear();
             __values.Capacity = math.max(__values.Capacity, __group.CalculateEntityCount());
 
             CollectEx collect;
