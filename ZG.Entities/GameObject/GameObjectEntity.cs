@@ -625,7 +625,9 @@ namespace ZG
                 Debug.LogError(name, this);*/
 
 #if UNITY_EDITOR
-            entityManager.SetName(entity, name);
+            __name = name;
+
+            entityManager.SetName(entity, __name);
 #endif
             __entity = entity;
 
@@ -773,7 +775,7 @@ namespace ZG
         }
 
 #if UNITY_EDITOR
-        private bool __isNamed;
+        private string __name;
 #endif
 
         void OnEnable()
@@ -781,11 +783,11 @@ namespace ZG
             isActive = true;
 
 #if UNITY_EDITOR
-            if (isCreated && !__isNamed)
+            if (isCreated && __name == null)
             {
-                __isNamed = true;
+                __name = name;
 
-                entityManager.SetName(__entity, name);
+                entityManager.SetName(__entity, __name);
             }
 #endif
         }
@@ -887,6 +889,11 @@ namespace ZG
             if (_definition == null)
                 _definition = new GameObjectEntityDefinition();
 
+            var gameObject = this.gameObject;
+            var transform = gameObject == null ? null : gameObject.transform;
+            if (transform == null)
+                return;
+            
             _definition.Init(transform, true);
             
             if (UnityEditor.EditorApplication.isPlaying)

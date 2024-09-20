@@ -1133,7 +1133,7 @@ namespace ZG
                                         }
                                     }
                                 }
-                                
+
                                 wrapper = new Wrapper(layer.value, positions, addList.GetEnumerator());
                                 world.Apply(j, ref wrapper);
                             }
@@ -1173,7 +1173,7 @@ namespace ZG
             using (var builder = new EntityQueryBuilder(Allocator.Temp))
                 __group = builder
                     .WithAll<LandscapeData, LocalToWorld>()
-                    .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+                    //.WithOptions(EntityQueryOptions.IncludeDisabledEntities)
                     .Build(ref state);
             
             __instanceType = state.GetComponentTypeHandle<LandscapeData>(true);

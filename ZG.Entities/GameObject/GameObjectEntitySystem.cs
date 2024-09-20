@@ -651,7 +651,11 @@ namespace ZG
             {
                 var gameObjectEntity = gcHandle.IsAllocated ? (GameObjectEntity)gcHandle.Target : null;
                 if (gameObjectEntity != null)
+                {
                     gameObjectEntity._Create(entity);
+                    
+                    gcHandle.Free();
+                }
             }
         }
         

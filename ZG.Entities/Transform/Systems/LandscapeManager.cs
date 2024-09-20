@@ -77,6 +77,8 @@ namespace ZG
         bool Unload(in TKey key, out int layerIndex, out TValue position,
             float maxDistance = float.MinValue);
 
+        bool Unload(in TKey key, int layerIndex, in TValue position);
+
         LandscapeLoaderCompleteType Complete(
             in TKey key,
             bool isLoading,
@@ -236,8 +238,10 @@ namespace ZG
 
         public bool Unload(in T position)
         {
-            if (__removeList.Remove(position) && __origins.Remove(position))
+            if (__origins.Remove(position))
             {
+                __removeList.Remove(position);
+                
                 if (__states.TryGetValue(position, out var status))
                 {
                     if ((status & Status.ReverseAfterDone) == Status.ReverseAfterDone)
@@ -538,6 +542,11 @@ namespace ZG
             return false;
         }
 
+        public bool Unload(int layerIndex, in T layerPosition)
+        {
+            return __ReadWrite(layerIndex).Unload(layerPosition);
+        }
+        
         public LandscapeLoaderCompleteType Complete(bool isLoading, int layerIndex, in T position)
         {
             return __ReadWrite(layerIndex).Complete(isLoading, position);
@@ -795,6 +804,16 @@ namespace ZG
 
             layerIndex = -1;
             position = default;
+
+            return false;
+        }
+
+        public bool Unload(in TKey key, int layerIndex, in TValue position)
+        {
+            __worlds.lookupJobManager.CompleteReadWriteDependency();
+
+            if (__worlds.writer.TryGetValue(key, out var world))
+                return world.Unload(layerIndex, position);
 
             return false;
         }
