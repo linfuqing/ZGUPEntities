@@ -157,7 +157,30 @@ namespace ZG
 
         private static Entity __prefab;
 
+        private static Dictionary<(GameObject, int), Entity> __prefabs;
+
+        private static List<GameObject> __parents;
+
         private static readonly List<ComponentType> ComponentTypeList = new List<ComponentType>();
+
+        private static GameObject __GetOrCreateParent()
+        {
+            GameObject parent;
+            int numParents = __parents == null ? 0 : __parents.Count;
+            if (numParents < 1)
+            {
+                parent = new GameObject();
+                parent.hideFlags = HideFlags.HideAndDontSave;
+            }
+            else
+            {
+                parent = __parents[--numParents];
+                
+                __parents.RemoveAt(numParents);
+            }
+
+            return parent;
+        }
 
         private static bool __CreateDeserializedEntity(ref DeserializedType type)
         {
@@ -345,10 +368,49 @@ namespace ZG
 
             return target;
         }
-
+        
         public static T Instantiate<T>(T component, Transform parentin, in Vector3 position, in Quaternion rotation, in Entity prefab) where T : UnityEngine.Object
         {
             return Instantiate((UnityEngine.Object)component, parentin, position, rotation, prefab) as T;
+        }
+
+        public static AsyncInstantiateOperation<T> InstantiateAsync<T>(
+            T component, 
+            in Vector3 position, 
+            in Quaternion rotation, 
+            Entity prefab) where T : UnityEngine.Object
+        {
+            var parent = __GetOrCreateParent();
+
+            if (__prefabs == null)
+                __prefabs = new Dictionary<(GameObject, int), Entity>();
+
+            __prefabs[(parent, 0)] = prefab;
+
+            var target = InstantiateAsync(component, 1, parent.transform, position, rotation);
+
+            return target;
+        }
+
+        public static AsyncInstantiateOperation<T> InstantiateAsync<T>(
+            T component, 
+            int count, 
+            in Span<Vector3> positions, 
+            in Span<Quaternion> rotations, 
+            in Span<Entity> prefabs) where T : UnityEngine.Object
+        {
+            var parent = __GetOrCreateParent();
+
+            if (__prefabs == null)
+                __prefabs = new Dictionary<(GameObject, int), Entity>();
+
+            int numPrefabs = prefabs.Length;
+            for(int i = 0; i < numPrefabs; ++i)
+                __prefabs[(parent, i)] = prefabs[i];
+
+            var target = InstantiateAsync(component, count, parent.transform, positions, rotations);
+
+            return target;
         }
 
         public event Action onCreated
@@ -666,6 +728,16 @@ namespace ZG
             {
                 switch (status)
                 {
+                    //异步会出现没调用OnAfterDeserialize的情况
+                    case GameObjectEntityStatus.None:
+                        isInstance = _instance != null && _instance.isValid;
+
+                        __Deserialize();
+                        
+                        __BuildArchetypeIfNeed(false);
+
+                        __Rebuild();
+                        break;
                     case GameObjectEntityStatus.Creating:
                         return true;
                     case GameObjectEntityStatus.Deserializing:
@@ -687,11 +759,25 @@ namespace ZG
 
             UnityEngine.Assertions.Assert.AreEqual(Entity.Null, __entity);
 
-            __entity = _parent == null ? __prefab : Entity.Null;
+            Transform transform = this.transform, parent = transform.parent;
+            GameObject parentGameObject = parent == null ? null : parent.gameObject;
+            if (parent == null || __prefabs == null ||
+                !__prefabs.Remove((parentGameObject, transform.GetSiblingIndex()), out __entity))
+                __entity = _parent == null ? __prefab : Entity.Null;
+            else
+            {
+                if (__parents == null)
+                    __parents = new List<GameObject>();
+                
+                __parents.Add(parentGameObject);
+                
+                parent = null;
+                
+                transform.SetParent(null, true);
+            }
 
             if (_parent == null)
             {
-                var parent = transform.parent;
                 if (parent != null)
                     _parent = parent.GetComponentInParent<GameObjectEntity>(true);
             }
@@ -889,7 +975,7 @@ namespace ZG
             if (_definition == null)
                 _definition = new GameObjectEntityDefinition();
 
-            var gameObject = this.gameObject;
+            var gameObject = this == null ? null : this.gameObject;
             var transform = gameObject == null ? null : gameObject.transform;
             if (transform == null)
                 return;
