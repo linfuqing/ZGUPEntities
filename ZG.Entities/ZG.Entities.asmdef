@@ -6,11 +6,12 @@
         "Unity.Entities.Hybrid",
         "Unity.Collections",
         "Unity.Burst",
-        "Unity.Jobs",
         "Unity.Mathematics",
+        "Unity.Jobs",
         "ZG",
         "ZG.Collections",
-        "ZG.Mathematics"
+        "ZG.Mathematics",
+        "ZG.UI"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
